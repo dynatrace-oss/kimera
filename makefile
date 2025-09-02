@@ -7,4 +7,3 @@ markdownlint:
 
 markdownlint-fix:
 	docker run -v $(CURDIR):/workdir --rm  $(MD_LINT_CLI_IMAGE)  "**/*.md" --fix
-
