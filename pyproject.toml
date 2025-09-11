@@ -1,0 +1,89 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "k8s-exploit-toolkit"
+version = "1.0.0"
+description = "Kubernetes Exploit Toolkit for Security Testing and Education"
+authors = ["Dynatrace OSS <opensource@dynatrace.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
+repository = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
+packages = [{include = "k8s_exploit_toolkit"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+click = ">=8.1.0"
+kubernetes = ">=28.1.0"
+pyyaml = ">=6.0"
+rich = ">=13.7.0"
+tabulate = ">=0.9.0"
+jsonpatch = ">=1.33"
+python-decouple = ">=3.4"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0.0"
+pytest-cov = ">=4.0.0"
+black = ">=22.0.0"
+flake8 = ">=5.0.0"
+mypy = ">=0.991"
+pre-commit = ">=3.0.0"
+pip-audit = ">=2.0.0"
+safety = ">=3.0.0"
+types-pyyaml = "^6.0.12.20250822"
+flake8-bugbear = "^24.12.12"
+flake8-comprehensions = "^3.16.0"
+flake8-import-order = "^0.19.2"
+
+[tool.poetry.scripts]
+k8s-exploit = "k8s_exploit_toolkit.cli:main"
+k8s-exploit-toolkit = "k8s_exploit_toolkit.exploit_k8s:main"
+
+[tool.black]
+line-length = 120
+target-version = ['py313']
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=k8s_exploit_toolkit --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["k8s_exploit_toolkit"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+per-file-ignores = [
+    "__init__.py:F401",
+]

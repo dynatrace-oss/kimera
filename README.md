@@ -1,74 +1,216 @@
-# :tada: :tada: Welcome to your new Project on GitHub :tada: :tada:
+# K8s Exploit Toolkit
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-1.24+-blue.svg)](https://kubernetes.io/)
+
+A comprehensive security testing framework for Kubernetes environments, designed for educational purposes and defensive security testing.
 
 > **Note**
 > This product is not officially supported by Dynatrace!
 
-Congratulations, your project on GitHub was successfully created and you can start your Open Source Adventure!
+## 🎯 Purpose
 
-As each adventure starts with good preparations, we also have something we would like you to do upe front.
+The K8s Exploit Toolkit provides hands-on learning opportunities for understanding Kubernetes container security misconfigurations and their remediation. This toolkit is designed for:
 
-- [ ] Read this ReadMe carefully, to get an overview of the files within your project.
-- [ ] Write your own ReadMe which reflects your project
-- [ ] Check if the [default community files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file)(CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, ..) within the organization `.github`[-project](https://github.com/dynatrace-oss/.github/) match your project's needs. If not, you can always provide your own, but we kindly ask you, that you also update those from time to time.
-- [ ] Check if there is a `LICENSE` file within your project. If not, please create one containing the `Apache License 2.0`.
-- [ ] Explicitly state that this project is not officially supported by Dynatrace in your ReadMe, eg. by using following lines on top of your ReadMe:
+- **Security researchers** studying Kubernetes attack vectors
+- **DevOps engineers** learning container security best practices
+- **Security professionals** testing defensive capabilities
+- **Educators** teaching cloud-native security concepts
 
-    > **Note**
-    > This product is not officially supported by Dynatrace!
+## ⚠️ Disclaimer
 
-## How can I make my project public?
+This toolkit is intended for **educational and defensive security testing purposes only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
 
-At first, the project will be private, as we (OSPO) want to ensure that you followed the guidelines and that everything is in place.
+## 📋 Features
 
-As soon as you are done with your initial commits, you can inform OSPO and we will take a close look at the project, and set it to public if we do think all guidelines are followed.
+### Container Security Testing
 
-There is also some automation running, which will set projects, which do not follow the guidelines, to private.
+- **Privileged Container Exploits**: Demonstrate complete bypass of container isolation
+- **Dangerous Capabilities**: Show impact of excessive Linux capabilities
+- **Host Namespace Sharing**: Exploit shared host resources (PID/Network/IPC)
+- **Resource Exhaustion**: Controlled demonstration of missing resource limits
+- **Interactive Learning**: Step-by-step exploitation and remediation workflows
 
-## Provided Tools
+### Key Capabilities
 
-### Markdownlint
+- **Assessment Mode**: Analyze security posture of deployments
+- **Exploitation Mode**: Safely demonstrate attack techniques
+- **Remediation Mode**: Apply security best practices
+- **Rollback Support**: Undo changes with built-in rollback commands
+- **Verification**: Confirm security improvements
+- **Debug Mode**: Detailed logging for troubleshooting
 
-To make it easier for the project to keep the Markdown files in a good shape, we added `markdownlint-cli` to the project.
+## 🚀 Quick Start
 
-1. with a `makefile` for easier execution locally, based on docker images, so it can be used in every environment as long as `docker` and `make` are available.
-1. with a workflow for pull request verification based on the `makefile`.
+### Prerequisites
 
-The following files are part of this integration:
+- Kubernetes cluster (1.24+ recommended)
+- `kubectl` configured with cluster access
+- Python 3.9+ with Poetry or pip
+- Appropriate RBAC permissions for target namespace
 
-- `makefile`: as it contains the targets for execution
-- `.markdownlint.yml`: as it contains the configuration for `markdownlint-cli`
-- `.github/workflows/makefile.yml`: as it contains the GitHub Action configuration
+### Installation
 
-## Licensing
+#### Using Poetry (Recommended)
 
-We are using Apache License 2.0 as our default.
+```bash
+git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
+cd k8s-exploit-toolkit
+poetry install
+poetry shell
+```
 
-### Source Code Headers
+#### Using pip
 
-Every file containing source code must include copyright and license
-information. This includes any JS/CSS files that you might be serving out to
-browsers. (This is to help well-intentioned people avoid accidental copying that
-doesn't comply with the license.)
+```bash
+git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
+cd k8s-exploit-toolkit
+pip install -e .
+```
 
-Apache header:
+### Basic Usage
 
-    Copyright 2022 Dynatrace LLC
+```bash
+# Assess security posture
+k8s-exploit assess
 
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
+# Apply vulnerability for testing
+k8s-exploit vuln-service my-deployment privileged
 
-        https://www.apache.org/licenses/LICENSE-2.0
+# Demonstrate exploit
+k8s-exploit exploit privileged-containers
 
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
+# Apply security fixes
+k8s-exploit secure
 
-## Additional Questions/Remarks
+# Verify improvements
+k8s-exploit verify
 
-If you do have additional questions/remarks, feel free to reach out to OSPO, either via slack or email.
+# Rollback changes
+k8s-exploit rollback
+```
 
-If you think this template did not solve all your problems, please also let us know, either with a message or a pull request.
-Together we can improve this template to make it easier for our future projects.
+## 📚 Documentation
+
+### Command Reference
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `assess [service]` | Assess security posture | `k8s-exploit assess` |
+| `vuln-service <svc> <type>` | Apply specific vulnerability | `k8s-exploit vuln-service app privileged` |
+| `exploit <type>` | Run specific exploit demo | `k8s-exploit exploit privileged-containers` |
+| `secure [type]` | Apply security fixes | `k8s-exploit secure` |
+| `verify` | Verify security status | `k8s-exploit verify` |
+| `rollback [service]` | Rollback changes | `k8s-exploit rollback` |
+
+### Vulnerability Types
+
+| Type | Description | Impact |
+|------|-------------|---------|
+| `privileged` | Privileged container mode | Complete host access |
+| `capabilities` | Dangerous Linux capabilities | Container escape potential |
+| `host-namespace` | Host namespace sharing | Process/network visibility |
+| `no-limits` | Missing resource limits | Denial of service risk |
+
+### Advanced Usage
+
+#### Verbose Mode
+
+```bash
+k8s-exploit --verbose secure
+```
+
+#### Debug Mode
+
+```bash
+k8s-exploit --debug assess
+```
+
+#### Custom Namespace
+
+```bash
+k8s-exploit --namespace production assess
+```
+
+#### Dry Run
+
+```bash
+k8s-exploit --dry-run secure
+```
+
+## 🔧 Architecture
+
+```txt
+k8s-exploit-toolkit/
+├── k8s_exploit_toolkit/
+│   ├── container/           # Container security modules
+│   │   ├── assessment/      # Security scanning
+│   │   ├── exploits/        # Exploit implementations
+│   │   ├── remediations/    # Security fixes
+│   │   └── core/            # Core utilities
+│   └── cli.py              # Command line interface
+├── docs/                   # Documentation
+├── tests/                  # Test suite
+└── examples/               # Usage examples
+```
+
+## 🛡️ Safety Features
+
+- **Namespace Isolation**: Operations target specific namespaces only
+- **Confirmation Prompts**: Requires confirmation for destructive actions
+- **Rollback Support**: Built-in ability to undo all changes
+- **Dry Run Mode**: Preview changes without applying them
+- **Resource Safety**: Controlled demonstrations that don't harm cluster stability
+
+## 🧪 Example Workflow
+
+Here's a typical security testing workflow:
+
+```bash
+# 1. Initial assessment
+k8s-exploit assess
+
+# 2. Make service vulnerable for testing
+k8s-exploit vuln-service payment-service privileged
+
+# 3. Demonstrate the security impact
+k8s-exploit exploit privileged-containers
+
+# 4. Apply security fixes
+k8s-exploit --verbose secure-service payment-service
+
+# 5. Verify the improvements
+k8s-exploit verify
+
+# 6. Clean up (if needed)
+k8s-exploit rollback payment-service
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+
+- How to report bugs
+- How to suggest enhancements
+- Development setup
+- Code submission guidelines
+
+## 📖 Educational Resources
+
+- [Kubernetes Security Documentation](https://kubernetes.io/docs/concepts/security/)
+- [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes)
+- [NIST Container Security Guide](https://csrc.nist.gov/publications/detail/sp/800-190/final)
+- [OWASP Kubernetes Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Kubernetes_Security_Cheat_Sheet.html)
+
+## 📄 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## 🏢 Maintainers
+
+This project is maintained by the [Dynatrace OSS](https://github.com/dynatrace-oss) team as part of our commitment to cloud-native security education and research.
+
+## ⚖️ Legal Notice
+
+This software is provided for educational and research purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse of this software.

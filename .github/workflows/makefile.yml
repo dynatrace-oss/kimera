@@ -1,17 +1,15 @@
----
-name: Linting
+name: Makefile CI
 
 on:
   pull_request:
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
-  build:
+  markdownlint:
     runs-on: ubuntu-latest
-    name: Markdown
+
     steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - name: MarkdownLint-Cli
-        run: make markdownlint
+    - uses: actions/checkout@v4
+
+    - name: Run markdownlint
+      run: make markdownlint
