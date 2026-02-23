@@ -45,6 +45,7 @@ venv.bak/
 .tox/
 .nox/
 htmlcov/
+.*
 
 # Jupyter
 .ipynb_checkpoints
