@@ -28,7 +28,7 @@ from k8s_exploit_toolkit.container.core.k8s_client import K8sClient
 from k8s_exploit_toolkit.container.core.logger import SecurityLogger, setup_logger
 
 
-def main():
+def main() -> int:
     """Demonstrate basic toolkit usage."""
     # Initialize configuration
     config = Config()

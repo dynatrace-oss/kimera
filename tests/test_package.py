@@ -47,9 +47,9 @@ class TestPackageStructure:
             # If container module structure changes, this test may need updating
             pass
 
-        # Test core module
+        # Test core module (under container)
         try:
-            from k8s_exploit_toolkit import core
+            from k8s_exploit_toolkit.container import core
 
             assert core is not None
         except ImportError:
@@ -120,9 +120,7 @@ class TestModuleStructure:
             pass
 
         # Test individual core components
-        from k8s_exploit_toolkit.container.core import config
-        from k8s_exploit_toolkit.container.core import exceptions
-        from k8s_exploit_toolkit.container.core import logger
+        from k8s_exploit_toolkit.container.core import config, exceptions, logger
 
         assert config is not None
         assert exceptions is not None
@@ -176,9 +174,7 @@ class TestImportPerformance:
         """Test that there are no obvious circular imports."""
         # This test ensures that importing the main package doesn't cause issues
         # Should be able to import main components without errors
-        from k8s_exploit_toolkit.container.core import config
-        from k8s_exploit_toolkit.container.core import exceptions
-        from k8s_exploit_toolkit.container.core import logger
+        from k8s_exploit_toolkit.container.core import config, exceptions, logger
 
         # All imports should complete successfully
         assert config is not None
@@ -192,9 +188,7 @@ class TestImportPerformance:
         start_time = time.time()
 
         # Import main components
-        from k8s_exploit_toolkit.container.core import config
-        from k8s_exploit_toolkit.container.core import exceptions
-        from k8s_exploit_toolkit.container.core import logger
+        from k8s_exploit_toolkit.container.core import config, exceptions, logger
 
         # Verify imports work
         assert config is not None

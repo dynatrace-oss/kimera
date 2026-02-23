@@ -47,7 +47,7 @@ This toolkit is intended for **educational and defensive security testing purpos
 
 - Kubernetes cluster (1.24+ recommended)
 - `kubectl` configured with cluster access
-- Python 3.9+ with Poetry or pip
+- Python 3.13+ with Poetry or pip
 - Appropriate RBAC permissions for target namespace
 
 ### Installation
@@ -144,15 +144,23 @@ k8s-exploit --dry-run secure
 ```txt
 k8s-exploit-toolkit/
 ├── k8s_exploit_toolkit/
-│   ├── container/           # Container security modules
-│   │   ├── assessment/      # Security scanning
-│   │   ├── exploits/        # Exploit implementations
-│   │   ├── remediations/    # Security fixes
-│   │   └── core/            # Core utilities
-│   └── cli.py              # Command line interface
-├── docs/                   # Documentation
-├── tests/                  # Test suite
-└── examples/               # Usage examples
+│   ├── application/            # Application layer
+│   │   ├── config/             # Configuration loading and schemas
+│   │   └── plugins/            # Plugin registry
+│   ├── container/              # Container security modules
+│   │   ├── assessment/         # Security scanning
+│   │   ├── core/               # Core utilities (client, config, logger)
+│   │   ├── make_vulnerable/    # Exploit implementations
+│   │   └── remediations/       # Security fixes and patching
+│   ├── domain/                 # Domain layer
+│   │   └── interfaces/         # Protocols and plugin interfaces
+│   ├── plugins/                # Plugin base classes
+│   ├── cli.py                  # Plugin-based CLI interface
+│   └── exploit_k8s.py          # Main CLI entrypoint
+├── config/                     # Default configuration files
+├── docs/                       # Documentation and standards
+├── scripts/                    # Utility scripts
+└── tests/                      # Test suite
 ```
 
 ## 🛡️ Safety Features

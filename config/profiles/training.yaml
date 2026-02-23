@@ -1,0 +1,53 @@
+# Training Profile Configuration
+# Optimized for educational demonstrations and workshops
+
+# Kubernetes settings
+kubernetes:
+  namespace: "training"
+  in_cluster: false
+
+# Moderate timeouts for training pace
+timeouts:
+  operation: 240
+  rollout: 90
+  stream: 1
+  command: 45
+
+# Clear, educational logging
+logging:
+  level: "INFO"
+  console: true
+  file: "logs/kimera-training.log"
+
+# Training mode settings
+dry_run: false
+debug: false
+verbose: true  # Show detailed output for learning
+
+# Training services
+services:
+  - "unguard-payment-service"
+  - "unguard-profile-service"
+  - "unguard-frontend"
+  - "unguard-membership-service"
+
+exploit_mappings:
+  privileged-containers: "unguard-payment-service"
+  dangerous-capabilities: "unguard-profile-service"
+  host-namespace-sharing: "unguard-frontend"
+  missing-resource-limits: "unguard-membership-service"
+
+# All exploits enabled for training
+exploits:
+  privileged-containers:
+    enabled: true
+    remediation_priority: 10
+  dangerous-capabilities:
+    enabled: true
+    remediation_priority: 10
+  host-namespace-sharing:
+    enabled: true
+    remediation_priority: 8
+  missing-resource-limits:
+    enabled: true
+    remediation_priority: 5

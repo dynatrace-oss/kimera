@@ -110,7 +110,9 @@ class TestSecurityLogger:
         sec_logger = SecurityLogger(self.mock_logger)
         sec_logger.success("Test success message")
 
-        mock_console.print.assert_called_once_with("[success][SUCCESS][/success] Test success message")
+        mock_console.print.assert_called_once_with(
+            "[success][SUCCESS][/success] Test success message"
+        )
 
     @patch("k8s_exploit_toolkit.container.core.logger.console")
     def test_warning_message(self, mock_console):
@@ -118,7 +120,9 @@ class TestSecurityLogger:
         sec_logger = SecurityLogger(self.mock_logger)
         sec_logger.warning("Test warning message")
 
-        mock_console.print.assert_called_once_with("[warning][WARNING][/warning] Test warning message")
+        mock_console.print.assert_called_once_with(
+            "[warning][WARNING][/warning] Test warning message"
+        )
 
     @patch("k8s_exploit_toolkit.container.core.logger.console")
     def test_error_message(self, mock_console):
@@ -134,7 +138,9 @@ class TestSecurityLogger:
         sec_logger = SecurityLogger(self.mock_logger)
         sec_logger.exploit("Test exploit message")
 
-        mock_console.print.assert_called_once_with("[exploit][EXPLOIT][/exploit] Test exploit message")
+        mock_console.print.assert_called_once_with(
+            "[exploit][EXPLOIT][/exploit] Test exploit message"
+        )
 
     @patch("k8s_exploit_toolkit.container.core.logger.console")
     def test_secure_message(self, mock_console):
