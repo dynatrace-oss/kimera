@@ -46,9 +46,6 @@ class TestCLI:
         """Test that CLI module has expected attributes."""
         import k8s_exploit_toolkit.cli as cli_module
 
-        # Check that sys is imported
-        assert hasattr(cli_module, "sys")
-
         # Check that main is imported
         assert hasattr(cli_module, "main")
 

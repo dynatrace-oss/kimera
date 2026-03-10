@@ -340,7 +340,7 @@ Use these tools to check docstring quality:
 
 ```bash
 # Check coverage
-poetry run pydocstyle k8s_exploit_toolkit/
+uv run pydocstyle k8s_exploit_toolkit/
 
 # Check in pre-commit
 pre-commit run --all-files

@@ -52,13 +52,12 @@ This toolkit is intended for **educational and defensive security testing purpos
 
 ### Installation
 
-#### Using Poetry (Recommended)
+#### Using uv (Recommended)
 
 ```bash
 git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
 cd k8s-exploit-toolkit
-poetry install
-poetry shell
+uv sync
 ```
 
 #### Using pip

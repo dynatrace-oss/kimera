@@ -44,30 +44,22 @@ As this is a security-focused project, please keep in mind:
    cd k8s-exploit-toolkit
    ```
 
-2. **Install Poetry** (if not already installed):
+2. **Install uv** (if not already installed):
 
    ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   # or using pip
-   pip install poetry
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-3. **Install dependencies using Poetry**:
+3. **Install dependencies**:
 
    ```bash
-   poetry install
+   uv sync
    ```
 
-4. **Activate the virtual environment**:
+4. **Run tests** to ensure everything works:
 
    ```bash
-   poetry shell
-   ```
-
-5. **Run tests** to ensure everything works:
-
-   ```bash
-   poetry run pytest
+   uv run pytest
    ```
 
 ### Coding Standards
@@ -124,18 +116,18 @@ Run the full test suite before submitting:
 
 ```bash
 # Unit tests
-poetry run pytest tests/
+uv run pytest tests/
 
 # Integration tests (requires K8s cluster)
-poetry run pytest tests/integration/
+uv run pytest tests/integration/
 
 # Code coverage
-poetry run pytest --cov=k8s_exploit_toolkit
+uv run pytest --cov=k8s_exploit_toolkit
 
 # Code quality checks
-poetry run black k8s_exploit_toolkit/
-poetry run flake8 k8s_exploit_toolkit/
-poetry run mypy k8s_exploit_toolkit/
+uv run black k8s_exploit_toolkit/
+uv run ruff check k8s_exploit_toolkit/
+uv run mypy k8s_exploit_toolkit/
 ```
 
 ### Submitting Changes

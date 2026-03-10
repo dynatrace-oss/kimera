@@ -68,7 +68,7 @@ for vuln in vulnerabilities:
 
 1. **Ensure cluster access**: `kubectl cluster-info`
 2. **Install dependencies**:
-   - With Poetry: `poetry install && poetry shell`
+   - With uv: `uv sync`
    - With pip: `pip install -e .`
 3. **Run examples**: `python examples/basic_usage.py`
 

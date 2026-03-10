@@ -102,7 +102,7 @@ class TestSecurityLogger:
         sec_logger = SecurityLogger(self.mock_logger)
         sec_logger.info("Test info message")
 
-        mock_console.print.assert_called_once_with("[info][INFO][/info] Test info message]")
+        mock_console.print.assert_called_once_with("[info][INFO][/info] Test info message")
 
     @patch("k8s_exploit_toolkit.container.core.logger.console")
     def test_success_message(self, mock_console):

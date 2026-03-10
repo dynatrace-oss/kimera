@@ -1,42 +1,45 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry]
+[project]
 name = "k8s-exploit-toolkit"
 version = "1.0.0"
 description = "Kubernetes Exploit Toolkit for Security Testing and Education"
-authors = ["Dynatrace OSS <opensource@dynatrace.com>"]
+authors = [{name = "Dynatrace OSS", email = "opensource@dynatrace.com"}]
 license = "Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
-repository = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
-packages = [{include = "k8s_exploit_toolkit"}]
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1.0",
+    "kubernetes>=28.1.0",
+    "pyyaml>=6.0",
+    "rich>=13.7.0",
+    "tabulate>=0.9.0",
+    "jsonpatch>=1.33",
+    "python-decouple>=3.4",
+]
 
-[tool.poetry.dependencies]
-python = "^3.13"
-click = ">=8.1.0"
-kubernetes = ">=28.1.0"
-pyyaml = ">=6.0"
-rich = ">=13.7.0"
-tabulate = ">=0.9.0"
-jsonpatch = ">=1.33"
-python-decouple = ">=3.4"
+[project.urls]
+Homepage = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
+Repository = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=7.0.0"
-pytest-cov = ">=4.0.0"
-black = ">=22.0.0"
-ruff = ">=0.1.0"
-mypy = ">=0.991"
-pre-commit = ">=3.0.0"
-pip-audit = ">=2.0.0"
-safety = ">=3.0.0"
-types-pyyaml = "^6.0.12.20250822"
-
-[tool.poetry.scripts]
+[project.scripts]
 k8s-exploit = "k8s_exploit_toolkit.cli:main"
 k8s-exploit-toolkit = "k8s_exploit_toolkit.exploit_k8s:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "ruff>=0.1.0",
+    "mypy>=0.991",
+    "pre-commit>=3.0.0",
+    "pip-audit>=2.0.0",
+    "safety>=3.0.0",
+    "types-pyyaml>=6.0.12",
+]
 
 [tool.black]
 line-length = 100
