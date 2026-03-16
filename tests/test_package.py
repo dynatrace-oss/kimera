@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import k8s_exploit_toolkit
+import kimera
 
 
 class TestPackageStructure:
@@ -20,19 +20,19 @@ class TestPackageStructure:
 
     def test_package_version(self):
         """Test package version is defined and correct."""
-        assert hasattr(k8s_exploit_toolkit, "__version__")
-        assert k8s_exploit_toolkit.__version__ == "1.0.0"
-        assert isinstance(k8s_exploit_toolkit.__version__, str)
+        assert hasattr(kimera, "__version__")
+        assert kimera.__version__ == "1.1.0"
+        assert isinstance(kimera.__version__, str)
 
     def test_package_docstring(self):
         """Test package has proper docstring."""
-        assert k8s_exploit_toolkit.__doc__ is not None
-        assert "Kubernetes Exploit Toolkit" in k8s_exploit_toolkit.__doc__
+        assert kimera.__doc__ is not None
+        assert "Kimera" in kimera.__doc__
 
     def test_package_import(self):
         """Test that the package can be imported successfully."""
         # This test passes if we can import the package without errors
-        import k8s_exploit_toolkit as ket
+        import kimera as ket
 
         assert ket is not None
 
@@ -40,7 +40,7 @@ class TestPackageStructure:
         """Test that key submodules can be imported."""
         # Test container module
         try:
-            from k8s_exploit_toolkit import container
+            from kimera import container
 
             assert container is not None
         except ImportError:
@@ -49,7 +49,7 @@ class TestPackageStructure:
 
         # Test core module (under container)
         try:
-            from k8s_exploit_toolkit.container import core
+            from kimera.container import core
 
             assert core is not None
         except ImportError:
@@ -58,14 +58,14 @@ class TestPackageStructure:
 
     def test_cli_import(self):
         """Test that CLI can be imported."""
-        from k8s_exploit_toolkit import cli
+        from kimera import cli
 
         assert cli is not None
         assert hasattr(cli, "main")
 
     def test_exploit_k8s_import(self):
         """Test that exploit_k8s module can be imported."""
-        from k8s_exploit_toolkit import exploit_k8s
+        from kimera import exploit_k8s
 
         assert exploit_k8s is not None
         assert hasattr(exploit_k8s, "main")
@@ -76,7 +76,7 @@ class TestPackageMetadata:
 
     def test_version_format(self):
         """Test version follows semantic versioning format."""
-        version = k8s_exploit_toolkit.__version__
+        version = kimera.__version__
         parts = version.split(".")
 
         # Should have 3 parts for semantic versioning
@@ -89,20 +89,20 @@ class TestPackageMetadata:
     def test_version_consistency(self):
         """Test version consistency across package files."""
         # Version should match what's in pyproject.toml
-        package_version = k8s_exploit_toolkit.__version__
-        assert package_version == "1.0.0"
+        package_version = kimera.__version__
+        assert package_version == "1.1.0"
 
     def test_package_attributes(self):
         """Test that package has expected attributes."""
         # Check for required attributes
-        assert hasattr(k8s_exploit_toolkit, "__version__")
-        assert hasattr(k8s_exploit_toolkit, "__doc__")
+        assert hasattr(kimera, "__version__")
+        assert hasattr(kimera, "__doc__")
 
         # Version should be a string
-        assert isinstance(k8s_exploit_toolkit.__version__, str)
+        assert isinstance(kimera.__version__, str)
 
         # Docstring should be a string or None
-        assert k8s_exploit_toolkit.__doc__ is None or isinstance(k8s_exploit_toolkit.__doc__, str)
+        assert kimera.__doc__ is None or isinstance(kimera.__doc__, str)
 
 
 class TestModuleStructure:
@@ -112,7 +112,7 @@ class TestModuleStructure:
         """Test container submodule structure."""
         # Test that container module exists
         try:
-            from k8s_exploit_toolkit.container import core
+            from kimera.container import core
 
             assert core is not None
         except ImportError:
@@ -120,7 +120,7 @@ class TestModuleStructure:
             pass
 
         # Test individual core components
-        from k8s_exploit_toolkit.container.core import config, exceptions, logger
+        from kimera.container.core import config, exceptions, logger
 
         assert config is not None
         assert exceptions is not None
@@ -128,7 +128,7 @@ class TestModuleStructure:
 
     def test_core_exceptions_available(self):
         """Test that core exceptions are available."""
-        from k8s_exploit_toolkit.container.core.exceptions import (
+        from kimera.container.core.exceptions import (
             ConfigurationError,
             DeploymentNotFoundError,
             ExploitError,
@@ -155,7 +155,7 @@ class TestModuleStructure:
 
     def test_logger_components_available(self):
         """Test that logger components are available."""
-        from k8s_exploit_toolkit.container.core.logger import (
+        from kimera.container.core.logger import (
             SECURITY_THEME,
             console,
             setup_logger,
@@ -174,7 +174,7 @@ class TestImportPerformance:
         """Test that there are no obvious circular imports."""
         # This test ensures that importing the main package doesn't cause issues
         # Should be able to import main components without errors
-        from k8s_exploit_toolkit.container.core import config, exceptions, logger
+        from kimera.container.core import config, exceptions, logger
 
         # All imports should complete successfully
         assert config is not None
@@ -188,7 +188,7 @@ class TestImportPerformance:
         start_time = time.time()
 
         # Import main components
-        from k8s_exploit_toolkit.container.core import config, exceptions, logger
+        from kimera.container.core import config, exceptions, logger
 
         # Verify imports work
         assert config is not None

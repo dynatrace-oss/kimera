@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains example scripts demonstrating how to use the K8s Exploit Toolkit programmatically.
+This directory contains example scripts demonstrating how to use the Kimera programmatically.
 
 ## Available Examples
 
@@ -10,8 +10,8 @@ Demonstrates the fundamental programmatic workflow:
 
 ```python
 # Initialize toolkit components
-from k8s_exploit_toolkit.core.client import K8sClient
-from k8s_exploit_toolkit.container.assessment.scanner import SecurityScanner
+from kimera.core.client import K8sClient
+from kimera.container.assessment.scanner import SecurityScanner
 
 # Connect to cluster and run assessment
 client = K8sClient()
@@ -30,7 +30,7 @@ python examples/basic_usage.py
 ### Python Integration
 
 ```python
-from k8s_exploit_toolkit import ExploitToolkit
+from kimera import ExploitToolkit
 
 # Initialize toolkit
 toolkit = ExploitToolkit()
@@ -49,7 +49,7 @@ toolkit.secure()
 
 ```python
 # Custom vulnerability detection
-from k8s_exploit_toolkit.container.assessment import Scanner
+from kimera.container.assessment import Scanner
 
 scanner = Scanner()
 vulnerabilities = scanner.scan_namespace("production")
@@ -62,7 +62,7 @@ for vuln in vulnerabilities:
 
 - Python 3.9+
 - kubectl configured with cluster access
-- k8s-exploit-toolkit installed (see installation methods below)
+- kimera installed (see installation methods below)
 
 ## Running Examples
 

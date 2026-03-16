@@ -17,9 +17,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.rest import ApiException
 
-from k8s_exploit_toolkit.container.core.exceptions import K8sError
-from k8s_exploit_toolkit.container.core.k8s_client import K8sClient
-from k8s_exploit_toolkit.container.core.logger import SecurityLogger
+from kimera.container.core.exceptions import K8sError
+from kimera.container.core.k8s_client import K8sClient
+from kimera.container.core.logger import SecurityLogger
 
 
 class TestK8sClient:
@@ -29,8 +29,8 @@ class TestK8sClient:
         """Set up test fixtures."""
         self.mock_logger = MagicMock(spec=SecurityLogger)
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_client_init_default(self, mock_k8s_client, mock_config):
         """Test K8sClient initialization with defaults."""
         # Mock the ConfigException class properly
@@ -46,8 +46,8 @@ class TestK8sClient:
         assert k8s_client.logger is not None
         mock_config.load_kube_config.assert_called_once()
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_client_init_custom(self, mock_k8s_client, mock_config):
         """Test K8sClient initialization with custom parameters."""
         config_exception = type("ConfigException", (Exception,), {})
@@ -61,8 +61,8 @@ class TestK8sClient:
         assert k8s_client.verbose is True
         assert k8s_client.logger is self.mock_logger
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_client_init_incluster(self, mock_k8s_client, mock_config):
         """Test K8sClient initialization with in-cluster config."""
         mock_config.load_incluster_config.return_value = None
@@ -72,8 +72,8 @@ class TestK8sClient:
         mock_config.load_incluster_config.assert_called_once()
         mock_config.load_kube_config.assert_not_called()
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_client_config_exception(self, mock_k8s_client, mock_config):
         """Test K8sClient initialization with config exception."""
         config_exception = type("ConfigException", (Exception,), {})
@@ -84,8 +84,8 @@ class TestK8sClient:
         with pytest.raises(K8sError, match="Cannot connect to Kubernetes cluster"):
             K8sClient()
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_client_creates_api_clients(self, mock_k8s_client, mock_config):
         """Test that K8sClient creates necessary API clients."""
         config_exception = type("ConfigException", (Exception,), {})
@@ -111,8 +111,8 @@ class TestK8sClientMethods:
         self.mock_logger = MagicMock(spec=SecurityLogger)
 
         with (
-            patch("k8s_exploit_toolkit.container.core.k8s_client.config") as mock_config,
-            patch("k8s_exploit_toolkit.container.core.k8s_client.client") as mock_k8s_client,
+            patch("kimera.container.core.k8s_client.config") as mock_config,
+            patch("kimera.container.core.k8s_client.client") as mock_k8s_client,
         ):
 
             config_exception = type("ConfigException", (Exception,), {})
@@ -160,8 +160,8 @@ class TestK8sClientMethods:
 
         # Test with verbose=True
         with (
-            patch("k8s_exploit_toolkit.container.core.k8s_client.config") as mock_config,
-            patch("k8s_exploit_toolkit.container.core.k8s_client.client"),
+            patch("kimera.container.core.k8s_client.config") as mock_config,
+            patch("kimera.container.core.k8s_client.client"),
         ):
 
             config_exception = type("ConfigException", (Exception,), {})
@@ -179,8 +179,8 @@ class TestK8sClientExceptionHandling:
         """Set up test fixtures."""
         self.mock_logger = MagicMock(spec=SecurityLogger)
 
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.config")
-    @patch("k8s_exploit_toolkit.container.core.k8s_client.client")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
     def test_k8s_error_inheritance(self, mock_k8s_client, mock_config):
         """Test that K8sError is properly raised for configuration issues."""
         config_exception = type("ConfigException", (Exception,), {})

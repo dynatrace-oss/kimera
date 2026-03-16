@@ -1,4 +1,4 @@
-# K8s Exploit Toolkit
+# Kimera
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
@@ -11,7 +11,7 @@ A comprehensive security testing framework for Kubernetes environments, designed
 
 ## 🎯 Purpose
 
-The K8s Exploit Toolkit provides hands-on learning opportunities for understanding Kubernetes container security misconfigurations and their remediation. This toolkit is designed for:
+Kimera provides hands-on learning opportunities for understanding Kubernetes container security misconfigurations and their remediation. It is designed for:
 
 - **Security researchers** studying Kubernetes attack vectors
 - **DevOps engineers** learning container security best practices
@@ -47,7 +47,7 @@ This toolkit is intended for **educational and defensive security testing purpos
 
 - Kubernetes cluster (1.24+ recommended)
 - `kubectl` configured with cluster access
-- Python 3.13+ with Poetry or pip
+- Python 3.13+ with uv or pip
 - Appropriate RBAC permissions for target namespace
 
 ### Installation
@@ -55,16 +55,16 @@ This toolkit is intended for **educational and defensive security testing purpos
 #### Using uv (Recommended)
 
 ```bash
-git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
-cd k8s-exploit-toolkit
+git clone https://github.com/dynatrace-oss/kimera
+cd kimera
 uv sync
 ```
 
 #### Using pip
 
 ```bash
-git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
-cd k8s-exploit-toolkit
+git clone https://github.com/dynatrace-oss/kimera
+cd kimera
 pip install -e .
 ```
 
@@ -72,22 +72,22 @@ pip install -e .
 
 ```bash
 # Assess security posture
-k8s-exploit assess
+kimera assess
 
 # Apply vulnerability for testing
-k8s-exploit vuln-service my-deployment privileged
+kimera vuln-service my-deployment privileged
 
 # Demonstrate exploit
-k8s-exploit exploit privileged-containers
+kimera exploit privileged-containers
 
 # Apply security fixes
-k8s-exploit secure
+kimera secure
 
 # Verify improvements
-k8s-exploit verify
+kimera verify
 
 # Rollback changes
-k8s-exploit rollback
+kimera rollback
 ```
 
 ## 📚 Documentation
@@ -96,12 +96,12 @@ k8s-exploit rollback
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `assess [service]` | Assess security posture | `k8s-exploit assess` |
-| `vuln-service <svc> <type>` | Apply specific vulnerability | `k8s-exploit vuln-service app privileged` |
-| `exploit <type>` | Run specific exploit demo | `k8s-exploit exploit privileged-containers` |
-| `secure [type]` | Apply security fixes | `k8s-exploit secure` |
-| `verify` | Verify security status | `k8s-exploit verify` |
-| `rollback [service]` | Rollback changes | `k8s-exploit rollback` |
+| `assess [service]` | Assess security posture | `kimera assess` |
+| `vuln-service <svc> <type>` | Apply specific vulnerability | `kimera vuln-service app privileged` |
+| `exploit <type>` | Run specific exploit demo | `kimera exploit privileged-containers` |
+| `secure [type]` | Apply security fixes | `kimera secure` |
+| `verify` | Verify security status | `kimera verify` |
+| `rollback [service]` | Rollback changes | `kimera rollback` |
 
 ### Vulnerability Types
 
@@ -111,44 +111,67 @@ k8s-exploit rollback
 | `capabilities` | Dangerous Linux capabilities | Container escape potential |
 | `host-namespace` | Host namespace sharing | Process/network visibility |
 | `no-limits` | Missing resource limits | Denial of service risk |
+| `no-network-policies` | Missing NetworkPolicy resources | Unrestricted lateral movement |
+
+### NetworkPolicy Enforcement
+
+CNI plugins like Flannel create pod connectivity but do not enforce NetworkPolicy
+resources. The toolkit can install [kube-router](https://www.kube-router.io/) in
+firewall-only mode to add iptables-based policy enforcement without replacing your
+existing CNI.
+
+```bash
+# Install kube-router for policy enforcement
+kimera enforce enable
+
+# Check enforcement status
+kimera enforce status
+
+# Remove kube-router when done
+kimera enforce disable
+```
+
+This is intended for demo and testing environments. For production clusters,
+consider Calico, Cilium, or another CNI with built-in policy support.
 
 ### Advanced Usage
 
 #### Verbose Mode
 
 ```bash
-k8s-exploit --verbose secure
+kimera --verbose secure
 ```
 
 #### Debug Mode
 
 ```bash
-k8s-exploit --debug assess
+kimera --debug assess
 ```
 
 #### Custom Namespace
 
 ```bash
-k8s-exploit --namespace production assess
+kimera --namespace production assess
 ```
 
 #### Dry Run
 
 ```bash
-k8s-exploit --dry-run secure
+kimera --dry-run secure
 ```
 
 ## 🔧 Architecture
 
 ```txt
-k8s-exploit-toolkit/
-├── k8s_exploit_toolkit/
+kimera/
+├── kimera/
 │   ├── application/            # Application layer
 │   │   ├── config/             # Configuration loading and schemas
 │   │   └── plugins/            # Plugin registry
 │   ├── container/              # Container security modules
 │   │   ├── assessment/         # Security scanning
 │   │   ├── core/               # Core utilities (client, config, logger)
+│   │   ├── infrastructure/     # Policy enforcement (kube-router)
 │   │   ├── make_vulnerable/    # Exploit implementations
 │   │   └── remediations/       # Security fixes and patching
 │   ├── domain/                 # Domain layer
@@ -176,22 +199,22 @@ Here's a typical security testing workflow:
 
 ```bash
 # 1. Initial assessment
-k8s-exploit assess
+kimera assess
 
 # 2. Make service vulnerable for testing
-k8s-exploit vuln-service payment-service privileged
+kimera vuln-service payment-service privileged
 
 # 3. Demonstrate the security impact
-k8s-exploit exploit privileged-containers
+kimera exploit privileged-containers
 
 # 4. Apply security fixes
-k8s-exploit --verbose secure-service payment-service
+kimera --verbose secure-service payment-service
 
 # 5. Verify the improvements
-k8s-exploit verify
+kimera verify
 
 # 6. Clean up (if needed)
-k8s-exploit rollback payment-service
+kimera rollback payment-service
 ```
 
 ## 🤝 Contributing

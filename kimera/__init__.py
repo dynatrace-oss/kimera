@@ -14,4 +14,6 @@
 # limitations under the License.
 #
 
-"""Test suite for Kimera."""
+"""Kimera — Kubernetes Security Testing Toolkit."""
+
+__version__ = "1.1.0"

@@ -20,7 +20,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from k8s_exploit_toolkit.container.core.config import Config, ExploitConfig
+from kimera.container.core.config import Config, ExploitConfig
 
 
 class TestExploitConfig:
@@ -57,8 +57,9 @@ class TestConfig:
         assert config.verbose is False
         assert len(config.services) == 7
         assert "unguard-payment-service" in config.services
-        assert len(config.exploit_mappings) == 4
+        assert len(config.exploit_mappings) == 5
         assert config.exploit_mappings["privileged-containers"] == "unguard-payment-service"
+        assert config.exploit_mappings["missing-network-policies"] == "unguard-ad-service"
 
     def test_config_custom_values(self):
         """Test Config with custom values."""

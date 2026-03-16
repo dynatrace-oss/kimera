@@ -1,0 +1,177 @@
+# Copyright 2025 Dynatrace LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import time
+from abc import ABC, abstractmethod
+from typing import Any
+
+from ...domain.models import ExploitResult
+from ..core.k8s_client import K8sClient
+from ..core.logger import SecurityLogger, console, setup_logger
+
+
+class BaseExploit(ABC):
+    """Base class for all security exploits."""
+
+    name: str = ""
+    risk_level: str = "MEDIUM"
+    vulnerability_type: str = ""
+    description: str = ""
+
+    def __init__(
+        self,
+        k8s_client: K8sClient,
+        service: str | None = None,
+        logger: SecurityLogger | None = None,
+    ):
+        """Initialize exploit with Kubernetes client, service, and logger."""
+        self.k8s = k8s_client
+        self.service = service or self.get_default_service()
+        self.logger = logger or SecurityLogger(setup_logger(__name__))
+
+    @abstractmethod
+    def get_default_service(self) -> str:
+        """Get the default service for this exploit."""
+        pass
+
+    @abstractmethod
+    def get_vulnerable_patch(self) -> list[dict[str, Any]]:
+        """Get JSON patch to make service vulnerable."""
+        pass
+
+    @abstractmethod
+    def get_secure_patch(self) -> list[dict[str, Any]]:
+        """Get JSON patch to secure service."""
+        pass
+
+    @abstractmethod
+    def check_vulnerability(self) -> bool:
+        """Check if service is vulnerable."""
+        pass
+
+    @abstractmethod
+    def demonstrate(self) -> ExploitResult:
+        """Demonstrate the exploit."""
+        pass
+
+    def show_info(self) -> None:
+        """Display exploit information."""
+        console.print(f"""
+                {"=" * 45}
+                {self.name} Exploit
+                {"=" * 45}
+                Target: {self.service}
+                Risk: {self.risk_level}
+
+                {self.description}
+                {"=" * 45}
+            """)
+
+    def make_vulnerable(self, dry_run: bool = False) -> bool:
+        """Apply vulnerable configuration."""
+        self.logger.info(f"Applying vulnerable configuration to {self.service}...")
+        patches = self.get_vulnerable_patch()
+
+        if self.k8s.patch_deployment(self.service, patches, dry_run):
+            if not dry_run:
+                self.logger.success(f"Applied vulnerable configuration to {self.service}")
+            return True
+        return False
+
+    def make_secure(self, dry_run: bool = False) -> bool:
+        """Apply secure configuration."""
+        self.logger.info(f"Applying secure configuration to {self.service}...")
+        patches = self.get_secure_patch()
+
+        # Pre-create security context if needed
+        self._ensure_security_context()
+
+        if self.k8s.patch_deployment(self.service, patches, dry_run):
+            if not dry_run:
+                self.logger.success(f"Applied secure configuration to {self.service}")
+            return True
+        return False
+
+    def _ensure_security_context(self) -> None:
+        """Ensure security context exists before patching."""
+        deployment = self.k8s.get_deployment(self.service)
+        if not deployment:
+            return
+
+        if deployment.spec and deployment.spec.template and deployment.spec.template.spec:
+            containers = deployment.spec.template.spec.containers or []
+            for i, container in enumerate(containers):
+                if not container.security_context:
+                    self.k8s.patch_deployment(
+                        self.service,
+                        [
+                            {
+                                "op": "add",
+                                "path": f"/spec/template/spec/containers/{i}/securityContext",
+                                "value": {},
+                            }
+                        ],
+                    )
+
+    def run_interactive(self) -> None:
+        """Run interactive demonstration."""
+        self.show_info()
+
+        if not self.check_vulnerability():
+            response = input("Service is not vulnerable. Make it vulnerable? (y/n) ")
+            if response.lower() == "y":
+                self.make_vulnerable()
+                console.print()
+                time.sleep(2)
+
+        result = self.demonstrate()
+
+        if result.evidence:
+            print("\nEvidence:")
+            for evidence in result.evidence:
+                print(f"  • {evidence}")
+
+        if result.impact:
+            print("\nImpact:")
+            for impact in result.impact:
+                print(f"  • {impact}")
+
+    def build_security_context_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
+        """Build a base security context patch."""
+        return [
+            {
+                "op": "add",
+                "path": f"/spec/template/spec/containers/{container_idx}/securityContext",
+                "value": {},
+            }
+        ]
+
+    def build_privileged_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
+        """Build patches for privileged mode."""
+        patches = self.build_security_context_patch(container_idx)
+        patches.extend(
+            [
+                {
+                    "op": "add",
+                    "path": f"/spec/template/spec/containers/{container_idx}/securityContext/privileged",
+                    "value": True,
+                },
+                {
+                    "op": "add",
+                    "path": f"/spec/template/spec/containers/{container_idx}/securityContext/allowPrivilegeEscalation",
+                    "value": True,
+                },
+            ]
+        )
+        return patches

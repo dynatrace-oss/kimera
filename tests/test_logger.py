@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rich.console import Console
 
-from k8s_exploit_toolkit.container.core.logger import (
+from kimera.container.core.logger import (
     SECURITY_THEME,
     SecurityLogger,
     console,
@@ -88,7 +88,7 @@ class TestSecurityLogger:
         self.mock_logger = MagicMock(spec=logging.Logger)
         self.mock_logger.level = logging.INFO
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_security_logger_init(self, mock_console):
         """Test SecurityLogger initialization."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -96,7 +96,7 @@ class TestSecurityLogger:
         assert sec_logger.logger is self.mock_logger
         assert sec_logger.console is mock_console
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_info_message(self, mock_console):
         """Test info message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -104,7 +104,7 @@ class TestSecurityLogger:
 
         mock_console.print.assert_called_once_with("[info][INFO][/info] Test info message")
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_success_message(self, mock_console):
         """Test success message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -114,7 +114,7 @@ class TestSecurityLogger:
             "[success][SUCCESS][/success] Test success message"
         )
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_warning_message(self, mock_console):
         """Test warning message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -124,7 +124,7 @@ class TestSecurityLogger:
             "[warning][WARNING][/warning] Test warning message"
         )
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_error_message(self, mock_console):
         """Test error message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -132,7 +132,7 @@ class TestSecurityLogger:
 
         mock_console.print.assert_called_once_with("[error][ERROR][/error] Test error message")
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_exploit_message(self, mock_console):
         """Test exploit message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -142,7 +142,7 @@ class TestSecurityLogger:
             "[exploit][EXPLOIT][/exploit] Test exploit message"
         )
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_secure_message(self, mock_console):
         """Test secure message logging."""
         sec_logger = SecurityLogger(self.mock_logger)
@@ -150,7 +150,7 @@ class TestSecurityLogger:
 
         mock_console.print.assert_called_once_with("[secure][SECURE][/secure] Test secure message")
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_debug_message_enabled(self, mock_console):
         """Test debug message logging when debug is enabled."""
         self.mock_logger.level = logging.DEBUG
@@ -159,7 +159,7 @@ class TestSecurityLogger:
 
         mock_console.print.assert_called_once_with("[debug][DEBUG][/debug] Test debug message")
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_debug_message_disabled(self, mock_console):
         """Test debug message logging when debug is disabled."""
         self.mock_logger.level = logging.INFO
@@ -200,7 +200,7 @@ class TestLoggerIntegration:
         assert sec_logger.logger is logger
         assert isinstance(sec_logger, SecurityLogger)
 
-    @patch("k8s_exploit_toolkit.container.core.logger.console")
+    @patch("kimera.container.core.logger.console")
     def test_different_log_levels_integration(self, mock_console):
         """Test SecurityLogger with different underlying logger levels."""
         # Test with INFO level

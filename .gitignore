@@ -64,5 +64,8 @@ Thumbs.db
 logs/
 
 # Temporary files
-tmp/
-temp/
+tmp/*
+temp/*
+
+# coverage reports
+coverage.xml

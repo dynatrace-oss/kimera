@@ -14,11 +14,11 @@
 # limitations under the License.
 #
 
-"""Basic tests for the K8s Exploit Toolkit."""
+"""Basic tests for the Kimera."""
 
-from k8s_exploit_toolkit import __version__
+from kimera import __version__
 
 
 def test_version():
     """Test that version is defined."""
-    assert __version__ == "1.0.0"
+    assert __version__ == "1.1.0"

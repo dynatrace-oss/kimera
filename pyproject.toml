@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "k8s-exploit-toolkit"
-version = "1.0.0"
-description = "Kubernetes Exploit Toolkit for Security Testing and Education"
+name = "kimera"
+version = "1.1.0"
+description = "Kubernetes Security Testing Toolkit for Education and Defense"
 authors = [{name = "Dynatrace OSS", email = "opensource@dynatrace.com"}]
 license = "Apache-2.0"
 readme = "README.md"
@@ -21,31 +21,34 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
-Repository = "https://github.com/dynatrace-oss/k8s-exploit-toolkit"
+Homepage = "https://github.com/dynatrace-oss/kimera"
+Repository = "https://github.com/dynatrace-oss/kimera"
 
 [project.scripts]
-k8s-exploit = "k8s_exploit_toolkit.cli:main"
-k8s-exploit-toolkit = "k8s_exploit_toolkit.exploit_k8s:main"
+kimera = "kimera.exploit_k8s:main"
 
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "ruff>=0.1.0",
-    "mypy>=0.991",
+    "ruff>=0.8.4",
+    "mypy>=1.14.0",
     "pre-commit>=3.0.0",
     "pip-audit>=2.0.0",
     "safety>=3.0.0",
     "types-pyyaml>=6.0.12",
 ]
 
+[tool.ruff.format]
+docstring-code-format = true
+
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=k8s_exploit_toolkit --cov-report=term-missing --cov-report=xml"
+addopts = "--cov=kimera --cov-report=term-missing --cov-report=xml"
 
 [tool.coverage.run]
-source = ["k8s_exploit_toolkit"]
+source = ["kimera"]
 omit = [
     "*/tests/*",
     "*/test_*",
@@ -91,8 +94,14 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "S", "D"]
+ignore = ["E501", "D100"]  # E501: handled by ruff format; D100: module docstrings not required
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+"__init__.py" = ["F401", "D104"]
+"tests/**" = ["S101", "D"]
+"kimera/container/remediations/patcher.py" = ["S603", "S607"]
+"kimera/container/core/k8s_client.py" = ["S603"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
