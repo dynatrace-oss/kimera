@@ -1,3 +1,6 @@
+# Kimera
+.kimera-state.json
+
 # Python
 __pycache__/
 *.py[cod]

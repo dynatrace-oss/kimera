@@ -13,7 +13,6 @@
 # limitations under the License.
 
 
-
 class K8sSecurityError(Exception):
     """Base exception for all security toolkit errors."""
 
