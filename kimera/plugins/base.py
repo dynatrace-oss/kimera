@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from kimera.container.core.k8s_client import K8sClient
-from kimera.container.core.logger import SecurityLogger, setup_logger
+from kimera.container.core.logger import SecurityLogger, console, setup_logger
 from kimera.domain.models import (
     ExploitMetadata,
     ExploitResult,
@@ -229,39 +229,39 @@ class BaseExploitPlugin(ABC):
         """Display exploit information."""
         meta = self.metadata
 
-        print("=" * 60)
-        print(f"{meta.display_name}")
-        print("=" * 60)
-        print(f"Risk Level: {meta.risk_level}")
-        print(f"Version: {meta.version}")
-        print(f"Author: {meta.author}")
-        print()
-        print("Description:")
-        print(f"  {meta.description}")
-        print()
+        console.print("=" * 60)
+        console.print(f"{meta.display_name}")
+        console.print("=" * 60)
+        console.print(f"Risk Level: {meta.risk_level}")
+        console.print(f"Version: {meta.version}")
+        console.print(f"Author: {meta.author}")
+        console.print()
+        console.print("Description:")
+        console.print(f"  {meta.description}")
+        console.print()
 
         if meta.mitre_tactics:
-            print("MITRE ATT&CK Tactics:")
+            console.print("MITRE ATT&CK Tactics:")
             for tactic in meta.mitre_tactics:
-                print(f"  • {tactic}")
-            print()
+                console.print(f"  • {tactic}")
+            console.print()
 
         if meta.mitre_techniques:
-            print("MITRE ATT&CK Techniques:")
+            console.print("MITRE ATT&CK Techniques:")
             for technique in meta.mitre_techniques:
-                print(f"  • {technique}")
-            print()
+                console.print(f"  • {technique}")
+            console.print()
 
         if meta.cis_controls:
-            print("CIS Kubernetes Benchmark Controls:")
+            console.print("CIS Kubernetes Benchmark Controls:")
             for control in meta.cis_controls:
-                print(f"  • {control}")
-            print()
+                console.print(f"  • {control}")
+            console.print()
 
         if meta.cve_ids:
-            print("Related CVEs:")
+            console.print("Related CVEs:")
             for cve in meta.cve_ids:
-                print(f"  • {cve}")
-            print()
+                console.print(f"  • {cve}")
+            console.print()
 
-        print("=" * 60)
+        console.print("=" * 60)
