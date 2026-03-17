@@ -14,7 +14,10 @@
 
 from typing import Any
 
-from .base import BaseExploit, ExploitResult
+from ...domain.models import ExploitResult
+from ..core.logger import console
+from .base import BaseExploit
+from .test_loader import load_exploit_tests
 
 
 class MissingResourceLimitsExploit(BaseExploit):
@@ -37,10 +40,6 @@ class MissingResourceLimitsExploit(BaseExploit):
 
                     NOTE: This demonstration shows the POTENTIAL for resource exhaustion
                     without actually performing it, to maintain cluster stability."""
-
-    def get_default_service(self) -> str:
-        """Get the default service for missing resource limits exploit."""
-        return "unguard-membership-service"
 
     def get_vulnerable_patch(self) -> list[dict[str, Any]]:
         """Get patch to remove resource limits."""
@@ -94,7 +93,6 @@ class MissingResourceLimitsExploit(BaseExploit):
             pod = self.k8s.v1.read_namespaced_pod(pod_name, self.k8s.namespace)
             container = pod.spec.containers[0]
 
-            # Check for missing resource limits
             if not container.resources or not container.resources.limits:
                 return True
 
@@ -109,146 +107,17 @@ class MissingResourceLimitsExploit(BaseExploit):
 
         pod_name = self.k8s.find_pod_for_service(self.service)
         if not pod_name:
-            return ExploitResult(
-                success=False,
-                message="Pod not found for service",
-            )
+            return ExploitResult(success=False, message="Pod not found for service")
 
-        evidence = []
-        impact = []
+        tests, summary_impact = load_exploit_tests(self.vulnerability_type)
+        result = self._run_tests(
+            pod_name,
+            tests,
+            "Successfully demonstrated missing resource limits vulnerability",
+        )
 
-        # Test 1: Verify no limits
-        self.logger.exploit("Test 1: Verifying no resource limits")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                # Check memory limits
-                if [ -f /sys/fs/cgroup/memory.max ]; then
-                    limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
-                    [ "$limit" = "max" ] && echo "❌ VULNERABLE: No memory limit" || echo "✅ Memory limit: $limit"
-                elif [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
-                    limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
-                    [ "$limit" = "9223372036854771712" ] && \\
-                      echo "❌ VULNERABLE: No memory limit" || echo "✅ Memory limit: $limit"
-                fi
-
-                # Check CPU limits
-                if [ -f /sys/fs/cgroup/cpu.max ]; then
-                    cpu_max=$(cat /sys/fs/cgroup/cpu.max 2>/dev/null)
-                    [ "$cpu_max" = "max 100000" ] && echo "❌ VULNERABLE: No CPU limit" || echo "✅ CPU limit: $cpu_max"
-                elif [ -f /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
-                    quota=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null)
-                    [ "$quota" = "-1" ] && echo "❌ VULNERABLE: No CPU limit" || echo "✅ CPU limit: $quota"
-                fi
-                """,
-            )
-            print(result)
-
-            if "No memory limit" in result:
-                evidence.append("No memory limits configured")
-            if "No CPU limit" in result:
-                evidence.append("No CPU limits configured")
-
-        except Exception as e:
-            self.logger.error(f"Test 1 failed: {e}")
-
-        # Test 2: Actual memory consumption
-        self.logger.exploit("Test 2: Memory consumption (50MB for 5 seconds)")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Baseline memory:"
-                cat /proc/meminfo | grep -E "^MemFree|^MemAvailable" | awk '{print "  " $1 " " int($2/1024) "MB"}'
-
-                echo -e "\\n[*] Allocating 50MB..."
-                # Create a 50MB file in memory
-                dd if=/dev/zero of=/dev/shm/test_mem bs=1M count=50 2>/dev/null
-
-                echo -e "\\n[*] Memory after allocation:"
-                cat /proc/meminfo | grep -E "^MemFree|^MemAvailable" | awk '{print "  " $1 " " int($2/1024) "MB"}'
-
-                sleep 5
-                rm -f /dev/shm/test_mem
-                echo -e "\\n✅ Successfully allocated and held 50MB without limits"
-                """,
-            )
-            print(result)
-
-            if "Successfully allocated" in result:
-                evidence.append("Allocated 50MB memory without restrictions")
-                impact.append("Uncontrolled memory allocation demonstrated")
-
-        except Exception as e:
-            self.logger.error(f"Test 2 failed: {e}")
-
-        # Test 3: Actual CPU consumption
-        self.logger.exploit("Test 3: CPU consumption (2 cores for 3 seconds)")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Starting CPU load on 2 cores..."
-
-                # Function to burn CPU
-                burn_cpu() {
-                    local end=$(($(date +%s) + 3))
-                    local count=0
-                    while [ $(date +%s) -lt $end ]; do
-                        echo "scale=10; 4*a(1)" | bc -l > /dev/null 2>&1 || count=$((count+count+1))
-                    done
-                    echo "  Core $1: Completed"
-                }
-
-                # Run on 2 cores
-                burn_cpu 1 &
-                burn_cpu 2 &
-                wait
-
-                echo "✅ Successfully consumed CPU on 2 cores without limits"
-                """,
-            )
-            print(result)
-
-            if "Successfully consumed CPU" in result:
-                evidence.append("Consumed CPU on multiple cores without restrictions")
-                impact.append("Uncontrolled CPU consumption demonstrated")
-
-        except Exception as e:
-            self.logger.error(f"Test 3 failed: {e}")
-
-        # Test 4: Process creation
-        self.logger.exploit("Test 4: Process creation (20 processes)")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Current process count: $(ps | wc -l)"
-
-                echo "[*] Creating 20 background processes..."
-                for i in $(seq 1 20); do
-                    sleep 30 &
-                done
-
-                echo "[*] New process count: $(ps | wc -l)"
-                echo "✅ Successfully created multiple processes without limits"
-
-                # Clean up
-                pkill -f "sleep 30" 2>/dev/null || true
-                """,
-            )
-            print(result)
-
-            if "Successfully created" in result:
-                evidence.append("Created multiple processes without restrictions")
-                impact.append("No process limits enforced")
-
-        except Exception as e:
-            self.logger.error(f"Test 4 failed: {e}")
-
-        # Test 5: Node capacity check
-        self.logger.exploit("Test 5: Node capacity check")
+        # Node capacity check uses K8s API (not exec_in_pod)
+        self.logger.exploit("Test: Node capacity check")
         try:
             pod = self.k8s.v1.read_namespaced_pod(pod_name, self.k8s.namespace)
             node_name = pod.spec.node_name
@@ -257,36 +126,29 @@ class MissingResourceLimitsExploit(BaseExploit):
             cpu_capacity = node.status.capacity.get("cpu", "unknown")
             memory_bytes = node.status.capacity.get("memory", "0Ki")
 
-            # Convert memory to GB
             if memory_bytes.endswith("Ki"):
                 memory_gb = int(memory_bytes[:-2]) / (1024 * 1024)
             else:
                 memory_gb = 0
 
-            print(f"\n[*] Node: {node_name}")
-            print(f"[*] Total capacity: {cpu_capacity} CPUs, {memory_gb:.1f}GB memory")
-            print("[*] This container could consume ALL of these resources!")
+            console.print(f"\n\\[*] Node: {node_name}")
+            console.print(f"\\[*] Total capacity: {cpu_capacity} CPUs, {memory_gb:.1f}GB memory")
+            console.print("\\[*] This container could consume ALL of these resources!")
 
-            evidence.append(f"Access to {cpu_capacity} CPUs and {memory_gb:.1f}GB memory on node")
-
+            result.add_evidence(
+                f"Access to {cpu_capacity} CPUs and {memory_gb:.1f}GB memory on node"
+            )
         except Exception as e:
-            self.logger.error(f"Test 5 failed: {e}")
+            self.logger.error(f"Node capacity check failed: {e}")
 
         # Summary
         self.logger.exploit("\n=== Summary ===")
-        print("Without resource limits:")
-        print("  ✓ Allocated 50MB memory freely")
-        print("  ✓ Consumed 2 CPU cores freely")
-        print("  ✓ Created 20 processes freely")
-        print("  ✓ No restrictions on resource usage")
-        print("\nRisk: Any container can exhaust node resources causing:")
-        print("  - Pod evictions")
-        print("  - Service outages")
-        print("  - Increased cloud costs")
+        console.print("Without resource limits:")
+        for item in summary_impact:
+            console.print(f"  ✓ {item}")
+        console.print("\nRisk: Any container can exhaust node resources causing:")
+        console.print("  - Pod evictions")
+        console.print("  - Service outages")
+        console.print("  - Increased cloud costs")
 
-        return ExploitResult(
-            success=bool(evidence),
-            message="Successfully demonstrated missing resource limits vulnerability",
-            evidence=evidence,
-            impact=impact,
-        )
+        return result

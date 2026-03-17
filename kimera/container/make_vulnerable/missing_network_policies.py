@@ -14,249 +14,23 @@
 
 from typing import Any
 
-from .base import BaseExploit, ExploitResult
+from ...domain.models import EvidenceMarker, ExploitResult, SecurityTest
+from ..core.journal import clear_operation, record_operation
+from ..core.logger import console
+from .base import BaseExploit
+from .test_loader import load_exploit_tests
 
 # Label used to identify network policies created by this toolkit
 TOOLKIT_LABEL = "app.kubernetes.io/managed-by"
 TOOLKIT_LABEL_VALUE = "kimera"
 
-
-def _build_network_policies(namespace: str) -> list[dict[str, Any]]:
-    """Build the set of network policies for the unguard namespace.
-
-    Args:
-        namespace: Target namespace for the policies.
-
-    Returns:
-        List of NetworkPolicy resource dicts.
-    """
-    common_labels = {
-        "app.kubernetes.io/part-of": "unguard",
-        TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE,
-    }
-
-    dns_egress_rule = {
-        "to": [
-            {
-                "namespaceSelector": {},
-                "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
-            }
-        ],
-        "ports": [{"protocol": "UDP", "port": 53}],
-    }
-
-    policies = [
-        # 1. Default deny all
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "default-deny-all",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {},
-                "policyTypes": ["Ingress", "Egress"],
-            },
-        },
-        # 2. Envoy proxy (API gateway) — accepts external traffic, routes to backends
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "allow-envoy-proxy",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {"matchLabels": {"app.kubernetes.io/name": "envoy-proxy"}},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": [
-                    {
-                        "ports": [
-                            {"protocol": "TCP", "port": 8080},
-                            {"protocol": "TCP", "port": 8081},
-                        ]
-                    }
-                ],
-                "egress": [
-                    {
-                        "to": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/part-of": "unguard"}
-                                }
-                            }
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 80}],
-                    },
-                    dns_egress_rule,
-                ],
-            },
-        },
-        # 3. Frontend — ingress from envoy only
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "allow-frontend",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {"matchLabels": {"app.kubernetes.io/name": "frontend"}},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": [
-                    {
-                        "from": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "envoy-proxy"}
-                                }
-                            }
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 80}],
-                    }
-                ],
-                "egress": [
-                    {
-                        "to": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "envoy-proxy"}
-                                }
-                            }
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 8080}],
-                    },
-                    dns_egress_rule,
-                ],
-            },
-        },
-        # 4. MariaDB — ingress from auth, microblog, like only
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "allow-mariadb",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {"matchLabels": {"app.kubernetes.io/name": "mariadb"}},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": [
-                    {
-                        "from": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "user-auth-service"}
-                                }
-                            },
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "microblog-service"}
-                                }
-                            },
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "like-service"}
-                                }
-                            },
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 3306}],
-                    }
-                ],
-                "egress": [],
-            },
-        },
-        # 5. Redis — ingress from microblog and status only
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "allow-redis",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {"matchLabels": {"app.kubernetes.io/name": "redis"}},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": [
-                    {
-                        "from": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "microblog-service"}
-                                }
-                            },
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "status-service"}
-                                }
-                            },
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 6379}],
-                    }
-                ],
-                "egress": [],
-            },
-        },
-        # 6. Backend services — ingress from envoy, egress to data stores + DNS
-        {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "allow-backend-services",
-                "namespace": namespace,
-                "labels": common_labels,
-            },
-            "spec": {
-                "podSelector": {"matchLabels": {"app.kubernetes.io/part-of": "unguard"}},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": [
-                    {
-                        "from": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "envoy-proxy"}
-                                }
-                            }
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 80}],
-                    }
-                ],
-                "egress": [
-                    {
-                        "to": [
-                            {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "mariadb"}}}
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 3306}],
-                    },
-                    {
-                        "to": [
-                            {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "redis"}}}
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 6379}],
-                    },
-                    {
-                        "to": [
-                            {
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": "envoy-proxy"}
-                                }
-                            }
-                        ],
-                        "ports": [{"protocol": "TCP", "port": 8080}],
-                    },
-                    dns_egress_rule,
-                ],
-            },
-        },
-    ]
-
-    return policies
+# Common data store ports to probe during demonstrations
+DATA_STORE_PORTS: dict[int, str] = {
+    3306: "MySQL/MariaDB",
+    5432: "PostgreSQL",
+    6379: "Redis",
+    27017: "MongoDB",
+}
 
 
 class MissingNetworkPoliciesExploit(BaseExploit):
@@ -264,8 +38,9 @@ class MissingNetworkPoliciesExploit(BaseExploit):
 
     Unlike container-level exploits that patch deployments, this exploit
     operates at the namespace level by creating and removing NetworkPolicy
-    resources. The ``make_secure`` method creates restrictive policies and
-    ``make_vulnerable`` removes them, restoring the flat network default.
+    resources. The ``make_secure`` method auto-discovers deployments and
+    generates restrictive policies; ``make_vulnerable`` removes them,
+    restoring the flat network default.
     """
 
     name = "Missing Network Policies"
@@ -280,10 +55,6 @@ class MissingNetworkPoliciesExploit(BaseExploit):
 
                 Without network policies, every pod can communicate with
                 every other pod across all namespaces by default."""
-
-    def get_default_service(self) -> str:
-        """Return a representative service for connectivity tests."""
-        return "unguard-ad-service"
 
     def get_vulnerable_patch(self) -> list[dict[str, Any]]:
         """Not used — vulnerability is the absence of network policies."""
@@ -321,12 +92,15 @@ class MissingNetworkPoliciesExploit(BaseExploit):
             self.logger.info("No toolkit-managed NetworkPolicies found to remove")
         elif not dry_run:
             self.logger.success(f"Removed {removed} NetworkPolicies — flat network restored")
+            record_operation(
+                "make_vulnerable", self.vulnerability_type, self.service, self.k8s.namespace
+            )
         return True
 
     def make_secure(self, dry_run: bool = False) -> bool:
-        """Create network policies to enforce segmentation."""
+        """Create network policies based on auto-discovered deployments."""
         self.logger.info(f"Applying network policies to {self.k8s.namespace}...")
-        policies = _build_network_policies(self.k8s.namespace)
+        policies = self._auto_discover_policies()
         applied = 0
 
         for policy in policies:
@@ -344,7 +118,219 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                     "Run 'kimera enforce enable' to install kube-router."
                 )
 
+            record_operation(
+                "make_secure", self.vulnerability_type, self.service, self.k8s.namespace
+            )
+
         return applied == len(policies)
+
+    def revert(self, dry_run: bool = False) -> bool:
+        """Remove toolkit-managed network policies (alias for make_vulnerable)."""
+        result = self.make_vulnerable(dry_run=dry_run)
+        if result and not dry_run:
+            clear_operation(self.vulnerability_type, self.service, self.k8s.namespace)
+        return result
+
+    # -- Auto-discovery helpers --------------------------------------------------
+
+    def _auto_discover_policies(self) -> list[dict[str, Any]]:
+        """Discover deployments in the namespace and generate network policies.
+
+        Generates:
+        1. A default-deny-all policy
+        2. Per-deployment policies allowing ingress on declared container ports + DNS egress
+        """
+        namespace = self.k8s.namespace
+        policies: list[dict[str, Any]] = [self._build_default_deny(namespace)]
+
+        try:
+            deployments = self.k8s.apps_v1.list_namespaced_deployment(namespace)
+        except Exception as e:
+            self.logger.error(f"Failed to list deployments: {e}")
+            return policies
+
+        for dep in deployments.items:
+            labels = dep.spec.selector.match_labels or {}
+            ports = self._extract_container_ports(dep)
+            name = dep.metadata.name
+            policies.append(self._build_service_policy(namespace, name, labels, ports))
+
+        return policies
+
+    @staticmethod
+    def _build_default_deny(namespace: str) -> dict[str, Any]:
+        """Build a default-deny-all NetworkPolicy."""
+        return {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": "default-deny-all",
+                "namespace": namespace,
+                "labels": {TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE},
+            },
+            "spec": {
+                "podSelector": {},
+                "policyTypes": ["Ingress", "Egress"],
+            },
+        }
+
+    @staticmethod
+    def _build_service_policy(
+        namespace: str,
+        name: str,
+        match_labels: dict[str, str],
+        ports: list[int],
+    ) -> dict[str, Any]:
+        """Build an allow policy for a single deployment."""
+        dns_egress = {
+            "to": [
+                {
+                    "namespaceSelector": {},
+                    "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+                }
+            ],
+            "ports": [{"protocol": "UDP", "port": 53}],
+        }
+
+        ingress_rules: list[dict[str, Any]] = []
+        if ports:
+            ingress_rules.append({"ports": [{"protocol": "TCP", "port": p} for p in ports]})
+
+        egress_rules: list[dict[str, Any]] = [
+            {
+                "to": [
+                    {
+                        "namespaceSelector": {
+                            "matchLabels": {"kubernetes.io/metadata.name": namespace}
+                        }
+                    }
+                ],
+            },
+            dns_egress,
+        ]
+
+        return {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": f"allow-{name}",
+                "namespace": namespace,
+                "labels": {TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE},
+            },
+            "spec": {
+                "podSelector": {"matchLabels": match_labels},
+                "policyTypes": ["Ingress", "Egress"],
+                "ingress": ingress_rules,
+                "egress": egress_rules,
+            },
+        }
+
+    @staticmethod
+    def _extract_container_ports(deployment: Any) -> list[int]:
+        """Extract declared container ports from a deployment spec."""
+        ports: list[int] = []
+        try:
+            for container in deployment.spec.template.spec.containers:
+                if container.ports:
+                    for port in container.ports:
+                        if port.container_port:
+                            ports.append(int(port.container_port))
+        except (AttributeError, TypeError):
+            pass
+        return ports
+
+    # -- Demonstration -----------------------------------------------------------
+
+    def _discover_services(self) -> list[str]:
+        """Discover service names in the namespace via the Kubernetes API."""
+        try:
+            svc_list = self.k8s.v1.list_namespaced_service(self.k8s.namespace)
+            return [svc.metadata.name for svc in svc_list.items]
+        except Exception:
+            return []
+
+    def _discover_data_store_services(self) -> list[tuple[str, int, str]]:
+        """Find services listening on common data store ports."""
+        targets: list[tuple[str, int, str]] = []
+        try:
+            svc_list = self.k8s.v1.list_namespaced_service(self.k8s.namespace)
+            for svc in svc_list.items:
+                if svc.spec.ports:
+                    for port_spec in svc.spec.ports:
+                        port_num = port_spec.port
+                        if port_num in DATA_STORE_PORTS:
+                            targets.append(
+                                (svc.metadata.name, port_num, DATA_STORE_PORTS[port_num])
+                            )
+        except Exception:  # noqa: S110
+            return targets
+        return targets
+
+    def _build_dynamic_tests(self) -> list[SecurityTest]:
+        """Build tests that depend on auto-discovered services."""
+        tests: list[SecurityTest] = []
+
+        # Test 1: DNS service enumeration
+        svc_names = self._discover_services()
+        if svc_names:
+            svc_list_str = " ".join(svc_names)
+            tests.append(
+                SecurityTest(
+                    name="DNS service enumeration",
+                    script=(
+                        'echo "[*] Enumerating services via DNS..."\n'
+                        "ns=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)\n"
+                        "found=0\n"
+                        f"for svc in {svc_list_str}; do\n"
+                        '    fqdn="${svc}.${ns}.svc.cluster.local"\n'
+                        '    if nslookup "$fqdn" >/dev/null 2>&1; then\n'
+                        '        addr=$(nslookup "$fqdn" 2>/dev/null'
+                        " | grep \"Address\" | tail -1 | awk '{print $2}')\n"
+                        '        echo "  FOUND: ${svc} -> ${addr}"\n'
+                        "        found=$((found + 1))\n"
+                        "    fi\n"
+                        "done\n"
+                        'echo "[*] Total services discovered: $found"\n'
+                    ),
+                    evidence_markers=[
+                        EvidenceMarker(
+                            "FOUND:",
+                            "DNS enumeration discovered services in the namespace",
+                            "Attacker can map all services via predictable DNS names",
+                        ),
+                    ],
+                )
+            )
+
+        # Test 2: Data store connectivity
+        data_stores = self._discover_data_store_services()
+        if data_stores:
+            probe_cmds = []
+            for svc_name, port, label in data_stores:
+                probe_cmds.append(
+                    f'echo -n "  {label} ({svc_name}:{port}) -> "; '
+                    f"if nc -z -w 3 {svc_name} {port} 2>/dev/null; then "
+                    f'echo "OPEN"; else echo "CLOSED"; fi'
+                )
+            tests.append(
+                SecurityTest(
+                    name="Data store accessibility",
+                    script=(
+                        'echo "[*] Testing data store connectivity..."\n'
+                        + "\n".join(probe_cmds)
+                        + "\n"
+                    ),
+                    evidence_markers=[
+                        EvidenceMarker(
+                            "OPEN",
+                            "Data store ports reachable from application pod",
+                            "Database/cache accessible from unauthorized service",
+                        ),
+                    ],
+                )
+            )
+
+        return tests
 
     def demonstrate(self) -> ExploitResult:
         """Demonstrate network policy absence by running connectivity tests."""
@@ -352,167 +338,19 @@ class MissingNetworkPoliciesExploit(BaseExploit):
 
         pod_name = self.k8s.find_pod_for_service(self.service)
         if not pod_name:
-            return ExploitResult(
-                success=False,
-                message=f"Pod not found for {self.service}",
-            )
+            return ExploitResult(success=False, message=f"Pod not found for {self.service}")
 
-        evidence: list[str] = []
-        impact: list[str] = []
+        # Dynamic tests (service-dependent) + static tests from YAML
+        static_tests, summary_impact = load_exploit_tests(self.vulnerability_type)
+        all_tests = self._build_dynamic_tests() + static_tests
 
-        # Test 1: Cross-namespace DNS enumeration
-        self.logger.exploit("Test 1: DNS service enumeration")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Enumerating services via DNS..."
-                found=0
-                for svc in frontend mariadb redis user-auth-service \
-                           microblog-service payment-service proxy-service \
-                           envoy-proxy ad-service like-service \
-                           membership-service status-service; do
-                    fqdn="unguard-${svc}.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local"
-                    if nslookup "$fqdn" >/dev/null 2>&1; then
-                        addr=$(nslookup "$fqdn" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}')
-                        echo "  FOUND: ${svc} -> ${addr}"
-                        found=$((found + 1))
-                    fi
-                done
-                echo "[*] Total services discovered: $found"
-                """,
-            )
-            print(result)
-
-            if "FOUND:" in result:
-                count = result.count("FOUND:")
-                evidence.append(f"DNS enumeration discovered {count} services")
-                impact.append("Attacker can map all services via predictable DNS names")
-
-        except Exception as e:
-            self.logger.error(f"Test 1 failed: {e}")
-
-        # Test 2: Data store connectivity
-        self.logger.exploit("Test 2: Data store accessibility")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Testing data store connectivity..."
-
-                echo -n "  MariaDB :3306 -> "
-                if nc -z -w 3 unguard-mariadb 3306 2>/dev/null; then
-                    echo "OPEN"
-                else
-                    echo "CLOSED"
-                fi
-
-                echo -n "  Redis :6379 -> "
-                if nc -z -w 3 unguard-redis 6379 2>/dev/null; then
-                    echo "OPEN"
-                fi
-
-                echo "[*] Redis key count:"
-                (echo "DBSIZE"; sleep 1) | nc -w 3 unguard-redis 6379 2>/dev/null \
-                  | grep -v "^$" || echo "  Connection failed"
-                """,
-            )
-            print(result)
-
-            if "MariaDB" in result and "OPEN" in result:
-                evidence.append("MariaDB :3306 reachable from ad-service")
-                impact.append("Database accessible from unauthorized service")
-
-            if "Redis" in result and "OPEN" in result:
-                evidence.append("Redis :6379 reachable without authentication")
-                impact.append("Cache data (sessions, posts) exposed to all pods")
-
-        except Exception as e:
-            self.logger.error(f"Test 2 failed: {e}")
-
-        # Test 3: Infrastructure reachability
-        self.logger.exploit("Test 3: Infrastructure access from application pod")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Testing infrastructure reachability..."
-
-                echo -n "  Kubernetes API :6443 -> "
-                if nc -z -w 2 kubernetes.default.svc.cluster.local 443 2>/dev/null; then
-                    echo "OPEN"
-                else
-                    echo "CLOSED"
-                fi
-
-                echo "[*] Service account token:"
-                if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
-                    echo "  Present ($(wc -c < /var/run/secrets/kubernetes.io/serviceaccount/token) bytes)"
-                else
-                    echo "  Not mounted"
-                fi
-                """,
-            )
-            print(result)
-
-            if "API" in result and "OPEN" in result:
-                evidence.append("Kubernetes API server reachable from application pod")
-                impact.append("Combined with SA token, enables cluster enumeration")
-
-        except Exception as e:
-            self.logger.error(f"Test 3 failed: {e}")
-
-        # Test 4: Cross-namespace access
-        self.logger.exploit("Test 4: Cross-namespace reachability")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Testing cross-namespace access..."
-
-                echo -n "  CoreDNS (kube-system) :53 -> "
-                if nc -z -w 2 kube-dns.kube-system.svc.cluster.local 53 2>/dev/null; then
-                    echo "REACHABLE"
-                else
-                    echo "BLOCKED"
-                fi
-
-                echo -n "  Dynatrace ActiveGate :443 -> "
-                if nc -z -w 2 \
-                     dt-casp-misconfiguration-demo-activegate.dynatrace.svc.cluster.local \
-                     443 2>/dev/null; then
-                    echo "REACHABLE"
-                else
-                    echo "BLOCKED"
-                fi
-                """,
-            )
-            print(result)
-
-            if "REACHABLE" in result:
-                evidence.append("Cross-namespace services reachable from application pod")
-                impact.append("No namespace isolation — blast radius is cluster-wide")
-
-        except Exception as e:
-            self.logger.error(f"Test 4 failed: {e}")
-
-        # Summary
-        self.logger.exploit("=== Impact Summary ===")
-        summary_impact = [
-            "Any pod can discover all services via DNS",
-            "Data stores (MariaDB, Redis) accessible from any namespace",
-            "No network segmentation between services",
-            "Infrastructure components (API server, kubelet) reachable",
-            "Lateral movement possible across entire cluster",
-            "Compromised pod has full network access to all backends",
-        ]
-
-        for item in summary_impact:
-            print(f"  • {item}")
-
-        return ExploitResult(
-            success=bool(evidence),
-            message="Missing network policies exploit demonstrated",
-            evidence=evidence,
-            impact=impact + summary_impact,
+        result = self._run_tests(
+            pod_name, all_tests, "Missing network policies exploit demonstrated"
         )
+
+        self.logger.exploit("=== Impact Summary ===")
+        for item in summary_impact:
+            console.print(f"  • {item}")
+            result.add_impact(item)
+
+        return result
