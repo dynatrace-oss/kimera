@@ -37,7 +37,8 @@ This toolkit is intended for **educational and defensive security testing purpos
 - **Assessment Mode**: Analyze security posture of deployments
 - **Exploitation Mode**: Safely demonstrate attack techniques
 - **Remediation Mode**: Apply security best practices
-- **Rollback Support**: Undo changes with built-in rollback commands
+- **Revert Support**: Undo all changes with `kimera revert`, restoring original state
+- **Rollback Support**: Rollback individual deployments to previous revisions
 - **Verification**: Confirm security improvements
 - **Debug Mode**: Detailed logging for troubleshooting
 
@@ -71,23 +72,29 @@ pip install -e .
 ### Basic Usage
 
 ```bash
-# Assess security posture
-kimera assess
+# Use with the Unguard demo app (auto-detects profile)
+kimera -n unguard assess
+
+# Or explicitly select a profile
+kimera -p unguard assess
+
+# Use with any namespace (auto-discovers services)
+kimera -n my-namespace assess
 
 # Apply vulnerability for testing
-kimera vuln-service my-deployment privileged
+kimera -p unguard vuln-service unguard-payment-service privileged
 
 # Demonstrate exploit
-kimera exploit privileged-containers
+kimera -p unguard exploit privileged-containers
 
 # Apply security fixes
-kimera secure
+kimera -p unguard secure
 
 # Verify improvements
-kimera verify
+kimera -p unguard verify
 
 # Rollback changes
-kimera rollback
+kimera -p unguard rollback
 ```
 
 ## 📚 Documentation
@@ -101,7 +108,8 @@ kimera rollback
 | `exploit <type>` | Run specific exploit demo | `kimera exploit privileged-containers` |
 | `secure [type]` | Apply security fixes | `kimera secure` |
 | `verify` | Verify security status | `kimera verify` |
-| `rollback [service]` | Rollback changes | `kimera rollback` |
+| `revert [type]` | Undo all kimera changes (original state) | `kimera revert` |
+| `rollback [service]` | Rollback deployment revision | `kimera rollback` |
 
 ### Vulnerability Types
 
@@ -151,7 +159,13 @@ kimera --debug assess
 #### Custom Namespace
 
 ```bash
-kimera --namespace production assess
+kimera -n production assess
+```
+
+#### Config Profile
+
+```bash
+kimera -p unguard assess
 ```
 
 #### Dry Run
@@ -179,7 +193,9 @@ kimera/
 │   ├── plugins/                # Plugin base classes
 │   ├── cli.py                  # Plugin-based CLI interface
 │   └── exploit_k8s.py          # Main CLI entrypoint
-├── config/                     # Default configuration files
+├── config/                     # Configuration files
+│   ├── profiles/               # Target-specific profiles (unguard, dev, prod)
+│   └── exploits/               # Per-exploit metadata, YAML test definitions
 ├── docs/                       # Documentation and standards
 ├── scripts/                    # Utility scripts
 └── tests/                      # Test suite
@@ -198,23 +214,23 @@ kimera/
 Here's a typical security testing workflow:
 
 ```bash
-# 1. Initial assessment
-kimera assess
+# 1. Initial assessment (using Unguard as example)
+kimera -p unguard assess
 
 # 2. Make service vulnerable for testing
-kimera vuln-service payment-service privileged
+kimera -p unguard vuln-service unguard-payment-service privileged
 
 # 3. Demonstrate the security impact
-kimera exploit privileged-containers
+kimera -p unguard exploit privileged-containers
 
 # 4. Apply security fixes
-kimera --verbose secure-service payment-service
+kimera -p unguard --verbose secure-service unguard-payment-service
 
 # 5. Verify the improvements
-kimera verify
+kimera -p unguard verify
 
-# 6. Clean up (if needed)
-kimera rollback payment-service
+# 6. Revert all changes (restores original state)
+kimera -p unguard revert
 ```
 
 ## 🤝 Contributing
