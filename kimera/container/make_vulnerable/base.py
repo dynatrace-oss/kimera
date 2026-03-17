@@ -16,7 +16,8 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ...domain.models import ExploitResult
+from ...domain.models import ExploitResult, SecurityTest
+from ..core.journal import clear_operation, record_operation
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console, setup_logger
 
@@ -38,12 +39,20 @@ class BaseExploit(ABC):
         """Initialize exploit with Kubernetes client, service, and logger."""
         self.k8s = k8s_client
         self.service = service or self.get_default_service()
+        if not self.service:
+            raise ValueError(
+                f"No service specified for {self.name}. "
+                "Use --service or configure exploit_mappings in your profile."
+            )
         self.logger = logger or SecurityLogger(setup_logger(__name__))
 
-    @abstractmethod
     def get_default_service(self) -> str:
-        """Get the default service for this exploit."""
-        pass
+        """Get the default service for this exploit.
+
+        Returns empty string by default. Override in subclasses or pass
+        a service to ``__init__`` / configure via ``exploit_mappings``.
+        """
+        return ""
 
     @abstractmethod
     def get_vulnerable_patch(self) -> list[dict[str, Any]]:
@@ -86,11 +95,19 @@ class BaseExploit(ABC):
         if self.k8s.patch_deployment(self.service, patches, dry_run):
             if not dry_run:
                 self.logger.success(f"Applied vulnerable configuration to {self.service}")
+                record_operation(
+                    "make_vulnerable", self.vulnerability_type, self.service, self.k8s.namespace
+                )
             return True
         return False
 
     def make_secure(self, dry_run: bool = False) -> bool:
-        """Apply secure configuration."""
+        """Apply secure configuration.
+
+        Note: This applies a *hardened* configuration which may differ from the
+        deployment's original state. To restore the original state, use
+        ``kimera rollback`` or ``kimera revert`` instead.
+        """
         self.logger.info(f"Applying secure configuration to {self.service}...")
         patches = self.get_secure_patch()
 
@@ -100,8 +117,36 @@ class BaseExploit(ABC):
         if self.k8s.patch_deployment(self.service, patches, dry_run):
             if not dry_run:
                 self.logger.success(f"Applied secure configuration to {self.service}")
+                record_operation(
+                    "make_secure", self.vulnerability_type, self.service, self.k8s.namespace
+                )
             return True
         return False
+
+    def revert(self, dry_run: bool = False) -> bool:
+        """Revert to the original deployment state via rollback.
+
+        Unlike ``make_secure`` (which applies a hardened config),
+        this rolls back to the deployment's previous revision.
+        """
+        self.logger.info(f"Reverting {self.service} to previous revision...")
+        if dry_run:
+            self.logger.info(f"DRY RUN: Would rollback {self.service}")
+            return True
+
+        success = self.k8s.rollback_deployment(self.service)
+        if success:
+            # Verify the rollback actually removed the vulnerability
+            still_vulnerable = self.check_vulnerability()
+            if still_vulnerable:
+                self.logger.warning(
+                    f"Rollback completed but {self.service} still appears vulnerable. "
+                    "The previous revision may itself be vulnerable."
+                )
+            else:
+                self.logger.success(f"Reverted {self.service} — verified not vulnerable")
+            clear_operation(self.vulnerability_type, self.service, self.k8s.namespace)
+        return success
 
     def _ensure_security_context(self) -> None:
         """Ensure security context exists before patching."""
@@ -124,6 +169,47 @@ class BaseExploit(ABC):
                         ],
                     )
 
+    def _run_tests(
+        self,
+        pod_name: str,
+        tests: list[SecurityTest],
+        message: str = "",
+    ) -> ExploitResult:
+        """Run a list of security tests in a pod and collect evidence.
+
+        Each test's output is scanned for evidence markers. Matching
+        markers are recorded as evidence and impact entries in the
+        returned ``ExploitResult``.
+
+        Args:
+            pod_name: Name of the pod to execute tests in.
+            tests: Security test definitions to run.
+            message: Summary message for the result.
+        """
+        evidence: list[str] = []
+        impact: list[str] = []
+
+        for test in tests:
+            self.logger.exploit(f"Test: {test.name}")
+            try:
+                output = self.k8s.exec_in_pod(pod_name, test.script)
+                console.print(output, highlight=False)
+
+                for marker in test.evidence_markers:
+                    if marker.marker in output:
+                        evidence.append(marker.evidence)
+                        if marker.impact:
+                            impact.append(marker.impact)
+            except Exception as e:
+                self.logger.error(f"{test.name} failed: {e}")
+
+        return ExploitResult(
+            success=bool(evidence),
+            message=message or f"{self.name} exploit demonstrated",
+            evidence=evidence,
+            impact=impact,
+        )
+
     def run_interactive(self) -> None:
         """Run interactive demonstration."""
         self.show_info()
@@ -138,14 +224,14 @@ class BaseExploit(ABC):
         result = self.demonstrate()
 
         if result.evidence:
-            print("\nEvidence:")
-            for evidence in result.evidence:
-                print(f"  • {evidence}")
+            console.print("\nEvidence:")
+            for item in result.evidence:
+                console.print(f"  • {item}")
 
         if result.impact:
-            print("\nImpact:")
-            for impact in result.impact:
-                print(f"  • {impact}")
+            console.print("\nImpact:")
+            for item in result.impact:
+                console.print(f"  • {item}")
 
     def build_security_context_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
         """Build a base security context patch."""

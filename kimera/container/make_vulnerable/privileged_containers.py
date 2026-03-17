@@ -14,7 +14,10 @@
 
 from typing import Any
 
-from .base import BaseExploit, ExploitResult
+from ...domain.models import ExploitResult
+from ..core.logger import console
+from .base import BaseExploit
+from .test_loader import load_exploit_tests
 
 
 class PrivilegedContainersExploit(BaseExploit):
@@ -33,10 +36,6 @@ class PrivilegedContainersExploit(BaseExploit):
 
                 In privileged mode, the container has nearly all the
                 capabilities of the host system, making isolation meaningless."""
-
-    def get_default_service(self) -> str:
-        """Get the default service for privileged containers exploit."""
-        return "unguard-payment-service"
 
     def get_vulnerable_patch(self) -> list[dict[str, Any]]:
         """Get patch to enable privileged container mode."""
@@ -121,159 +120,14 @@ class PrivilegedContainersExploit(BaseExploit):
 
         pod_name = self.k8s.find_pod_for_service(self.service)
         if not pod_name:
-            return ExploitResult(
-                success=False,
-                message="Pod not found for service",
-            )
+            return ExploitResult(success=False, message="Pod not found for service")
 
-        evidence = []
-        impact = []
+        tests, summary_impact = load_exploit_tests(self.vulnerability_type)
+        result = self._run_tests(pod_name, tests, "Privileged container exploit demonstrated")
 
-        # Test 1: Check privileged status
-        self.logger.exploit("Test 1: Checking privileged status")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Current user: $(id)"
-                echo "[*] Hostname: $(hostname)"
-
-                echo -e "\\n[*] Checking if we are privileged..."
-                if [ -w /sys ]; then
-                    echo "❌ VULNERABLE: Can write to /sys - privileged container!"
-                    if [ -d /sys/kernel/debug ]; then
-                        if mount -t debugfs none /sys/kernel/debug 2>/dev/null; then
-                            touch /sys/kernel/debug/test_write 2>/dev/null && {
-                                echo "[PROOF] Successfully created file in /sys/kernel/debug"
-                                rm -f /sys/kernel/debug/test_write
-                            } || echo "[!] Debug filesystem mounted but cannot write"
-                            umount /sys/kernel/debug 2>/dev/null
-                        fi
-                    fi
-                else
-                    echo "✅ Protected: Cannot write to /sys"
-                fi
-
-                echo -e "\\n[*] Checking capabilities..."
-                cat /proc/1/status | grep "^Cap" | head -3
-            """,
-            )
-
-            print(result)
-            if "[!] Debug filesystem mounted but cannot write" in result:
-                evidence.append("Writable /sys detected but debugfs is protected")
-
-            if "VULNERABLE: Can write to /sys" in result:
-                evidence.append("Container can write to /sys filesystem")
-                evidence.append("Privileged mode confirmed")
-
-            # Extract capabilities
-            if "CapEff:" in result:
-                cap_line = [line for line in result.split("\n") if "CapEff:" in line][0]
-                cap_value = cap_line.split()[1]
-                if cap_value != "0000000000000000":
-                    evidence.append(f"Dangerous capabilities detected: {cap_value}")
-                    if cap_value == "000001ffffffffff":
-                        evidence.append("ALL Linux capabilities enabled (MAXIMUM PRIVILEGE)")
-
-        except Exception as e:
-            self.logger.error(f"Test 1 failed: {e}")
-
-        # Test 2: Host filesystem access
-        self.logger.exploit("Test 2: Host filesystem access")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Attempting to access host filesystem..."
-
-                if [ -d /proc/1/root/etc ]; then
-                    echo "❌ CRITICAL: Can access host via /proc/1/root!"
-                    echo "[PROOF] Host hostname: $(cat /proc/1/root/etc/hostname 2>/dev/null || echo 'access denied')"
-                    head -3 /proc/1/root/etc/passwd 2>/dev/null && echo "[PROOF] Can read host /etc/passwd"
-                fi
-
-                echo -e "\\n[*] Checking device access..."
-                if [ -c /dev/mem ]; then
-                    echo "❌ CRITICAL: Can access /dev/mem (physical memory)!"
-                fi
-            """,
-            )
-
-            print(result)
-
-            if "Can access host via /proc/1/root" in result:
-                evidence.append("Direct access to host filesystem via /proc")
-                impact.append("Can read/modify ANY file on the host")
-
-            if "Can access /dev/mem" in result:
-                evidence.append("Access to physical memory device")
-                impact.append("Can read kernel memory and extract secrets")
-
-        except Exception as e:
-            self.logger.error(f"Test 2 failed: {e}")
-
-        # Test 3: Container runtime access
-        self.logger.exploit("Test 3: Container runtime access")
-        try:
-            result = self.k8s.exec_in_pod(
-                pod_name,
-                """
-                echo "[*] Checking for container runtime sockets..."
-
-                for sock in /var/run/docker.sock /run/containerd/containerd.sock /var/run/crio/crio.sock; do
-                    if [ -S "$sock" ] || [ -S "/proc/1/root$sock" ]; then
-                        echo "❌ CRITICAL: Found $sock - can control all containers!"
-                    fi
-                done
-
-                echo -e "\\n[*] Process visibility..."
-                proc_count=$(ls /proc | grep -E '^[0-9]+$' | wc -l)
-                echo "Total processes visible: $proc_count"
-
-                if [ "$proc_count" -gt 50 ]; then
-                    echo "❌ VULNERABLE: Can see host processes!"
-                fi
-            """,
-            )
-
-            print(result)
-
-            if "can control all containers" in result:
-                evidence.append("Container runtime socket accessible")
-                impact.append("Can create/modify/delete ANY container on the host")
-
-            if "Can see host processes" in result:
-                evidence.append("Host process visibility")
-                impact.append("Can see and potentially kill host processes")
-
-            proc_count = result.count("\n")  # Count lines as a fallback for process visibility
-            if proc_count > 50:
-                evidence.append("Host process visibility detected")
-                impact.append("Can see and potentially kill host processes")
-
-        except Exception as e:
-            self.logger.error(f"Test 3 failed: {e}")
-
-        # Summary
         self.logger.exploit("=== Impact Summary ===")
-        summary_impact = [
-            "Escape to the host system",
-            "Access all host filesystems",
-            "Read/write kernel memory via /dev/mem",
-            "Load malicious kernel modules",
-            "Access all containers on the host",
-            "Modify cgroups and resource limits",
-            "Persist on the host system",
-            "Completely compromise the node",
-        ]
-
         for item in summary_impact:
-            print(f"  • {item}")
+            console.print(f"  • {item}")
+            result.add_impact(item)
 
-        return ExploitResult(
-            success=bool(evidence),
-            message="Privileged container exploit demonstrated",
-            evidence=evidence,
-            impact=impact + summary_impact,
-        )
+        return result
