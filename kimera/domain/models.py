@@ -87,3 +87,49 @@ class VulnerabilityCheck:
     details: str
     severity: str
     remediation_available: bool = True
+
+
+@dataclass
+class EvidenceMarker:
+    """Maps a string found in test output to evidence and impact entries.
+
+    Used by ``SecurityTest`` to declaratively extract findings from
+    shell command output without ad-hoc string matching.
+    """
+
+    marker: str
+    evidence: str
+    impact: str = ""
+
+
+@dataclass
+class SecurityTest:
+    """A single security test to run inside a pod.
+
+    Encapsulates the shell script, evidence extraction rules, and
+    impact descriptions for one test within an exploit demonstration.
+    """
+
+    name: str
+    script: str
+    evidence_markers: list[EvidenceMarker] = field(default_factory=list)
+    summary_impact: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CommandResult:
+    """Structured result of a subprocess command execution.
+
+    Wraps ``subprocess.run()`` output with a consistent interface
+    for checking success and accessing stdout/stderr.
+    """
+
+    command: list[str]
+    returncode: int
+    stdout: str
+    stderr: str
+
+    @property
+    def success(self) -> bool:
+        """Return True if the command exited with code 0."""
+        return self.returncode == 0

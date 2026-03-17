@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import os
-import subprocess
 from typing import Any
 
+from ..core.command import run_command
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 from ..make_vulnerable.base import BaseExploit
@@ -59,42 +59,52 @@ class SecurityPatcher:
             return True
         return False
 
-    def prepare_offline(self, output_dir: str = "offline-resources") -> None:
-        """Prepare resources for offline environments."""
+    def prepare_offline(
+        self,
+        manifests: dict[str, str] | None = None,
+        images: list[str] | None = None,
+        output_dir: str = "offline-resources",
+    ) -> None:
+        """Prepare resources for offline environments.
+
+        Args:
+            manifests: Mapping of name to URL for manifests to download.
+            images: Container images to pull and save.
+            output_dir: Directory to save downloaded resources.
+        """
         self.logger.info("Preparing resources for offline use...")
         os.makedirs(output_dir, exist_ok=True)
-        # Save manifests
-        manifests = {
-            "unguard": "https://raw.githubusercontent.com/dynatrace-oss/unguard/main/chart/unguard/values.yaml"
-        }
-        for name, url in manifests.items():
+
+        for name, url in (manifests or {}).items():
             self.logger.info(f"Downloading manifest for {name}...")
             manifest_path = os.path.join(output_dir, f"{name}.yaml")
-            try:
-                subprocess.run(["curl", "-o", manifest_path, url], check=True)
+            result = run_command(["curl", "-o", manifest_path, url], logger=self.logger)
+            if result.success:
                 self.logger.success(f"Saved {name} manifest to {manifest_path}")
-            except subprocess.CalledProcessError:
+            else:
                 self.logger.error(f"Failed to download manifest for {name}")
-        # Pull container images
-        images = ["ghcr.io/dynatrace-oss/unguard:v1.0.0"]
-        for image in images:
+
+        for image in images or []:
             self.logger.info(f"Pulling container image: {image}...")
-            try:
-                subprocess.run(["docker", "pull", image], check=True)
-                self.logger.success(f"Pulled image: {image}")
-                subprocess.run(
-                    [
-                        "docker",
-                        "save",
-                        "-o",
-                        os.path.join(output_dir, f"{image.replace('/', '_')}.tar"),
-                        image,
-                    ],
-                    check=True,
-                )
+            pull_result = run_command(["docker", "pull", image], logger=self.logger)
+            if not pull_result.success:
+                self.logger.error(f"Failed to pull image: {image}")
+                continue
+            self.logger.success(f"Pulled image: {image}")
+            save_result = run_command(
+                [
+                    "docker",
+                    "save",
+                    "-o",
+                    os.path.join(output_dir, f"{image.replace('/', '_')}.tar"),
+                    image,
+                ],
+                logger=self.logger,
+            )
+            if save_result.success:
                 self.logger.success(f"Saved image {image} to {output_dir}")
-            except subprocess.CalledProcessError:
-                self.logger.error(f"Failed to pull or save image: {image}")
+            else:
+                self.logger.error(f"Failed to save image: {image}")
 
     def rollback_service(self, service: str, namespace: str, timeout: int = 120) -> bool:
         """Rollback a service to the previous revision."""
