@@ -176,9 +176,7 @@ class TestK8sClientRBACMethods:
         self.mock_rbac.create_cluster_role.assert_called_once()
 
     def test_create_cluster_role_conflict(self):
-        self.mock_rbac.create_cluster_role.side_effect = ApiException(
-            status=409, reason="Conflict"
-        )
+        self.mock_rbac.create_cluster_role.side_effect = ApiException(status=409, reason="Conflict")
         body = {"metadata": {"name": "existing"}}
         assert self.k8s.create_cluster_role(body) is True
 
@@ -303,7 +301,7 @@ class TestEnforcementEnable:
             _create_mock_k8s_client()
         )
         # Mock wait_for_daemonset to return immediately
-        self.k8s.wait_for_daemonset = Mock(return_value=True)
+        self.k8s.wait_for_daemonset = Mock(return_value=True)  # type: ignore[method-assign]
         self.manager = PolicyEnforcementManager(self.k8s, self.mock_logger)
 
     def test_enable_creates_all_resources(self):
@@ -327,9 +325,7 @@ class TestEnforcementEnable:
         self.mock_core.create_namespaced_service_account.side_effect = ApiException(
             status=409, reason="Conflict"
         )
-        self.mock_rbac.create_cluster_role.side_effect = ApiException(
-            status=409, reason="Conflict"
-        )
+        self.mock_rbac.create_cluster_role.side_effect = ApiException(status=409, reason="Conflict")
         self.mock_rbac.create_cluster_role_binding.side_effect = ApiException(
             status=409, reason="Conflict"
         )
