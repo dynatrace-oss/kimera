@@ -15,7 +15,6 @@
 #
 
 import json
-import subprocess
 import sys
 import time
 from typing import Any
@@ -26,6 +25,7 @@ from kubernetes.client import V1DaemonSet, V1Deployment, V1NetworkPolicy, V1Pod
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 
+from kimera.container.core.command import run_command
 from kimera.container.core.exceptions import K8sError
 
 from .logger import SecurityLogger, setup_logger
@@ -72,13 +72,9 @@ class K8sClient:
     def find_pod_for_service(self, service: str) -> str | None:
         """Find running pod for a service."""
         strategies = [
-            # Strategy 1: Label app.kubernetes.io/name
-            {"app.kubernetes.io/name": service.replace("unguard-", "")},
-            # Strategy 2: Label app
+            {"app.kubernetes.io/name": service},
             {"app": service},
-            {"app": service.replace("unguard-", "")},
-            # Strategy 3: Other common patterns
-            {"component": service.replace("unguard-", "")},
+            {"component": service},
             {"service": service},
             {"name": service},
         ]
@@ -287,8 +283,8 @@ class K8sClient:
             ]
             if revision:
                 cmd.extend(["--to-revision", str(revision)])
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0:
+            result = run_command(cmd, logger=self.logger)
+            if result.success:
                 self.logger.success(f"Rolled back {name} to revision {revision or 'previous'}.")
                 return True
             else:

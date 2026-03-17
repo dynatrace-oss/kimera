@@ -116,7 +116,7 @@ class ExploitConfig(BaseModel):
 
     name: str = Field(..., description="Unique exploit identifier")
     enabled: bool = Field(default=True, description="Enable this exploit")
-    default_service: str = Field(..., description="Default target service")
+    default_service: str = Field(default="", description="Default target service")
     risk_level: str = Field(
         ..., pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$", description="Risk severity"
     )
@@ -233,13 +233,10 @@ class ToolkitConfig(BaseModel):
         default_factory=SecurityContextConfig, description="Default secure context"
     )
 
-    @field_validator("services")
-    @classmethod
-    def validate_services(cls, v: list[str]) -> list[str]:
-        """Ensure services list is not empty."""
-        if not v:
-            raise ValueError("At least one service must be configured")
-        return v
+    @property
+    def namespace(self) -> str:
+        """Convenience accessor for the Kubernetes namespace."""
+        return self.kubernetes.namespace
 
     @field_validator("exploits")
     @classmethod

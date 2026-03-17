@@ -114,7 +114,6 @@ class TestK8sClientMethods:
             patch("kimera.container.core.k8s_client.config") as mock_config,
             patch("kimera.container.core.k8s_client.client") as mock_k8s_client,
         ):
-
             config_exception = type("ConfigException", (Exception,), {})
             mock_config.ConfigException = config_exception
             mock_config.load_incluster_config.side_effect = config_exception("Not in cluster")
@@ -163,7 +162,6 @@ class TestK8sClientMethods:
             patch("kimera.container.core.k8s_client.config") as mock_config,
             patch("kimera.container.core.k8s_client.client"),
         ):
-
             config_exception = type("ConfigException", (Exception,), {})
             mock_config.ConfigException = config_exception
             mock_config.load_incluster_config.side_effect = config_exception("Not in cluster")
