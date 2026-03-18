@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- ASCII art banner (`ansi_regular` font) displayed on main commands (`assess`, `exploit`, `secure`, `verify`)
+- `_display_results()` method on `BaseExploit` for consolidated exploit findings output
+
+### Changed
+
+- Replaced plain-text CLI header with branded `show_banner()` from new `kimera/banner.py` module
+- Exploit `show_info()` now uses Rich Panel instead of raw equals-sign box
+- Standardized `missing_resource_limits` summary header to match other exploits (`=== Impact Summary ===`)
+- Evidence and impact bullets now use colored markers (green/red)
+
+### Fixed
+
+- Duplicate impact output in `--mode demo`: summary_impact items were printed inline by `demonstrate()` and then re-printed by `run_interactive()` via `result.impact`
+
 ## [1.1.0] - 2025-03-18
 
 ### Added

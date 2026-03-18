@@ -142,13 +142,13 @@ class MissingResourceLimitsExploit(BaseExploit):
             self.logger.error(f"Node capacity check failed: {e}")
 
         # Summary
-        self.logger.exploit("\n=== Summary ===")
-        console.print("Without resource limits:")
+        self.logger.exploit("=== Impact Summary ===")
         for item in summary_impact:
-            console.print(f"  ✓ {item}")
-        console.print("\nRisk: Any container can exhaust node resources causing:")
-        console.print("  - Pod evictions")
-        console.print("  - Service outages")
-        console.print("  - Increased cloud costs")
+            console.print(f"  • {item}")
+        console.print()
+        console.print("  Risk: Any container can exhaust node resources causing:")
+        console.print("    - Pod evictions")
+        console.print("    - Service outages")
+        console.print("    - Increased cloud costs")
 
         return result

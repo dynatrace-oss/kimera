@@ -161,6 +161,5 @@ class DangerousCapabilitiesExploit(BaseExploit):
         self.logger.exploit("=== Impact Summary ===")
         for item in summary_impact:
             console.print(f"  • {item}")
-            result.add_impact(item)
 
         return result

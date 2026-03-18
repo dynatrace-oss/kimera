@@ -16,6 +16,8 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
+from rich.panel import Panel
+
 from ...domain.models import ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.k8s_client import K8sClient
@@ -76,16 +78,13 @@ class BaseExploit(ABC):
 
     def show_info(self) -> None:
         """Display exploit information."""
-        console.print(f"""
-                {"=" * 45}
-                {self.name} Exploit
-                {"=" * 45}
-                Target: {self.service}
-                Risk: {self.risk_level}
-
-                {self.description}
-                {"=" * 45}
-            """)
+        content = (
+            f"[bold]Target:[/bold] {self.service}\n"
+            f"[bold]Risk:[/bold]   {self.risk_level}\n\n"
+            f"{self.description}"
+        )
+        console.print()
+        console.print(Panel(content, title=f"[bold]{self.name}[/bold]", border_style="red"))
 
     def make_vulnerable(self, dry_run: bool = False) -> bool:
         """Apply vulnerable configuration."""
@@ -222,16 +221,19 @@ class BaseExploit(ABC):
                 time.sleep(2)
 
         result = self.demonstrate()
+        self._display_results(result)
 
+    def _display_results(self, result: ExploitResult) -> None:
+        """Display consolidated exploit findings."""
         if result.evidence:
-            console.print("\nEvidence:")
+            console.print("\n[bold]Evidence:[/bold]")
             for item in result.evidence:
-                console.print(f"  • {item}")
+                console.print(f"  [green]•[/green] {item}")
 
         if result.impact:
-            console.print("\nImpact:")
+            console.print("\n[bold]Impact:[/bold]")
             for item in result.impact:
-                console.print(f"  • {item}")
+                console.print(f"  [red]•[/red] {item}")
 
     def build_security_context_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
         """Build a base security context patch."""

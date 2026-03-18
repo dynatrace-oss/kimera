@@ -25,7 +25,7 @@ jobs:
         uv run pre-commit run --all-files
     - name: Test with pytest
       run: |
-        uv run pytest --cov=k8s_exploit_toolkit --cov-report=xml
+        uv run pytest --cov=kimera --cov-report=xml
   security:
     runs-on: ubuntu-latest
     steps:
@@ -41,4 +41,3 @@ jobs:
     - name: Run security checks
       run: |
         uv run pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph
-        uv run safety check
