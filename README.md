@@ -1,10 +1,16 @@
-# Kimera
+<p align="center">
+  <img src="logo/kimera_logo.png" alt="Kimera Logo" width="200">
+</p>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
-[![Kubernetes](https://img.shields.io/badge/kubernetes-1.24+-blue.svg)](https://kubernetes.io/)
+<h1 align="center">Kimera</h1>
 
-A comprehensive security testing framework for Kubernetes environments, designed for educational purposes and defensive security testing.
+<p align="center">
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13+-blue.svg" alt="Python"></a>
+  <a href="https://kubernetes.io/"><img src="https://img.shields.io/badge/kubernetes-1.24+-blue.svg" alt="Kubernetes"></a>
+</p>
+
+<p align="center">A security testing framework for Kubernetes environments, designed for educational purposes and defensive security testing.</p>
 
 > **Note**
 > This product is not officially supported by Dynatrace!
