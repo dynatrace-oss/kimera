@@ -14,7 +14,7 @@
 
 import pytest
 
-from k8s_exploit_toolkit.container.core.exceptions import (
+from kimera.container.core.exceptions import (
     ConfigurationError,
     DeploymentNotFoundError,
     ExploitError,

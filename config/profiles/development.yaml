@@ -1,9 +1,9 @@
 # Development Profile Configuration
 # Optimized for local testing with kind cluster and verbose output
+# Combine with a target profile: kimera -p development ...
 
 # Kubernetes settings for local kind cluster
 kubernetes:
-  namespace: "unguard"
   context: "kind-kimera-test"
   in_cluster: false
 
@@ -24,16 +24,3 @@ logging:
 dry_run: false
 debug: true
 verbose: true
-
-# Development services (subset for testing)
-services:
-  - "unguard-payment-service"
-  - "unguard-profile-service"
-  - "unguard-frontend"
-  - "unguard-membership-service"
-
-exploit_mappings:
-  privileged-containers: "unguard-payment-service"
-  dangerous-capabilities: "unguard-profile-service"
-  host-namespace-sharing: "unguard-frontend"
-  missing-resource-limits: "unguard-membership-service"

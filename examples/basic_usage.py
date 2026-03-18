@@ -15,28 +15,26 @@
 # limitations under the License.
 #
 
-"""
-Basic usage example for K8s Exploit Toolkit.
+"""Basic usage example for Kimera.
 
 This example demonstrates how to use the toolkit programmatically
-to assess, exploit, and remediate container security issues.
+to assess container security issues in a Kubernetes namespace.
 """
 
-from k8s_exploit_toolkit.container.assessment.scanner import SecurityScanner
-from k8s_exploit_toolkit.container.core.config import Config
-from k8s_exploit_toolkit.container.core.k8s_client import K8sClient
-from k8s_exploit_toolkit.container.core.logger import SecurityLogger, setup_logger
+from kimera.application.config.loader import ConfigLoader
+from kimera.container.assessment.scanner import SecurityScanner
+from kimera.container.core.k8s_client import K8sClient
+from kimera.container.core.logger import SecurityLogger, setup_logger
 
 
 def main() -> int:
     """Demonstrate basic toolkit usage."""
-    # Initialize configuration
-    config = Config()
-    config.namespace = "default"  # Change to your target namespace
-    config.debug = True
+    # Load configuration with namespace override
+    loader = ConfigLoader()
+    config = loader.load(overrides={"kubernetes": {"namespace": "default"}, "debug": True})
 
     # Setup logging
-    logger = SecurityLogger(setup_logger("example", debug=True))
+    logger = SecurityLogger(setup_logger("example", debug=config.debug))
 
     try:
         # Initialize Kubernetes client

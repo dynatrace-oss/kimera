@@ -1,0 +1,25 @@
+# Unguard Profile Configuration
+# Target settings for the Dynatrace Unguard demo application
+# Usage: kimera -p unguard assess
+#   or:  kimera -n unguard assess  (auto-detected)
+
+kubernetes:
+  namespace: "unguard"
+
+# Unguard services
+services:
+  - "unguard-payment-service"
+  - "unguard-profile-service"
+  - "unguard-frontend"
+  - "unguard-membership-service"
+  - "unguard-user-auth-service"
+  - "unguard-ad-service"
+  - "unguard-proxy-service"
+
+# Exploit to service mappings
+exploit_mappings:
+  privileged-containers: "unguard-payment-service"
+  dangerous-capabilities: "unguard-profile-service"
+  host-namespace-sharing: "unguard-frontend"
+  missing-resource-limits: "unguard-membership-service"
+  missing-network-policies: "unguard-ad-service"

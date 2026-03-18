@@ -1,6 +1,6 @@
-# Contributing to K8s Exploit Toolkit
+# Contributing to Kimera
 
-Thank you for your interest in contributing to the K8s Exploit Toolkit! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to the Kimera! This document provides guidelines and information for contributors.
 
 ## Code of Conduct
 
@@ -40,8 +40,8 @@ As this is a security-focused project, please keep in mind:
 1. **Fork and clone** the repository:
 
    ```bash
-   git clone https://github.com/yourusername/k8s-exploit-toolkit
-   cd k8s-exploit-toolkit
+   git clone https://github.com/yourusername/kimera
+   cd kimera
    ```
 
 2. **Install uv** (if not already installed):
@@ -122,12 +122,12 @@ uv run pytest tests/
 uv run pytest tests/integration/
 
 # Code coverage
-uv run pytest --cov=k8s_exploit_toolkit
+uv run pytest --cov=kimera
 
 # Code quality checks
-uv run black k8s_exploit_toolkit/
-uv run ruff check k8s_exploit_toolkit/
-uv run mypy k8s_exploit_toolkit/
+uv run black kimera/
+uv run ruff check kimera/
+uv run mypy kimera/
 ```
 
 ### Submitting Changes
@@ -172,8 +172,8 @@ uv run mypy k8s_exploit_toolkit/
 ## Project Structure
 
 ```txt
-k8s-exploit-toolkit/
-├── k8s_exploit_toolkit/        # Main package
+kimera/
+├── kimera/        # Main package
 │   ├── container/              # Container security modules
 │   │   ├── assessment/         # Security assessment tools
 │   │   ├── exploits/           # Exploit implementations

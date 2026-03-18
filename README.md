@@ -1,109 +1,25 @@
-# K8s Exploit Toolkit
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
-[![Kubernetes](https://img.shields.io/badge/kubernetes-1.24+-blue.svg)](https://kubernetes.io/)
-
-A comprehensive security testing framework for Kubernetes environments, designed for educational purposes and defensive security testing.
+<p align="center">
+  <img src="logo/kimera_logo.png" alt="Kimera" width="400"><br>
+  <em>Kubernetes security testing framework — assess, exploit, remediate, enforce.</em><br><br>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13+-blue.svg" alt="Python"></a>
+  <a href="https://kubernetes.io/"><img src="https://img.shields.io/badge/kubernetes-1.24+-blue.svg" alt="Kubernetes"></a>
+</p>
 
 > **Note**
 > This product is not officially supported by Dynatrace!
 
-## 🎯 Purpose
+## What is Kimera?
 
-The K8s Exploit Toolkit provides hands-on learning opportunities for understanding Kubernetes container security misconfigurations and their remediation. This toolkit is designed for:
+Kimera is a Kubernetes security posture management (KSPM) tool that identifies container misconfigurations, demonstrates their real-world impact, and applies targeted remediations. It operates directly against live clusters, giving security teams and platform engineers a practical way to validate their defenses.
 
-- **Security researchers** studying Kubernetes attack vectors
-- **DevOps engineers** learning container security best practices
-- **Security professionals** testing defensive capabilities
-- **Educators** teaching cloud-native security concepts
+## Disclaimer
 
-## ⚠️ Disclaimer
+This toolkit is intended for **defensive security testing only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
 
-This toolkit is intended for **educational and defensive security testing purposes only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
+## Features
 
-## 📋 Features
-
-### Container Security Testing
-
-- **Privileged Container Exploits**: Demonstrate complete bypass of container isolation
-- **Dangerous Capabilities**: Show impact of excessive Linux capabilities
-- **Host Namespace Sharing**: Exploit shared host resources (PID/Network/IPC)
-- **Resource Exhaustion**: Controlled demonstration of missing resource limits
-- **Interactive Learning**: Step-by-step exploitation and remediation workflows
-
-### Key Capabilities
-
-- **Assessment Mode**: Analyze security posture of deployments
-- **Exploitation Mode**: Safely demonstrate attack techniques
-- **Remediation Mode**: Apply security best practices
-- **Rollback Support**: Undo changes with built-in rollback commands
-- **Verification**: Confirm security improvements
-- **Debug Mode**: Detailed logging for troubleshooting
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Kubernetes cluster (1.24+ recommended)
-- `kubectl` configured with cluster access
-- Python 3.13+ with Poetry or pip
-- Appropriate RBAC permissions for target namespace
-
-### Installation
-
-#### Using uv (Recommended)
-
-```bash
-git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
-cd k8s-exploit-toolkit
-uv sync
-```
-
-#### Using pip
-
-```bash
-git clone https://github.com/dynatrace-oss/k8s-exploit-toolkit
-cd k8s-exploit-toolkit
-pip install -e .
-```
-
-### Basic Usage
-
-```bash
-# Assess security posture
-k8s-exploit assess
-
-# Apply vulnerability for testing
-k8s-exploit vuln-service my-deployment privileged
-
-# Demonstrate exploit
-k8s-exploit exploit privileged-containers
-
-# Apply security fixes
-k8s-exploit secure
-
-# Verify improvements
-k8s-exploit verify
-
-# Rollback changes
-k8s-exploit rollback
-```
-
-## 📚 Documentation
-
-### Command Reference
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `assess [service]` | Assess security posture | `k8s-exploit assess` |
-| `vuln-service <svc> <type>` | Apply specific vulnerability | `k8s-exploit vuln-service app privileged` |
-| `exploit <type>` | Run specific exploit demo | `k8s-exploit exploit privileged-containers` |
-| `secure [type]` | Apply security fixes | `k8s-exploit secure` |
-| `verify` | Verify security status | `k8s-exploit verify` |
-| `rollback [service]` | Rollback changes | `k8s-exploit rollback` |
-
-### Vulnerability Types
+### Security Testing
 
 | Type | Description | Impact |
 |------|-------------|---------|
@@ -111,113 +27,152 @@ k8s-exploit rollback
 | `capabilities` | Dangerous Linux capabilities | Container escape potential |
 | `host-namespace` | Host namespace sharing | Process/network visibility |
 | `no-limits` | Missing resource limits | Denial of service risk |
+| `no-network-policies` | Missing NetworkPolicy resources | Unrestricted lateral movement |
 
-### Advanced Usage
+### Operational Modes
 
-#### Verbose Mode
+- **Assess** — Scan deployments for security misconfigurations
+- **Exploit** — Introduce and demonstrate specific vulnerabilities
+- **Secure** — Apply hardened security contexts and resource limits
+- **Enforce** — Install kube-router for NetworkPolicy enforcement on CNIs that lack it
+- **Revert** — Undo all changes, restoring original deployment state
+- **Verify** — Confirm security posture after remediation
+
+## Quick Start
+
+### Prerequisites
+
+- Kubernetes cluster (1.24+)
+- `kubectl` configured with cluster access
+- Python 3.13+ with [uv](https://docs.astral.sh/uv/)
+- Appropriate RBAC permissions for target namespace
+
+### Installation
 
 ```bash
-k8s-exploit --verbose secure
+git clone https://github.com/dynatrace-oss/kimera
+cd kimera
+uv sync
 ```
 
-#### Debug Mode
+### Usage
 
 ```bash
-k8s-exploit --debug assess
+# Assess security posture (auto-discovers services)
+kimera -n unguard assess
+
+# Introduce a specific vulnerability
+kimera -p unguard vuln-service unguard-payment-service privileged
+
+# Demonstrate the exploit
+kimera -p unguard exploit privileged-containers
+
+# Apply security fixes
+kimera -p unguard secure
+
+# Verify improvements
+kimera -p unguard verify
+
+# Revert all changes (restores original state)
+kimera -p unguard revert
 ```
 
-#### Custom Namespace
+## Command Reference
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `assess [service]` | Scan security posture | `kimera -n unguard assess` |
+| `vuln-service <svc> <type>` | Introduce a vulnerability | `kimera vuln-service app privileged` |
+| `exploit <type>` | Demonstrate an exploit | `kimera exploit privileged-containers` |
+| `secure [type]` | Apply security remediations | `kimera secure` |
+| `verify` | Verify security status | `kimera verify` |
+| `revert [type]` | Undo all kimera changes | `kimera revert` |
+| `rollback [service]` | Rollback a deployment revision | `kimera rollback` |
+| `enforce enable\|disable\|status` | Manage NetworkPolicy enforcement | `kimera enforce enable` |
+
+## NetworkPolicy Enforcement
+
+CNI plugins like Flannel create pod connectivity but do not enforce NetworkPolicy
+resources. Kimera can install [kube-router](https://www.kube-router.io/) in
+firewall-only mode to add iptables-based policy enforcement without replacing your
+existing CNI.
 
 ```bash
-k8s-exploit --namespace production assess
+kimera enforce enable    # Install kube-router
+kimera enforce status    # Check enforcement status
+kimera enforce disable   # Remove kube-router
 ```
 
-#### Dry Run
+This is intended for demo and testing environments. For production clusters,
+consider Calico, Cilium, or another CNI with built-in policy support.
+
+## Configuration
+
+Kimera uses a layered config system: `default.yaml` → profile → environment variables → CLI flags.
 
 ```bash
-k8s-exploit --dry-run secure
+# Auto-detect profile from namespace name
+kimera -n unguard assess
+
+# Explicit profile
+kimera -p unguard assess
+
+# Any namespace (auto-discovers services)
+kimera -n my-namespace assess
+
+# Flags
+kimera --verbose --debug --dry-run assess
 ```
 
-## 🔧 Architecture
+Profiles live in `config/profiles/` and define target-specific services and exploit mappings.
+
+## Architecture
 
 ```txt
-k8s-exploit-toolkit/
-├── k8s_exploit_toolkit/
-│   ├── application/            # Application layer
-│   │   ├── config/             # Configuration loading and schemas
-│   │   └── plugins/            # Plugin registry
-│   ├── container/              # Container security modules
+kimera/
+├── kimera/
+│   ├── application/            # Config loading, schemas, plugin registry
+│   ├── container/
 │   │   ├── assessment/         # Security scanning
-│   │   ├── core/               # Core utilities (client, config, logger)
+│   │   ├── core/               # K8s client, logger, command execution
+│   │   ├── infrastructure/     # Policy enforcement (kube-router)
 │   │   ├── make_vulnerable/    # Exploit implementations
-│   │   └── remediations/       # Security fixes and patching
-│   ├── domain/                 # Domain layer
-│   │   └── interfaces/         # Protocols and plugin interfaces
-│   ├── plugins/                # Plugin base classes
-│   ├── cli.py                  # Plugin-based CLI interface
-│   └── exploit_k8s.py          # Main CLI entrypoint
-├── config/                     # Default configuration files
-├── docs/                       # Documentation and standards
-├── scripts/                    # Utility scripts
-└── tests/                      # Test suite
+│   │   └── remediations/       # Security patching
+│   ├── domain/                 # Models and protocol interfaces
+│   └── plugins/                # Plugin base classes
+├── config/
+│   ├── profiles/               # Target-specific profiles
+│   └── exploits/               # YAML-driven security test definitions
+└── tests/
 ```
 
-## 🛡️ Safety Features
+## Safety Features
 
-- **Namespace Isolation**: Operations target specific namespaces only
-- **Confirmation Prompts**: Requires confirmation for destructive actions
-- **Rollback Support**: Built-in ability to undo all changes
-- **Dry Run Mode**: Preview changes without applying them
-- **Resource Safety**: Controlled demonstrations that don't harm cluster stability
+- **Namespace isolation** — Operations target specific namespaces only
+- **Confirmation prompts** — Requires confirmation for destructive actions
+- **Revert support** — Undo all changes via operation journal
+- **Dry run mode** — Preview changes without applying them
+- **Rollback** — Restore individual deployments to previous revisions
 
-## 🧪 Example Workflow
+## Contributing
 
-Here's a typical security testing workflow:
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
-```bash
-# 1. Initial assessment
-k8s-exploit assess
-
-# 2. Make service vulnerable for testing
-k8s-exploit vuln-service payment-service privileged
-
-# 3. Demonstrate the security impact
-k8s-exploit exploit privileged-containers
-
-# 4. Apply security fixes
-k8s-exploit --verbose secure-service payment-service
-
-# 5. Verify the improvements
-k8s-exploit verify
-
-# 6. Clean up (if needed)
-k8s-exploit rollback payment-service
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
-
-- How to report bugs
-- How to suggest enhancements
-- Development setup
-- Code submission guidelines
-
-## 📖 Educational Resources
+## References
 
 - [Kubernetes Security Documentation](https://kubernetes.io/docs/concepts/security/)
 - [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes)
 - [NIST Container Security Guide](https://csrc.nist.gov/publications/detail/sp/800-190/final)
 - [OWASP Kubernetes Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Kubernetes_Security_Cheat_Sheet.html)
 
-## 📄 License
+## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file for details.
 
-## 🏢 Maintainers
+## Maintainers
 
-This project is maintained by the [Dynatrace OSS](https://github.com/dynatrace-oss) team as part of our commitment to cloud-native security education and research.
+Maintained by [Dynatrace OSS](https://github.com/dynatrace-oss).
 
-## ⚖️ Legal Notice
+## Legal Notice
 
-This software is provided for educational and research purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse of this software.
+This software is provided for research and defensive testing purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse.

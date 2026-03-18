@@ -1,4 +1,4 @@
-"""Setup script for K8s Exploit Toolkit."""
+"""Setup script for Kimera."""
 
 # Copyright 2025 Dynatrace LLC
 #
@@ -17,10 +17,10 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="k8s-exploit-toolkit",
-    version="1.0.0",
-    py_modules=["k8s_exploit_toolkit"],
-    packages=find_packages(include=["k8s_exploit_toolkit", "k8s_exploit_toolkit.*"]),
+    name="kimera",
+    version="1.1.0",
+    py_modules=["kimera"],
+    packages=find_packages(include=["kimera", "kimera.*"]),
     install_requires=[
         "click>=8.1.0",
         "kubernetes>=28.1.0",
@@ -33,8 +33,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "k8s-exploit=k8s_exploit_toolkit.cli:main",
-            "k8s-exploit-toolkit=k8s_exploit_toolkit.exploit_k8s:main",
+            "kimera=kimera.exploit_k8s:main",
         ],
     },
 )

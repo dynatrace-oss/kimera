@@ -1,29 +1,19 @@
-# Default Configuration for Kimera K8s Exploit Toolkit
-# This file contains sensible defaults that work for most environments
+# Default Configuration for Kimera
+# Application-agnostic defaults. Use profiles for target-specific settings.
+# Example: kimera -p unguard assess
 
 # Kubernetes cluster configuration
 kubernetes:
-  namespace: "unguard"
+  namespace: "default"
   context: null  # Use current context from kubeconfig
   in_cluster: false
   kubeconfig_path: null  # Use default kubeconfig location
 
-# Target services
-services:
-  - "unguard-payment-service"
-  - "unguard-profile-service"
-  - "unguard-frontend"
-  - "unguard-membership-service"
-  - "unguard-user-auth-service"
-  - "unguard-ad-service"
-  - "unguard-proxy-service"
+# Target services (empty by default — set via profile or auto-discovered)
+services: []
 
-# Exploit to service mappings
-exploit_mappings:
-  privileged-containers: "unguard-payment-service"
-  dangerous-capabilities: "unguard-profile-service"
-  host-namespace-sharing: "unguard-frontend"
-  missing-resource-limits: "unguard-membership-service"
+# Exploit to service mappings (empty by default — set via profile)
+exploit_mappings: {}
 
 # Timeout configuration (seconds)
 timeouts:
@@ -62,99 +52,3 @@ secure_context:
   capabilities_add: []
   capabilities_drop:
     - "ALL"
-
-# Exploit configurations (loaded from config/exploits/*.yaml)
-exploits:
-  privileged-containers:
-    name: "privileged-containers"
-    enabled: true
-    default_service: "unguard-payment-service"
-    risk_level: "CRITICAL"
-    description: "Demonstrates container escape via privileged mode"
-    mitre_attack:
-      tactics:
-        - "Privilege Escalation"
-        - "Defense Evasion"
-      techniques:
-        - "T1611"  # Escape to Host
-      subtechniques:
-        - "T1611.001"
-      data_sources:
-        - "Container"
-        - "Process"
-    cis_controls:
-      - "5.2.1"  # Minimize privileged containers
-    cve_ids:
-      - "CVE-2019-5736"  # runc container escape
-    remediation_priority: 10
-
-  dangerous-capabilities:
-    name: "dangerous-capabilities"
-    enabled: true
-    default_service: "unguard-profile-service"
-    risk_level: "CRITICAL"
-    description: "Demonstrates host access via dangerous Linux capabilities"
-    mitre_attack:
-      tactics:
-        - "Privilege Escalation"
-        - "Defense Evasion"
-      techniques:
-        - "T1611"
-        - "T1543"  # Create or Modify System Process
-      subtechniques:
-        - "T1611.001"
-      data_sources:
-        - "Container"
-        - "Process"
-        - "File"
-    cis_controls:
-      - "5.2.2"  # Minimize containers with capabilities
-      - "5.2.7"  # Configure AppArmor
-    cve_ids: []
-    remediation_priority: 10
-
-  host-namespace-sharing:
-    name: "host-namespace-sharing"
-    enabled: true
-    default_service: "unguard-frontend"
-    risk_level: "HIGH"
-    description: "Demonstrates risks of host namespace sharing"
-    mitre_attack:
-      tactics:
-        - "Discovery"
-        - "Lateral Movement"
-      techniques:
-        - "T1613"  # Container and Resource Discovery
-      subtechniques: []
-      data_sources:
-        - "Container"
-        - "Network Traffic"
-    cis_controls:
-      - "5.2.3"  # Minimize sharing host network namespace
-      - "5.2.4"  # Minimize sharing host PID namespace
-      - "5.2.5"  # Minimize sharing host IPC namespace
-    cve_ids: []
-    remediation_priority: 8
-
-  missing-resource-limits:
-    name: "missing-resource-limits"
-    enabled: true
-    default_service: "unguard-membership-service"
-    risk_level: "MEDIUM"
-    description: "Demonstrates resource exhaustion attacks"
-    mitre_attack:
-      tactics:
-        - "Impact"
-      techniques:
-        - "T1496"  # Resource Hijacking
-        - "T1499"  # Endpoint Denial of Service
-      subtechniques:
-        - "T1499.004"  # Application or System Exploitation
-      data_sources:
-        - "Container"
-        - "Process"
-        - "Network Traffic"
-    cis_controls:
-      - "5.2.6"  # Set resource limits
-    cve_ids: []
-    remediation_priority: 5

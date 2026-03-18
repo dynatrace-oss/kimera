@@ -14,4 +14,4 @@
 # limitations under the License.
 #
 
-"""Test suite for K8s Exploit Toolkit."""
+"""Test suite for Kimera."""

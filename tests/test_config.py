@@ -20,138 +20,165 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from k8s_exploit_toolkit.container.core.config import Config, ExploitConfig
+from kimera.application.config.loader import ConfigLoader
+from kimera.application.config.schemas import ToolkitConfig
 
 
-class TestExploitConfig:
-    """Test ExploitConfig dataclass functionality."""
+class TestToolkitConfig:
+    """Test ToolkitConfig Pydantic model."""
 
-    def test_exploit_config_creation(self):
-        """Test ExploitConfig dataclass creation."""
-        config = ExploitConfig(
-            name="test-exploit",
-            service="test-service",
-            risk_level="high",
-            description="Test exploit for testing",
-            vulnerability_type="privileged",
+    def test_default_values(self):
+        """Test ToolkitConfig with default values."""
+        config = ToolkitConfig()
+
+        assert config.namespace == "default"
+        assert config.kubernetes.namespace == "default"
+        assert config.services == []
+        assert config.exploit_mappings == {}
+        assert config.dry_run is False
+        assert config.debug is False
+        assert config.verbose is False
+
+    def test_namespace_property(self):
+        """Test namespace property delegates to kubernetes.namespace."""
+        from kimera.application.config.schemas import KubernetesConfig
+
+        config = ToolkitConfig(kubernetes=KubernetesConfig(namespace="my-ns"))
+        assert config.namespace == "my-ns"
+
+    def test_custom_values(self):
+        """Test ToolkitConfig with custom values."""
+        config = ToolkitConfig(
+            services=["svc-a", "svc-b"],
+            exploit_mappings={"privileged-containers": "svc-a"},
+            dry_run=True,
+            debug=True,
+            verbose=True,
         )
 
-        assert config.name == "test-exploit"
-        assert config.service == "test-service"
-        assert config.risk_level == "high"
-        assert config.description == "Test exploit for testing"
-        assert config.vulnerability_type == "privileged"
+        assert config.services == ["svc-a", "svc-b"]
+        assert config.exploit_mappings["privileged-containers"] == "svc-a"
+        assert config.dry_run is True
+        assert config.debug is True
+        assert config.verbose is True
+
+    def test_empty_services_allowed(self):
+        """Test that an empty services list is valid."""
+        config = ToolkitConfig(services=[])
+        assert config.services == []
+
+    def test_secure_defaults(self):
+        """Test secure defaults have expected values."""
+        config = ToolkitConfig()
+        assert config.secure_defaults.memory == "256Mi"
+        assert config.secure_defaults.cpu == "200m"
+        assert config.secure_requests.memory == "128Mi"
+        assert config.secure_requests.cpu == "100m"
+
+    def test_timeout_defaults(self):
+        """Test timeout defaults are set."""
+        config = ToolkitConfig()
+        assert config.timeouts.operation == 300
+        assert config.timeouts.rollout == 120
 
 
-class TestConfig:
-    """Test Config dataclass functionality."""
+class TestConfigLoader:
+    """Test ConfigLoader with profiles and overrides."""
 
-    def test_config_defaults(self):
-        """Test Config dataclass with default values."""
-        config = Config()
+    def test_load_default_config(self):
+        """Test loading default.yaml produces an application-agnostic config."""
+        loader = ConfigLoader()
+        config = loader.load()
+
+        assert config.namespace == "default"
+        assert config.services == []
+        assert config.exploit_mappings == {}
+
+    def test_load_unguard_profile(self):
+        """Test loading the unguard profile provides Unguard services."""
+        loader = ConfigLoader()
+        config = loader.load(profile="unguard")
 
         assert config.namespace == "unguard"
-        assert config.timeout == 300
-        assert config.dry_run is False
-        assert config.debug is False
-        assert config.verbose is False
         assert len(config.services) == 7
         assert "unguard-payment-service" in config.services
-        assert len(config.exploit_mappings) == 4
+        assert len(config.exploit_mappings) == 5
         assert config.exploit_mappings["privileged-containers"] == "unguard-payment-service"
 
-    def test_config_custom_values(self):
-        """Test Config with custom values."""
-        config = Config(namespace="custom-ns", timeout=600, dry_run=True, debug=True, verbose=True)
+    def test_load_with_overrides(self):
+        """Test overrides take precedence."""
+        loader = ConfigLoader()
+        config = loader.load(overrides={"dry_run": True, "kubernetes": {"namespace": "custom"}})
 
-        assert config.namespace == "custom-ns"
-        assert config.timeout == 600
         assert config.dry_run is True
-        assert config.debug is True
-        assert config.verbose is True
+        assert config.namespace == "custom"
 
-    def test_config_from_env_defaults(self):
-        """Test Config.from_env() with default environment."""
-        with patch.dict(os.environ, {}, clear=True):
-            config = Config.from_env()
+    def test_load_production_profile(self):
+        """Test loading the production profile sets dry_run."""
+        loader = ConfigLoader()
+        config = loader.load(profile="production")
 
-        assert config.namespace == "unguard"
-        assert config.timeout == 300
-        assert config.dry_run is False
-        assert config.debug is False
-        assert config.verbose is False
+        assert config.dry_run is True
+        assert config.namespace == "security-testing"
 
-    def test_config_from_env_custom(self):
-        """Test Config.from_env() with custom environment variables."""
+    def test_load_nonexistent_profile_raises(self):
+        """Test loading a missing profile raises FileNotFoundError."""
+        loader = ConfigLoader()
+        with pytest.raises(FileNotFoundError, match="Profile configuration not found"):
+            loader.load(profile="nonexistent")
+
+    def test_env_var_overrides(self):
+        """Test environment variable overrides."""
         env_vars = {
-            "K8S_NAMESPACE": "test-namespace",
-            "K8S_TIMEOUT": "600",
-            "DRY_RUN": "true",
-            "DEBUG": "TRUE",
-            "VERBOSE": "True",
+            "K8S_EXPLOIT_NAMESPACE": "env-namespace",
+            "K8S_EXPLOIT_DRY_RUN": "true",
+            "K8S_EXPLOIT_DEBUG": "1",
         }
 
-        with patch.dict(os.environ, env_vars, clear=True):
-            config = Config.from_env()
+        with patch.dict(os.environ, env_vars, clear=False):
+            loader = ConfigLoader()
+            config = loader.load()
 
-        assert config.namespace == "test-namespace"
-        assert config.timeout == 600
+        assert config.namespace == "env-namespace"
         assert config.dry_run is True
         assert config.debug is True
-        assert config.verbose is True
 
-    def test_config_from_env_false_values(self):
-        """Test Config.from_env() with false boolean values."""
-        env_vars = {"DRY_RUN": "false", "DEBUG": "FALSE", "VERBOSE": "False"}
+    def test_deep_merge(self):
+        """Test deep merge of config dictionaries."""
+        loader = ConfigLoader()
+        base = {"kubernetes": {"namespace": "a", "context": "ctx"}, "dry_run": False}
+        override = {"kubernetes": {"namespace": "b"}, "verbose": True}
 
-        with patch.dict(os.environ, env_vars, clear=True):
-            config = Config.from_env()
+        result = loader._deep_merge(base, override)
+        assert result["kubernetes"]["namespace"] == "b"
+        assert result["kubernetes"]["context"] == "ctx"
+        assert result["verbose"] is True
 
-        assert config.dry_run is False
-        assert config.debug is False
-        assert config.verbose is False
 
-    def test_config_from_file_valid(self):
-        """Test Config.from_file() with valid YAML file."""
+class TestConfigLoaderFromFile:
+    """Test ConfigLoader with custom config files."""
+
+    def test_from_file(self):
+        """Test loading config from a custom YAML file."""
         config_data = {
-            "namespace": "test-ns",
-            "timeout": 600,
-            "services": ["service1", "service2"],
-            "exploit_mappings": {"exploit1": "service1"},
+            "kubernetes": {"namespace": "test-ns"},
+            "services": ["svc-1", "svc-2"],
+            "exploit_mappings": {"privileged-containers": "svc-1"},
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.safe_dump(config_data, f)
-            temp_path = Path(f.name)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "default.yaml"
+            with open(config_path, "w") as f:
+                yaml.safe_dump(config_data, f)
 
-        try:
-            config = Config.from_file(temp_path)
+            loader = ConfigLoader(config_dir=Path(tmpdir))
+            config = loader.load()
 
-            assert config.namespace == "test-ns"
-            assert config.timeout == 600
-            assert config.services == ["service1", "service2"]
-            assert config.exploit_mappings == {"exploit1": "service1"}
-        finally:
-            temp_path.unlink()
+        assert config.namespace == "test-ns"
+        assert config.services == ["svc-1", "svc-2"]
+        assert config.exploit_mappings == {"privileged-containers": "svc-1"}
 
-    def test_config_from_file_missing_keys(self):
-        """Test Config.from_file() with missing required keys."""
-        config_data = {
-            "namespace": "test-ns",
-            # Missing timeout, services, exploit_mappings
-        }
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.safe_dump(config_data, f)
-            temp_path = Path(f.name)
-
-        try:
-            with pytest.raises(ValueError, match="Missing required key in config: timeout"):
-                Config.from_file(temp_path)
-        finally:
-            temp_path.unlink()
-
-    def test_config_from_file_nonexistent(self):
-        """Test Config.from_file() with nonexistent file."""
-        with pytest.raises(FileNotFoundError):
-            Config.from_file(Path("/nonexistent/path.yaml"))
+    def test_nonexistent_config_dir_raises(self):
+        """Test that a nonexistent config directory raises."""
+        with pytest.raises(FileNotFoundError, match="Config directory not found"):
+            ConfigLoader(config_dir=Path("/nonexistent/path"))

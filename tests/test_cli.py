@@ -18,23 +18,23 @@ from unittest.mock import patch
 class TestCLI:
     """Test CLI module functionality."""
 
-    @patch("k8s_exploit_toolkit.cli.main")
+    @patch("kimera.cli.main")
     def test_cli_main_import(self, mock_main):
         """Test that CLI module imports main function correctly."""
-        from k8s_exploit_toolkit.cli import main
+        from kimera.cli import main
 
         # Verify the import works
         assert main is not None
         assert callable(main)
 
     @patch("sys.exit")
-    @patch("k8s_exploit_toolkit.exploit_k8s.main")
+    @patch("kimera.exploit_k8s.main")
     def test_cli_main_execution(self, mock_main, mock_exit):
         """Test CLI main execution path."""
         mock_main.return_value = 0
 
         # Import and run the CLI module as main
-        import k8s_exploit_toolkit.cli as cli_module
+        import kimera.cli as cli_module
 
         # Simulate running as main
         if hasattr(cli_module, "__name__"):
@@ -44,7 +44,7 @@ class TestCLI:
 
     def test_cli_module_attributes(self):
         """Test that CLI module has expected attributes."""
-        import k8s_exploit_toolkit.cli as cli_module
+        import kimera.cli as cli_module
 
         # Check that main is imported
         assert hasattr(cli_module, "main")
