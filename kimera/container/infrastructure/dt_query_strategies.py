@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import json
-import yaml
 import logging
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from .dt_data_models import DtContext, KspmFinding, SmartscapeEdge
 
@@ -30,7 +31,6 @@ _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 @lru_cache(maxsize=1)
 def _load_dql_reference() -> dict[str, Any]:
     """Load the DQL reference YAML (cached)."""
-
     data: dict[str, Any] = yaml.safe_load((_PROMPTS_DIR / "dql_reference.yaml").read_text())
     return data
 
