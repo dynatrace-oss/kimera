@@ -29,7 +29,7 @@ class ConfigLoader:
 
     The loader follows these principles:
     - Start with sensible defaults from default.yaml
-    - Override with profile-specific settings (dev, prod, training)
+    - Override with profile-specific settings (e.g., unguard)
     - Override with environment variables (K8S_EXPLOIT_*)
     - Override with CLI flags (passed at runtime)
     """
@@ -57,7 +57,7 @@ class ConfigLoader:
         """Load configuration with optional profile and overrides.
 
         Args:
-            profile: Profile name (development, production, training, None for default)
+            profile: Profile name (e.g., "unguard") or None for default
             overrides: Runtime overrides (typically from CLI flags)
 
         Returns:
@@ -219,7 +219,7 @@ class ConfigLoader:
         """Create configuration from specific profile.
 
         Args:
-            profile: Profile name (development, production, training)
+            profile: Profile name (e.g., "unguard")
 
         Returns:
             Configuration with profile settings
