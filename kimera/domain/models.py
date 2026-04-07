@@ -17,35 +17,6 @@ from typing import Any
 
 
 @dataclass
-class ExploitMetadata:
-    """Metadata for an exploit plugin.
-
-    Attributes:
-        name: Unique exploit identifier
-        display_name: Human-readable name
-        risk_level: Risk severity (CRITICAL, HIGH, MEDIUM, LOW)
-        description: Detailed description
-        mitre_tactics: MITRE ATT&CK tactics
-        mitre_techniques: MITRE ATT&CK technique IDs
-        cis_controls: CIS Benchmark control IDs
-        cve_ids: Related CVE identifiers
-        version: Plugin version
-        author: Plugin author
-    """
-
-    name: str
-    display_name: str
-    risk_level: str
-    description: str
-    mitre_tactics: list[str] = field(default_factory=list)
-    mitre_techniques: list[str] = field(default_factory=list)
-    cis_controls: list[str] = field(default_factory=list)
-    cve_ids: list[str] = field(default_factory=list)
-    version: str = "1.0.0"
-    author: str = "Dynatrace OSS"
-
-
-@dataclass
 class ExploitResult:
     """Result of an exploit execution.
 
@@ -70,23 +41,6 @@ class ExploitResult:
     def add_impact(self, item: str) -> None:
         """Add impact item."""
         self.impact.append(item)
-
-
-@dataclass
-class VulnerabilityCheck:
-    """Result of vulnerability check.
-
-    Attributes:
-        vulnerable: Whether system is vulnerable
-        details: Check details
-        severity: Vulnerability severity
-        remediation_available: Whether remediation is available
-    """
-
-    vulnerable: bool
-    details: str
-    severity: str
-    remediation_available: bool = True
 
 
 @dataclass

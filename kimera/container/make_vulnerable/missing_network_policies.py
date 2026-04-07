@@ -60,10 +60,6 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         """Not used — vulnerability is the absence of network policies."""
         return []
 
-    def get_secure_patch(self) -> list[dict[str, Any]]:
-        """Not used — remediation creates NetworkPolicy resources."""
-        return []
-
     def check_vulnerability(self) -> bool:
         """Check if the namespace lacks network policies."""
         policies = self.k8s.list_network_policies(self.k8s.namespace)
@@ -98,31 +94,15 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         return True
 
     def make_secure(self, dry_run: bool = False) -> bool:
-        """Create network policies based on auto-discovered deployments."""
-        self.logger.info(f"Applying network policies to {self.k8s.namespace}...")
-        policies = self._auto_discover_policies()
-        applied = 0
+        """Print remediation guidance for network policies.
 
-        for policy in policies:
-            if self.k8s.create_network_policy(policy, self.k8s.namespace, dry_run=dry_run):
-                applied += 1
-
-        if not dry_run:
-            self.logger.success(f"Applied {applied}/{len(policies)} NetworkPolicies")
-
-            if applied == len(policies) and not self.k8s.daemonset_exists(
-                "kube-router", "kube-system"
-            ):
-                self.logger.warning(
-                    "NetworkPolicies created but enforcement may not be active. "
-                    "Run 'kimera enforce enable' to install kube-router."
-                )
-
-            record_operation(
-                "make_secure", self.vulnerability_type, self.service, self.k8s.namespace
-            )
-
-        return applied == len(policies)
+        Extends base guidance with enforcement check since NetworkPolicies
+        require a policy-enforcing CNI (Cilium).
+        """
+        super().make_secure(dry_run=dry_run)
+        console.print("[bold]Verify enforcement (Cilium required):[/bold]")
+        console.print("  kimera enforce enable\n")
+        return True
 
     def revert(self, dry_run: bool = False) -> bool:
         """Remove toolkit-managed network policies (alias for make_vulnerable)."""
@@ -130,114 +110,6 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         if result and not dry_run:
             clear_operation(self.vulnerability_type, self.service, self.k8s.namespace)
         return result
-
-    # -- Auto-discovery helpers --------------------------------------------------
-
-    def _auto_discover_policies(self) -> list[dict[str, Any]]:
-        """Discover deployments in the namespace and generate network policies.
-
-        Generates:
-        1. A default-deny-all policy
-        2. Per-deployment policies allowing ingress on declared container ports + DNS egress
-        """
-        namespace = self.k8s.namespace
-        policies: list[dict[str, Any]] = [self._build_default_deny(namespace)]
-
-        try:
-            deployments = self.k8s.apps_v1.list_namespaced_deployment(namespace)
-        except Exception as e:
-            self.logger.error(f"Failed to list deployments: {e}")
-            return policies
-
-        for dep in deployments.items:
-            labels = dep.spec.selector.match_labels or {}
-            ports = self._extract_container_ports(dep)
-            name = dep.metadata.name
-            policies.append(self._build_service_policy(namespace, name, labels, ports))
-
-        return policies
-
-    @staticmethod
-    def _build_default_deny(namespace: str) -> dict[str, Any]:
-        """Build a default-deny-all NetworkPolicy."""
-        return {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": "default-deny-all",
-                "namespace": namespace,
-                "labels": {TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE},
-            },
-            "spec": {
-                "podSelector": {},
-                "policyTypes": ["Ingress", "Egress"],
-            },
-        }
-
-    @staticmethod
-    def _build_service_policy(
-        namespace: str,
-        name: str,
-        match_labels: dict[str, str],
-        ports: list[int],
-    ) -> dict[str, Any]:
-        """Build an allow policy for a single deployment."""
-        dns_egress = {
-            "to": [
-                {
-                    "namespaceSelector": {},
-                    "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
-                }
-            ],
-            "ports": [{"protocol": "UDP", "port": 53}],
-        }
-
-        ingress_rules: list[dict[str, Any]] = []
-        if ports:
-            ingress_rules.append({"ports": [{"protocol": "TCP", "port": p} for p in ports]})
-
-        egress_rules: list[dict[str, Any]] = [
-            {
-                "to": [
-                    {
-                        "namespaceSelector": {
-                            "matchLabels": {"kubernetes.io/metadata.name": namespace}
-                        }
-                    }
-                ],
-            },
-            dns_egress,
-        ]
-
-        return {
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": f"allow-{name}",
-                "namespace": namespace,
-                "labels": {TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE},
-            },
-            "spec": {
-                "podSelector": {"matchLabels": match_labels},
-                "policyTypes": ["Ingress", "Egress"],
-                "ingress": ingress_rules,
-                "egress": egress_rules,
-            },
-        }
-
-    @staticmethod
-    def _extract_container_ports(deployment: Any) -> list[int]:
-        """Extract declared container ports from a deployment spec."""
-        ports: list[int] = []
-        try:
-            for container in deployment.spec.template.spec.containers:
-                if container.ports:
-                    for port in container.ports:
-                        if port.container_port:
-                            ports.append(int(port.container_port))
-        except (AttributeError, TypeError):
-            pass
-        return ports
 
     # -- Demonstration -----------------------------------------------------------
 
@@ -312,6 +184,15 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                     f"if nc -z -w 3 {svc_name} {port} 2>/dev/null; then "
                     f'echo "OPEN"; else echo "CLOSED"; fi'
                 )
+                # For Redis: send a real DBSIZE command to produce observable traffic
+                # that Dynatrace OneAgent records as a Redis protocol interaction
+                if port == 6379:
+                    probe_cmds.append(
+                        f'key_count=$(printf "*1\\r\\n\\$6\\r\\nDBSIZE\\r\\n"'
+                        f" | nc -w3 {svc_name} {port} 2>/dev/null"
+                        f' | tr -d "\\r" | grep -o "[0-9]*")\n'
+                        f'[ -n "$key_count" ] && echo "[*] Redis key count: $key_count"'
+                    )
             tests.append(
                 SecurityTest(
                     name="Data store accessibility",

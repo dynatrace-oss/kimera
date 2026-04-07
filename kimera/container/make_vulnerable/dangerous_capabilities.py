@@ -71,51 +71,6 @@ class DangerousCapabilitiesExploit(BaseExploit):
             {"op": "add", "path": "/spec/template/spec/hostPID", "value": True},
         ]
 
-    def get_secure_patch(self) -> list[dict[str, Any]]:
-        """Get patch to remove dangerous capabilities from the deployment."""
-        return [
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/securityContext/privileged",
-                "value": False,
-            },
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation",
-                "value": False,
-            },
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/securityContext/runAsNonRoot",
-                "value": True,
-            },
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/securityContext/runAsUser",
-                "value": 1000,
-            },
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/containers/0/securityContext/capabilities",
-                "value": {"drop": ["ALL"]},
-            },
-            {"op": "replace", "path": "/spec/template/spec/hostPID", "value": False},
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/hostNetwork",
-                "value": False,
-            },
-            {"op": "replace", "path": "/spec/template/spec/hostIPC", "value": False},
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/resources",
-                "value": {
-                    "limits": {"memory": "256Mi", "cpu": "200m"},
-                    "requests": {"memory": "128Mi", "cpu": "100m"},
-                },
-            },
-        ]
-
     def check_vulnerability(self) -> bool:
         """Check if service has dangerous capabilities."""
         pod_name = self.k8s.find_pod_for_service(self.service)
