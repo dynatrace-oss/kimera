@@ -1,0 +1,21 @@
+Generate 2-4 DQL queries to fetch Dynatrace data relevant to **{{ exploit_type }}** vulnerabilities in namespace **{{ namespace }}**{% if cluster_name %} on cluster **{{ cluster_name }}**{% endif %}.
+
+The queries should return data useful for generating security remediations for this specific exploit type. Focus on:
+{% if exploit_type == "missing-network-policies" or exploit_type == "all" %}
+- KSPM compliance findings related to network policies (CIS-78711)
+- Smartscape service-to-service communication edges (observed topology)
+- Process group instances to understand workload placement
+{% elif exploit_type == "privileged-containers" %}
+- KSPM compliance findings related to privileged containers and root execution
+- Deployment security contexts
+{% elif exploit_type == "dangerous-capabilities" %}
+- KSPM compliance findings related to Linux capabilities
+- Container capability configurations
+{% elif exploit_type == "host-namespace-sharing" %}
+- KSPM compliance findings related to host namespace access
+- Pod-level security contexts
+{% elif exploit_type == "missing-resource-limits" %}
+- KSPM compliance findings related to resource limits and requests
+{% endif %}
+
+Return ONLY the JSON array, no other text.
