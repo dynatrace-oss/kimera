@@ -1,0 +1,174 @@
+# Copyright 2025 Dynatrace LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# DQL syntax rules, query templates, naming model, and category keywords.
+# Single source of truth for DQL knowledge — loaded as Jinja context for
+# LLM prompt templates and referenced by DT query strategies.
+#
+# Validated against Dynatrace MCP gateway (execute-dql tool).
+# See tmp/dql_reference/ for detailed human-readable documentation.
+
+syntax_rules:
+  kspm:
+    data_source: "security.events"
+    time_range: "from:-7d"
+    required_filters:
+      - 'dt.system.bucket == "default_securityevents_builtin"'
+      - 'event.type == "COMPLIANCE_FINDING"'
+      - 'compliance.result.status.level == "FAILED"'
+    note: >-
+      Without the FAILED filter, counts include PASSED and NOT_RELEVANT results,
+      inflating numbers and producing misleading output.
+  smartscape:
+    edge_command: "smartscapeEdges calls"
+    time_range: "from:-30m"
+    name_resolution: >-
+      fieldsAdd source_name = getNodeField(source_id, "name"),
+      target_name = getNodeField(target_id, "name"),
+      source_workload = getNodeField(source_id, "k8s.workload.name"),
+      target_workload = getNodeField(target_id, "k8s.workload.name")
+    case_sensitivity: >-
+      contains() is case-sensitive in DQL.
+      Use contains(lower(field), "keyword") for case-insensitive matching.
+    observed_vs_allowed: >-
+      Smartscape shows observed traffic (what OneAgent actually sees),
+      not allowed connectivity. Say "observed" not "reachable".
+  process_groups:
+    data_source: "dt.entity.process_group_instance"
+
+naming_model:
+  service: >-
+    Service display names are language-dependent: Java = ClassName
+    (e.g. MicroblogController), Node.js = module-name (e.g. user-auth-service),
+    .NET = Assembly.dll, PHP = "PHP on pod-pattern", Port-only = :8083.
+    SERVICE names generally do NOT contain K8s object names.
+  process: >-
+    Process display name + K8s pod pattern
+    (e.g. "bin/www (user-auth-service) unguard-user-auth-service-*").
+    K8s workload name is retrievable via getNodeField(entity_id, "k8s.workload.name") in
+    smartscapeEdges queries; returns the pod prefix without the trailing "-*"
+    (e.g. "unguard-user-auth-service"). Use this for exact KSPM-to-Smartscape correlation.
+    Best for namespace-based filtering because contains(name, "unguard") matches reliably.
+  kspm: >-
+    K8s object names at deployment/replicaset/pod level
+    (e.g. unguard-microblog-service-cff9d89f8). No overlap with SERVICE names.
+  bridge_pattern: >-
+    Preferred: use getNodeField(source_id, "k8s.workload.name") in smartscapeEdges queries
+    to get an exact K8s workload → Smartscape display name mapping
+    (e.g. "unguard-user-auth-service" → "bin/www (user-auth-service) unguard-user-auth-service-*").
+    Fallback: match on common substrings present in BOTH naming schemes
+    (e.g. "microblog" matches both "unguard-microblog-service-cff9d89f8" and "MicroblogController").
+
+category_keywords:
+  missing-network-policies:
+    - "network polic"
+  privileged-containers:
+    - "privileged"
+    - "root"
+  dangerous-capabilities:
+    - "capabilit"
+  host-namespace-sharing:
+    - "host"
+  missing-resource-limits:
+    - "resource"
+    - "limit"
+  identity-exposure:
+    - "service account"
+    - "token"
+
+known_rule_ids:
+  CIS-78711: "Ensure all Namespaces have Network Policies defined"
+
+query_templates:
+  kspm_by_rule:
+    purpose: "KSPM findings filtered by CIS rule ID"
+    template: |
+      fetch security.events, from:-7d
+      | filter dt.system.bucket == "default_securityevents_builtin"
+      | filter event.type == "COMPLIANCE_FINDING"
+      | filter k8s.cluster.name == "{cluster_name}"
+      | filter compliance.rule.id == "{rule_id}"
+      | filter compliance.result.status.level == "FAILED"
+      | filter k8s.namespace.name == "{namespace}"
+      | summarize findings = count(), by:{compliance.result.object.name, compliance.rule.title}
+      | sort findings desc
+
+  kspm_by_category:
+    purpose: "KSPM findings filtered by rule title keywords"
+    template: |
+      fetch security.events, from:-7d
+      | filter dt.system.bucket == "default_securityevents_builtin"
+      | filter event.type == "COMPLIANCE_FINDING"
+      | filter k8s.cluster.name == "{cluster_name}"
+      | filter contains(lower(compliance.rule.title), "{keyword}")
+      | filter compliance.result.status.level == "FAILED"
+      | filter k8s.namespace.name == "{namespace}"
+      | summarize findings = count(), by:{compliance.result.object.name, compliance.rule.title}
+      | sort findings desc
+
+  kspm_all_failed:
+    purpose: "All FAILED KSPM findings for a namespace"
+    template: |
+      fetch security.events, from:-7d
+      | filter dt.system.bucket == "default_securityevents_builtin"
+      | filter event.type == "COMPLIANCE_FINDING"
+      | filter k8s.cluster.name == "{cluster_name}"
+      | filter compliance.result.status.level == "FAILED"
+      | filter k8s.namespace.name == "{namespace}"
+      | summarize findings = count(), by:{compliance.result.object.name, compliance.rule.title}
+      | sort findings desc
+
+  smartscape_full:
+    purpose: "Service-to-service edges with name resolution and K8s workload mapping"
+    template: |
+      smartscapeEdges calls, from:-30m
+      | fieldsAdd source_name = getNodeField(source_id, "name"),
+          target_name = getNodeField(target_id, "name"),
+          source_workload = getNodeField(source_id, "k8s.workload.name"),
+          target_workload = getNodeField(target_id, "k8s.workload.name")
+      | filter contains(lower(source_name), "{namespace}") or contains(lower(target_name), "{namespace}")
+      | fields source_name, target_name, source_workload, target_workload
+
+  smartscape_minimal:
+    purpose: "Total edge count"
+    template: |
+      smartscapeEdges calls, from:-30m
+      | summarize total_edges = count()
+
+  smartscape_data_stores:
+    purpose: "Processes communicating with databases and caches"
+    template: |
+      smartscapeEdges calls
+      | fieldsAdd source_name = getNodeField(source_id, "name"),
+          target_name = getNodeField(target_id, "name")
+      | filter contains(target_name, "mariadb") or contains(target_name, "redis")
+      | fields source_name, target_name
+
+  process_groups:
+    purpose: "Process group instances in a namespace"
+    template: |
+      fetch dt.entity.process_group_instance
+      | filter k8s.namespace.name == "{namespace}"
+      | filter k8s.cluster.name == "{cluster_name}"
+
+  latest_scan_id:
+    purpose: "Most recent KSPM scan ID"
+    template: |
+      fetch security.events, from:-1h
+      | filter dt.system.bucket == "default_securityevents_builtin"
+      | filter event.type == "COMPLIANCE_FINDING"
+      | filter k8s.cluster.name == "{cluster_name}"
+      | summarize latest = max(timestamp), by:{scan.id}
+      | sort latest desc
+      | limit 1

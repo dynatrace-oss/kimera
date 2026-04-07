@@ -1,32 +1,38 @@
 # Container Security Implementation
 
-This directory contains the core container security functionality of the Kimera.
+This directory contains the core container security functionality of Kimera.
 
-## 🏗️ Module Structure
+## Module Structure
 
 ```txt
 container/
 ├── assessment/         # Security scanning and analysis
 │   └── scanner.py     # Deployment security scanner
 ├── core/              # Core utilities and configuration
-│   ├── config.py      # Configuration management
+│   ├── command.py     # Subprocess command execution
+│   ├── config.py      # Configuration re-exports
 │   ├── exceptions.py  # Custom exceptions
+│   ├── journal.py     # Operation journal (.kimera-state.json)
 │   ├── k8s_client.py  # Kubernetes API client wrapper
 │   └── logger.py      # Logging configuration
 ├── infrastructure/    # Cluster infrastructure management
-│   └── enforcement.py # NetworkPolicy enforcement (kube-router)
+│   ├── dt_mcp_client.py   # Dynatrace MCP gateway client
+│   ├── enforcement.py     # Cilium NetworkPolicy enforcement
+│   └── resource_applier.py # YAML resource and exploit patch applier
 ├── make_vulnerable/   # Vulnerability injection modules
-│   ├── base.py                        # Base vulnerability class
+│   ├── base.py                        # Base exploit class
 │   ├── dangerous_capabilities.py      # Linux capabilities exploitation
 │   ├── host_namespace_sharing.py      # Host namespace access
 │   ├── missing_network_policies.py    # Network policy absence
 │   ├── missing_resource_limits.py     # Resource exhaustion
-│   └── privileged_containers.py       # Privileged container exploits
-└── remediations/      # Security fixes and patches
-    └── patcher.py     # Security remediation engine
+│   ├── privileged_containers.py       # Privileged container exploits
+│   ├── probe_runner.py                # Shell probe generator for tests
+│   └── test_loader.py                # YAML test definition loader
+└── remediations/      # LLM-based remediation generation
+    └── generator.py   # LLMRemediationGenerator (remediation + exploit)
 ```
 
-## 🔍 Key Components
+## Key Components
 
 ### Security Scanner (`assessment/scanner.py`)
 
@@ -49,82 +55,55 @@ Each module implements specific security weaknesses:
 - **Missing Resource Limits**: Resource exhaustion vulnerabilities
 - **Missing Network Policies**: Unrestricted lateral movement across namespaces
 
+### LLM Generation (`remediations/generator.py`)
+
+Generates remediation YAML and exploit patches using Anthropic Claude:
+
+```bash
+# Remediation mode (default)
+kimera -n unguard generate --type network-policies --apply
+
+# Exploit mode (cluster-aware patches)
+kimera -n unguard generate --mode exploit --type privileged-containers --apply
+```
+
+### Resource Applier (`infrastructure/resource_applier.py`)
+
+Applies YAML resources and exploit patches with label injection and journal tracking:
+
+```bash
+kimera -n unguard apply policies.yaml
+```
+
 ### Policy Enforcement (`infrastructure/enforcement.py`)
 
-Installs kube-router in firewall-only mode for NetworkPolicy enforcement on clusters
-where the CNI (e.g., Flannel) does not enforce policies natively:
+Checks for Cilium and provides installation guidance for NetworkPolicy enforcement:
 
 ```python
 from kimera.container.infrastructure.enforcement import PolicyEnforcementManager
 
 manager = PolicyEnforcementManager(k8s_client)
-manager.enable()   # Install kube-router
-manager.disable()  # Remove kube-router
+manager.enable()   # Check Cilium status / print guidance
 ```
 
-### Remediation Engine (`remediations/patcher.py`)
-
-Applies security best practices to fix identified vulnerabilities:
-
-```python
-from kimera.container.remediations.patcher import SecurityPatcher
-
-patcher = SecurityPatcher(k8s_client)
-patcher.apply_security_patch("my-deployment", "privileged")
-```
-
-## 🛡️ Vulnerability Details
+## Vulnerability Details
 
 ### Privileged Containers
-
 - **Risk**: Complete bypass of container isolation
 - **Impact**: Root access to host system
-- **Demonstration**: Host filesystem access, device manipulation
 
 ### Dangerous Capabilities
-
 - **Risk**: Container escape through Linux capabilities
 - **Impact**: Kernel manipulation, host compromise
-- **Demonstration**: CAP_SYS_ADMIN exploitation
 
 ### Host Namespace Sharing
-
 - **Risk**: Access to host processes and network
 - **Impact**: Information disclosure, lateral movement
-- **Demonstration**: Host process visibility, network access
 
 ### Missing Resource Limits
-
 - **Risk**: Denial of service through resource exhaustion
 - **Impact**: Node instability, service degradation
-- **Demonstration**: Controlled memory/CPU consumption
 
 ### Missing Network Policies
-
 - **Risk**: Unrestricted pod-to-pod communication across namespaces
 - **Impact**: Lateral movement, data store access, infrastructure reachability
-- **Demonstration**: DNS enumeration, cross-namespace Redis/MariaDB access, API server connectivity
-
-## 🔧 Configuration
-
-The container module uses configuration from `core/config.py`:
-
-```python
-from kimera.container.core.config import ContainerConfig
-
-config = ContainerConfig()
-config.target_namespace = "production"
-config.dry_run = True
-```
-
-## 🐛 Error Handling
-
-Custom exceptions are defined in `core/exceptions.py`:
-
-```python
-from kimera.container.core.exceptions import (
-    SecurityViolationError,
-    DeploymentNotFoundError,
-    InsufficientPermissionsError
-)
-```

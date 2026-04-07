@@ -29,7 +29,6 @@ MANIFEST
 # Virtual environments
 .env
 .venv
-env/
 venv/
 ENV/
 env.bak/
@@ -48,7 +47,16 @@ venv.bak/
 .tox/
 .nox/
 htmlcov/
-.*
+.c*
+
+# Allow specific hidden directories and files that should be tracked
+!.github/
+!.github/Dynatrace.md.template
+!.github/.dynatrace-env.example
+# Generated from template (run: bash scripts/setup-dynatrace-md.sh)
+.github/Dynatrace.md
+# Local DT environment config
+.github/.dynatrace-env
 
 # Jupyter
 .ipynb_checkpoints

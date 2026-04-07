@@ -1,7 +1,7 @@
 # Unguard Profile Configuration
-# Target settings for the Dynatrace Unguard demo application
-# Usage: kimera -p unguard assess
-#   or:  kimera -n unguard assess  (auto-detected)
+# Target settings for the Dynatrace Unguard application
+# Usage: kimera -n unguard assess  (auto-detected)
+#   or:  kimera -p unguard assess
 
 kubernetes:
   namespace: "unguard"
@@ -22,4 +22,39 @@ exploit_mappings:
   dangerous-capabilities: "unguard-profile-service"
   host-namespace-sharing: "unguard-frontend"
   missing-resource-limits: "unguard-membership-service"
-  missing-network-policies: "unguard-ad-service"
+  missing-network-policies: "unguard-like-service"
+
+# Least-privilege network topology for NetworkPolicy generation.
+# Defines which pods may send ingress traffic to each service.
+# Used by: kimera secure missing-network-policies and kimera generate
+network_topology:
+  unguard-user-auth-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+      - {app.kubernetes.io/name: envoy-proxy}
+      - {app.kubernetes.io/name: proxy-service}
+  unguard-like-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+      - {app.kubernetes.io/name: envoy-proxy}
+  unguard-membership-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+      - {app.kubernetes.io/name: envoy-proxy}
+      - {app.kubernetes.io/name: proxy-service}
+  unguard-microblog-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+      - {app.kubernetes.io/name: envoy-proxy}
+      - {app.kubernetes.io/name: proxy-service}
+  unguard-mariadb:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: like-service}
+      - {app.kubernetes.io/name: user-auth-service}
+      - {app.kubernetes.io/name: membership-service}
+      - {app.kubernetes.io/name: microblog-service}
+      - {app.kubernetes.io/name: status-service}
+  unguard-redis:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: microblog-service}
+      - {app.kubernetes.io/name: status-service}

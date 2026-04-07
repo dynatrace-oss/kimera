@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Exploit for enabling host namespace sharing (PID, IPC, network)."""
-
 from typing import Any
 
 from ...domain.models import ExploitResult
@@ -46,50 +44,6 @@ class HostNamespaceSharingExploit(BaseExploit):
         return [
             {"op": "add", "path": "/spec/template/spec/hostPID", "value": True},
             {"op": "add", "path": "/spec/template/spec/hostNetwork", "value": True},
-        ]
-
-    def get_secure_patch(self) -> list[dict[str, Any]]:
-        """Get patch to disable host namespace sharing."""
-        return [
-            {"op": "replace", "path": "/spec/template/spec/hostPID", "value": False},
-            {
-                "op": "replace",
-                "path": "/spec/template/spec/hostNetwork",
-                "value": False,
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/securityContext",
-                "value": {},
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/securityContext/runAsNonRoot",
-                "value": True,
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/securityContext/runAsUser",
-                "value": 1000,
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation",
-                "value": False,
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/securityContext/capabilities",
-                "value": {"drop": ["ALL"], "add": ["NET_BIND_SERVICE"]},
-            },
-            {
-                "op": "add",
-                "path": "/spec/template/spec/containers/0/resources",
-                "value": {
-                    "limits": {"memory": "512Mi", "cpu": "300m"},
-                    "requests": {"memory": "256Mi", "cpu": "150m"},
-                },
-            },
         ]
 
     def check_vulnerability(self) -> bool:

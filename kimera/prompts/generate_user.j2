@@ -1,0 +1,100 @@
+Namespace: {{ namespace }}
+
+{% if exploit_type in ("missing-network-policies", "all") %}
+## Workloads
+
+Deployments and their pod label selectors:
+{% for name, info in context.deployments.items() %}
+  {{ name }}: labels={{ info.labels | tojson }}, ports={{ info.ports | tojson }}
+{% endfor %}
+
+{% if context.statefulsets %}
+StatefulSets:
+{% for name, info in context.statefulsets.items() %}
+  {{ name }}: labels={{ info.labels | tojson }}, ports={{ info.ports | tojson }}
+{% endfor %}
+{% endif %}
+
+{% if context.services %}
+Services:
+{% for name, info in context.services.items() %}
+  {{ name }}: selector={{ info.selector | tojson }}, ports={{ info.ports | tojson }}
+{% endfor %}
+{% endif %}
+
+Allowed ingress topology (service -> callers):
+{% if topology %}
+{% for svc, callers in topology.items() %}
+  {{ svc }}:
+{% if callers %}
+{% for caller in callers %}
+    - {{ caller | tojson }}
+{% endfor %}
+{% else %}
+    [] (no callers — block all ingress)
+{% endif %}
+{% endfor %}
+{% else %}
+  (none configured — apply fail-open ingress for all services)
+{% endif %}
+
+Generate NetworkPolicies for ALL workloads listed above.
+{% endif %}
+
+{% if exploit_type in ("privileged-containers", "dangerous-capabilities", "host-namespace-sharing", "missing-resource-limits", "all") %}
+{% if exploit_type == "all" %}
+## Deployment Security Contexts
+{% endif %}
+
+{% if context.security_contexts %}
+{% for name, info in context.security_contexts.items() %}
+{{ name }}:
+  pod: hostPID={{ info.pod.host_pid }}, hostNetwork={{ info.pod.host_network }}, hostIPC={{ info.pod.host_ipc }}
+{% for c in info.containers %}
+  container "{{ c.name }}":
+{% if c.privileged is not none %}    privileged={{ c.privileged }}
+{% endif %}
+{% if c.allow_privilege_escalation is not none %}    allowPrivilegeEscalation={{ c.allow_privilege_escalation }}
+{% endif %}
+{% if c.run_as_non_root is not none %}    runAsNonRoot={{ c.run_as_non_root }}
+{% endif %}
+{% if c.run_as_user is not none %}    runAsUser={{ c.run_as_user }}
+{% endif %}
+{% if c.capabilities_add is defined %}    capabilities.add={{ c.capabilities_add | tojson }}
+{% endif %}
+{% if c.capabilities_drop is defined %}    capabilities.drop={{ c.capabilities_drop | tojson }}
+{% endif %}
+{% if c.resources is defined %}    resources={{ c.resources | tojson }}
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+{% endif %}
+
+{% if exploit_type == "privileged-containers" %}
+Generate hardened Deployment YAML for all deployments with privileged=true or allowPrivilegeEscalation=true.
+{% elif exploit_type == "dangerous-capabilities" %}
+Generate hardened Deployment YAML for all deployments with dangerous capabilities (capabilities.add is non-empty).
+{% elif exploit_type == "host-namespace-sharing" %}
+Generate hardened Deployment YAML for all deployments with hostPID, hostNetwork, or hostIPC enabled.
+{% elif exploit_type == "missing-resource-limits" %}
+Generate Deployment YAML with resource limits for all deployments missing resources.limits.
+{% endif %}
+{% endif %}
+
+{% if exploit_type == "all" %}
+Generate ALL applicable remediations: NetworkPolicies for network segmentation AND hardened Deployments for any container security issues found above.
+{% endif %}
+
+{% if kspm_context %}
+KSPM compliance findings (FAILED only):
+{{ kspm_context }}
+
+{% endif %}
+{% if smartscape_context %}
+Observed Smartscape communication edges (source -> target):
+{{ smartscape_context }}
+
+IMPORTANT: Smartscape shows what IS communicating, not what SHOULD be. Cross-reference
+edges against the known topology above. Flag paths that do not match legitimate flows.
+{% endif %}

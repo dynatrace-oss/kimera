@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Load SecurityTest definitions from exploit YAML configuration files.
-
-Each file in ``config/exploits/`` can contain a ``tests`` section with
-structured probe definitions and evidence markers. This module parses
-that section into ``SecurityTest`` objects used by ``BaseExploit._run_tests()``.
-"""
-
 from pathlib import Path
 from typing import Any
 

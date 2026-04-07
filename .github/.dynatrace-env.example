@@ -1,0 +1,3 @@
+DT_ENVIRONMENT=https://your-tenant.apps.dynatrace.com
+DT_PLATFORM_TOKEN=dt0c01....
+CLUSTER_NAME=your-cluster-name

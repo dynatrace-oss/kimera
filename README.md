@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo/kimera_logo.png" alt="Kimera" width="400"><br>
+  <img src="assets/kimera_logo.png" alt="Kimera" width="400"><br>
   <em>Kubernetes security testing framework — assess, exploit, remediate, enforce.</em><br><br>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13+-blue.svg" alt="Python"></a>
@@ -15,7 +15,7 @@ Kimera is a Kubernetes security posture management (KSPM) tool that identifies c
 
 ## Disclaimer
 
-This toolkit is intended for **defensive security testing only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
+This toolkit is intended for **security testing only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
 
 ## Features
 
@@ -33,8 +33,10 @@ This toolkit is intended for **defensive security testing only**. It should only
 
 - **Assess** — Scan deployments for security misconfigurations
 - **Exploit** — Introduce and demonstrate specific vulnerabilities
-- **Secure** — Apply hardened security contexts and resource limits
-- **Enforce** — Install kube-router for NetworkPolicy enforcement on CNIs that lack it
+- **Secure** — Print remediation guidance (use `generate` + `apply`)
+- **Generate** — LLM-based YAML generation for remediations and exploit patches
+- **Apply** — Apply externally or LLM-generated YAML with label injection and journal tracking
+- **Enforce** — Check Cilium for NetworkPolicy enforcement
 - **Revert** — Undo all changes, restoring original deployment state
 - **Verify** — Confirm security posture after remediation
 
@@ -84,27 +86,60 @@ kimera -p unguard revert
 | `assess [service]` | Scan security posture | `kimera -n unguard assess` |
 | `vuln-service <svc> <type>` | Introduce a vulnerability | `kimera vuln-service app privileged` |
 | `exploit <type>` | Demonstrate an exploit | `kimera exploit privileged-containers` |
-| `secure [type]` | Apply security remediations | `kimera secure` |
+| `secure [type]` | Print remediation guidance | `kimera secure` |
+| `generate --type <type>` | Generate YAML via LLM | `kimera generate --type network-policies` |
+| `generate --mode exploit` | Generate exploit patches via LLM | `kimera generate --mode exploit --type privileged-containers` |
+| `apply <file>` | Apply YAML with label injection | `kimera apply policies.yaml` |
 | `verify` | Verify security status | `kimera verify` |
 | `revert [type]` | Undo all kimera changes | `kimera revert` |
 | `rollback [service]` | Rollback a deployment revision | `kimera rollback` |
-| `enforce enable\|disable\|status` | Manage NetworkPolicy enforcement | `kimera enforce enable` |
+| `enforce enable\|disable\|status` | Manage NetworkPolicy enforcement (Cilium) | `kimera enforce enable` |
+
+## LLM-Based Generation
+
+Kimera uses Anthropic Claude to generate both remediations and exploit patches.
+The `generate` command gathers Kubernetes context and produces YAML.
+
+```bash
+# Generate remediations (default mode)
+kimera -n unguard generate --type network-policies -o policies.yaml
+kimera -n unguard generate --type network-policies --apply
+
+# Generate exploit patches (cluster-aware, targets correct containers)
+kimera -n unguard generate --mode exploit --type privileged-containers
+kimera -n unguard generate --mode exploit --type all --apply
+
+# Enrich with Dynatrace MCP (requires DT_ENVIRONMENT, DT_PLATFORM_TOKEN)
+kimera -n unguard generate --type missing-network-policies --use-dt-mcp
+kimera -n unguard generate --type missing-network-policies --use-dt-mcp --dt-strategy llm-query
+kimera -n unguard generate --type missing-network-policies --use-dt-mcp --dt-strategy davis
+
+# Apply externally generated YAML
+kimera -n unguard apply policies.yaml
+```
+
+Install extras: `uv pip install 'kimera[llm]'` for LLM, `uv pip install 'kimera[dt-mcp]'` for DT MCP, or `uv pip install 'kimera[all]'` for both.
+
+### DT Data Strategies
+
+When using `--use-dt-mcp`, choose a data fetching strategy with `--dt-strategy`:
+
+| Strategy | Description | Requirements |
+|---|---|---|
+| `targeted` (default) | Exploit-type-specific DQL queries (CIS rule IDs, category keywords) | `kimera[dt-mcp]` |
+| `llm-query` | Claude generates DQL queries from few-shot examples | `kimera[all]` |
+| `davis` | Davis CoPilot natural language queries (falls back to targeted) | `kimera[dt-mcp]` |
 
 ## NetworkPolicy Enforcement
 
-CNI plugins like Flannel create pod connectivity but do not enforce NetworkPolicy
-resources. Kimera can install [kube-router](https://www.kube-router.io/) in
-firewall-only mode to add iptables-based policy enforcement without replacing your
-existing CNI.
+NetworkPolicies require a policy-enforcing CNI. Kimera checks for
+[Cilium](https://cilium.io/) and prints installation guidance if not found.
 
 ```bash
-kimera enforce enable    # Install kube-router
-kimera enforce status    # Check enforcement status
-kimera enforce disable   # Remove kube-router
+kimera enforce enable    # Check Cilium enforcement
+kimera enforce status    # Show enforcement status
+kimera enforce disable   # Guidance for removing Cilium
 ```
-
-This is intended for demo and testing environments. For production clusters,
-consider Calico, Cilium, or another CNI with built-in policy support.
 
 ## Configuration
 
@@ -125,26 +160,6 @@ kimera --verbose --debug --dry-run assess
 ```
 
 Profiles live in `config/profiles/` and define target-specific services and exploit mappings.
-
-## Architecture
-
-```txt
-kimera/
-├── kimera/
-│   ├── application/            # Config loading, schemas, plugin registry
-│   ├── container/
-│   │   ├── assessment/         # Security scanning
-│   │   ├── core/               # K8s client, logger, command execution
-│   │   ├── infrastructure/     # Policy enforcement (kube-router)
-│   │   ├── make_vulnerable/    # Exploit implementations
-│   │   └── remediations/       # Security patching
-│   ├── domain/                 # Models and protocol interfaces
-│   └── plugins/                # Plugin base classes
-├── config/
-│   ├── profiles/               # Target-specific profiles
-│   └── exploits/               # YAML-driven security test definitions
-└── tests/
-```
 
 ## Safety Features
 
@@ -175,4 +190,4 @@ Maintained by [Dynatrace OSS](https://github.com/dynatrace-oss).
 
 ## Legal Notice
 
-This software is provided for research and defensive testing purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse.
+This software is provided for research and testing purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse.

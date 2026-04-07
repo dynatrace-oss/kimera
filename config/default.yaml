@@ -43,6 +43,10 @@ secure_requests:
   memory: "128Mi"
   cpu: "100m"
 
+# Dynatrace integration (optional, requires DT_ENVIRONMENT + DT_PLATFORM_TOKEN)
+dynatrace:
+  default_strategy: "targeted"  # targeted | llm-query | davis
+
 secure_context:
   run_as_user: 1000
   run_as_non_root: true

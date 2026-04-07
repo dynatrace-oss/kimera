@@ -61,10 +61,9 @@ class BaseExploit(ABC):
         """Get JSON patch to make service vulnerable."""
         pass
 
-    @abstractmethod
     def get_secure_patch(self) -> list[dict[str, Any]]:
-        """Get JSON patch to secure service."""
-        pass
+        """Return empty list — secure patches are generated dynamically via LLM."""
+        return []
 
     @abstractmethod
     def check_vulnerability(self) -> bool:
@@ -101,26 +100,18 @@ class BaseExploit(ABC):
         return False
 
     def make_secure(self, dry_run: bool = False) -> bool:
-        """Apply secure configuration.
+        """Print remediation guidance for this exploit type.
 
-        Note: This applies a *hardened* configuration which may differ from the
-        deployment's original state. To restore the original state, use
-        ``kimera rollback`` or ``kimera revert`` instead.
+        Remediations are generated dynamically via ``kimera generate`` and
+        applied via ``kimera apply``. This method provides the commands needed.
         """
-        self.logger.info(f"Applying secure configuration to {self.service}...")
-        patches = self.get_secure_patch()
-
-        # Pre-create security context if needed
-        self._ensure_security_context()
-
-        if self.k8s.patch_deployment(self.service, patches, dry_run):
-            if not dry_run:
-                self.logger.success(f"Applied secure configuration to {self.service}")
-                record_operation(
-                    "make_secure", self.vulnerability_type, self.service, self.k8s.namespace
-                )
-            return True
-        return False
+        ns = self.k8s.namespace
+        console.print(f"\n[bold]Remediation: {self.name}[/bold]\n")
+        console.print(f"  kimera -n {ns} generate --type {self.vulnerability_type} --apply\n")
+        console.print("[dim]Or generate to file first:[/dim]")
+        console.print(f"  kimera -n {ns} generate --type {self.vulnerability_type} -o fix.yaml")
+        console.print(f"  kimera -n {ns} apply fix.yaml\n")
+        return True
 
     def revert(self, dry_run: bool = False) -> bool:
         """Revert to the original deployment state via rollback.
@@ -146,27 +137,6 @@ class BaseExploit(ABC):
                 self.logger.success(f"Reverted {self.service} — verified not vulnerable")
             clear_operation(self.vulnerability_type, self.service, self.k8s.namespace)
         return success
-
-    def _ensure_security_context(self) -> None:
-        """Ensure security context exists before patching."""
-        deployment = self.k8s.get_deployment(self.service)
-        if not deployment:
-            return
-
-        if deployment.spec and deployment.spec.template and deployment.spec.template.spec:
-            containers = deployment.spec.template.spec.containers or []
-            for i, container in enumerate(containers):
-                if not container.security_context:
-                    self.k8s.patch_deployment(
-                        self.service,
-                        [
-                            {
-                                "op": "add",
-                                "path": f"/spec/template/spec/containers/{i}/securityContext",
-                                "value": {},
-                            }
-                        ],
-                    )
 
     def _run_tests(
         self,
@@ -234,32 +204,3 @@ class BaseExploit(ABC):
             console.print("\n[bold]Impact:[/bold]")
             for item in result.impact:
                 console.print(f"  [red]•[/red] {item}")
-
-    def build_security_context_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
-        """Build a base security context patch."""
-        return [
-            {
-                "op": "add",
-                "path": f"/spec/template/spec/containers/{container_idx}/securityContext",
-                "value": {},
-            }
-        ]
-
-    def build_privileged_patch(self, container_idx: int = 0) -> list[dict[str, Any]]:
-        """Build patches for privileged mode."""
-        patches = self.build_security_context_patch(container_idx)
-        patches.extend(
-            [
-                {
-                    "op": "add",
-                    "path": f"/spec/template/spec/containers/{container_idx}/securityContext/privileged",
-                    "value": True,
-                },
-                {
-                    "op": "add",
-                    "path": f"/spec/template/spec/containers/{container_idx}/securityContext/allowPrivilegeEscalation",
-                    "value": True,
-                },
-            ]
-        )
-        return patches

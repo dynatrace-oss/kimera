@@ -186,6 +186,32 @@ class LoggingConfig(BaseModel):
     console: bool = Field(default=True, description="Enable console logging")
 
 
+class NetworkTopologyEntry(BaseModel):
+    """Network topology entry for a single service.
+
+    Attributes:
+        allowed_ingress_from: Pod label selectors permitted to send ingress traffic
+    """
+
+    allowed_ingress_from: list[dict[str, str]] = Field(
+        default_factory=list, description="Pod label selectors allowed to send ingress"
+    )
+
+
+class DynatraceConfig(BaseModel):
+    """Dynatrace integration configuration.
+
+    Attributes:
+        default_strategy: Default DT data strategy for ``--use-dt-mcp``.
+    """
+
+    default_strategy: str = Field(
+        default="targeted",
+        pattern="^(targeted|llm-query|davis)$",
+        description="Default DT data strategy",
+    )
+
+
 class ToolkitConfig(BaseModel):
     """Main toolkit configuration.
 
@@ -193,6 +219,7 @@ class ToolkitConfig(BaseModel):
         kubernetes: Kubernetes settings
         services: Service names to target
         exploit_mappings: Map of exploit types to services
+        network_topology: Least-privilege ingress topology per service
         exploits: Exploit configurations
         timeouts: Timeout settings
         logging: Logging configuration
@@ -208,6 +235,9 @@ class ToolkitConfig(BaseModel):
     services: list[str] = Field(default_factory=list, description="Target services")
     exploit_mappings: dict[str, str] = Field(
         default_factory=dict, description="Exploit to service mappings"
+    )
+    network_topology: dict[str, NetworkTopologyEntry] = Field(
+        default_factory=dict, description="Least-privilege ingress topology per service"
     )
     exploits: dict[str, ExploitConfig] = Field(
         default_factory=dict, description="Exploit configurations"
@@ -231,6 +261,9 @@ class ToolkitConfig(BaseModel):
     )
     secure_context: SecurityContextConfig = Field(
         default_factory=SecurityContextConfig, description="Default secure context"
+    )
+    dynatrace: DynatraceConfig = Field(
+        default_factory=DynatraceConfig, description="Dynatrace integration settings"
     )
 
     @property

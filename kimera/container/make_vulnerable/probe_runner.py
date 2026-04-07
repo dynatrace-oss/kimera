@@ -12,17 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Structured probe runner that generates shell scripts from YAML definitions.
-
-Instead of hand-writing shell scripts, security tests define typed probes
-(writable, path_exists, port_open, etc.) and this module generates the
-correct shell commands. A ``command`` probe type serves as an escape hatch
-for complex operations that cannot be expressed declaratively.
-
-Inspired by `kube-bench <https://aquasecurity.github.io/kube-bench/>`_
-structured audit definitions.
-"""
-
 from typing import Any
 
 # Supported test operators for path_exists probes
