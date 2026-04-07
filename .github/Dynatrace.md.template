@@ -1,0 +1,267 @@
+# Dynatrace Agent Instructions — Kimera Security Toolkit
+
+This file teaches GitHub Copilot agent mode (and Kimera's LLM policy generator) how to work
+with Dynatrace data for Kubernetes security analysis and NetworkPolicy generation.
+
+Adapted from the Dynatrace GitHub Custom Agent pattern (Use Case 6: Security Vulnerability
+Response & Compliance).
+
+---
+
+## Environment
+
+- **Dynatrace Platform URL**: `${DT_ENVIRONMENT}`
+- **Cluster name**: `${CLUSTER_NAME}`
+- **Target namespace**: `unguard`
+- **KSPM data bucket**: `default_securityevents_builtin`
+
+---
+
+## Operating Principles
+
+1. **Latest scan only** — ALWAYS use a two-step process for KSPM queries: get the latest `scan.id` first, then filter findings to that scan. Never query all findings without a scan ID — historical aggregation skews results.
+2. **Smartscape source_name asymmetry** — `source_name` returns process display names (e.g., `PHP-CLI`, `bin/www (user-auth-service)`, `MembershipService.dll`), NOT Kubernetes object names. Never filter `contains(source_name, "unguard")` — it returns nothing.
+3. **Databases are PROCESS entities** — MariaDB (`data`) and Redis (`Redis`) are PROCESS type in Smartscape, not SERVICE. Do not add `filter target_type == "SERVICE"` when filtering for data store edges.
+4. **Observed traffic only** — Smartscape shows connections OneAgent actually observed, not all possible connections. Use the word "observed" not "reachable" when describing Smartscape edges.
+5. **Kimera for application** — Use `uv run kimera` commands (not raw kubectl) for security operations. Use kubectl only for inspection and verification.
+
+---
+
+## Use Case: KSPM Network Policy Compliance
+
+### Step 1 — Get Latest KSPM Scan ID (mandatory first step)
+
+```dql
+fetch security.events, from:-1d
+| filter dt.system.bucket == "default_securityevents_builtin"
+| filter event.type == "COMPLIANCE_FINDING"
+| filter k8s.cluster.name == "${CLUSTER_NAME}"
+| summarize latest = max(timestamp), by:{scan.id}
+| sort latest desc
+| limit 1
+```
+
+Save the `scan.id` value. Use it in all subsequent KSPM queries.
+
+### Step 2 — Query Network Policy Findings (latest scan only)
+
+Replace `<SCAN_ID>` with the value from Step 1.
+
+```dql
+fetch security.events, from:-1d
+| filter dt.system.bucket == "default_securityevents_builtin"
+| filter event.type == "COMPLIANCE_FINDING"
+| filter scan.id == "<SCAN_ID>"
+| filter contains(compliance.result.object.name, "unguard")
+| filter contains(lower(compliance.rule.title), "network")
+| summarize findings = count(),
+  by: { compliance.result.object.name, compliance.rule.title }
+| sort findings desc
+```
+
+### Step 3 — Query Smartscape for Observed Communication Topology
+
+```dql
+smartscapeEdges calls
+| fieldsAdd
+    source_name = getNodeField(source_id, "name"),
+    target_name = getNodeField(target_id, "name"),
+    src_type = source_type,
+    tgt_type = target_type
+| filter contains(target_name, "unguard") or contains(source_name, "unguard")
+| summarize count(), by:{source_name, target_name, src_type, tgt_type}
+| sort count() desc
+```
+
+This reveals the exact process display names used in `source_name` — required for building
+accurate bridge queries and NetworkPolicy `from:` selectors.
+
+### Step 4 — Query Data Store Edges (before/after comparison signal)
+
+```dql
+smartscapeEdges calls, from:-10m
+| fieldsAdd
+    source_name = getNodeField(source_id, "name"),
+    target_name = getNodeField(target_id, "name")
+| filter contains(target_name, "mariadb") or contains(target_name, "redis")
+| summarize count(), by:{source_name, target_name}
+| sort source_name asc
+```
+
+Before remediation: returns rows for each process reaching MariaDB or Redis.
+After remediation + 10-minute wait: returns 0 rows if NetworkPolicies correctly block access.
+
+### Step 5 — Detect Unauthorized Lateral Movement (before/after signal)
+
+```dql
+smartscapeEdges calls, from:-10m
+| fieldsAdd
+    source_name = getNodeField(source_id, "name"),
+    target_name = getNodeField(target_id, "name")
+| filter contains(lower(source_name), "php") or contains(lower(source_name), "like")
+| filter contains(target_name, "user-auth") or contains(target_name, "unguard")
+| fields source_name, target_name
+```
+
+This detects like-service (PHP-CLI) making unauthorized HTTP calls to other services.
+Before remediation: shows the edge. After: edge absent.
+
+---
+
+## Use Case: Generate Least-Privilege NetworkPolicies
+
+Use the Smartscape topology from Step 3 above combined with pod labels to generate
+restrictive NetworkPolicies.
+
+### NetworkPolicy Generation Rules
+
+When generating NetworkPolicy YAML:
+
+1. **Always start with default-deny-all**:
+   ```yaml
+   apiVersion: networking.k8s.io/v1
+   kind: NetworkPolicy
+   metadata:
+     name: default-deny-all
+     namespace: unguard
+     labels:
+       app.kubernetes.io/managed-by: kimera
+   spec:
+     podSelector: {}
+     policyTypes: [Ingress, Egress]
+   ```
+
+2. **Per-service policies must include explicit `from:` selectors** on ingress rules — never use an empty `from:` which would allow all pods.
+
+3. **All pods need DNS egress** to `kube-dns` on UDP/53:
+   ```yaml
+   egress:
+     - to:
+       - namespaceSelector: {}
+         podSelector:
+           matchLabels:
+             k8s-app: kube-dns
+       ports:
+         - protocol: UDP
+           port: 53
+   ```
+
+4. **Data store ingress**: Only allow from the services that legitimately call the data store
+   (as confirmed by Smartscape observed edges).
+
+5. **Label all created policies** with `app.kubernetes.io/managed-by: kimera` for Kimera to manage lifecycle.
+
+### Unguard Service Communication Map (authoritative)
+
+Based on observed Smartscape topology and application architecture:
+
+| Service | Connects to | Legitimate callers |
+|---------|-------------|-------------------|
+| unguard-user-auth-service | MariaDB | frontend, envoy-proxy, proxy-service |
+| unguard-like-service | MariaDB | frontend, envoy-proxy |
+| unguard-membership-service | MariaDB | frontend, envoy-proxy, proxy-service |
+| unguard-microblog-service | Redis, MariaDB | frontend, envoy-proxy, proxy-service |
+| unguard-mariadb | — | like-service, user-auth-service, membership-service, microblog-service, status-service |
+| unguard-redis | — | microblog-service, status-service |
+
+### Output Format
+
+Return NetworkPolicies as a JSON array:
+```json
+{
+  "policies": [
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": { "name": "...", "namespace": "unguard", "labels": {"app.kubernetes.io/managed-by": "kimera"} },
+      "spec": { ... }
+    }
+  ]
+}
+```
+
+---
+
+## Use Case: Remediation Workflow
+
+### Apply NetworkPolicies via Kimera
+
+```bash
+# 1. Verify Cilium enforcement is active
+uv run kimera enforce enable
+
+# 2. Apply restrictive NetworkPolicies (LLM-generated or config-driven)
+uv run kimera -n unguard generate-policies --dry-run   # review first
+uv run kimera -n unguard generate-policies --apply     # apply after review
+
+# Alternative: use Kimera's secure command (config-driven, no LLM required)
+uv run kimera -n unguard secure missing-network-policies
+```
+
+### Verify Remediation
+
+```bash
+# Kimera verification
+uv run kimera -n unguard verify
+
+# Check policies were created
+kubectl get networkpolicies -n unguard
+
+# Re-run exploit demo to confirm ports are CLOSED
+uv run kimera -n unguard exploit missing-network-policies --mode demo
+```
+
+### Revert (when done testing)
+
+```bash
+uv run kimera -n unguard revert missing-network-policies
+# Note: Cilium is a cluster-level CNI — do NOT uninstall it when reverting.
+# Without NetworkPolicies, all traffic flows freely regardless.
+```
+
+---
+
+## Smartscape Naming Reference (Unguard)
+
+| Kubernetes Service | Language | Smartscape source_name |
+|--------------------|----------|----------------------|
+| unguard-like-service | PHP 8.0 / Laravel | `PHP-CLI` or `PHP on unguard-like-service-*` |
+| unguard-user-auth-service | Node.js 18 | `bin/www (user-auth-service)` |
+| unguard-membership-service | .NET 7 | `MembershipService.dll` |
+| unguard-microblog-service | Java 11 Spring | `MicroblogController` |
+| unguard-ad-service | .NET 5 | Unknown assembly (no DB connections) |
+| unguard-mariadb | MariaDB | `data` |
+| unguard-redis | Redis | `Redis` |
+
+**Critical**: `source_name` is the process display name, not the K8s name. Use `target_name`
+(K8s pod names) for filtering by service. Use `source_name` only when you know the exact
+process display name from a prior Smartscape query.
+
+---
+
+## Demo: Unauthorized Lateral Movement (PHP curl from like-service)
+
+This demonstrates a Smartscape-visible attack — unlike `nc` probes, PHP curl IS instrumented
+by OneAgent and creates real Smartscape edges.
+
+```bash
+# Get like-service pod
+LIKE_POD=$(kubectl get pod -n unguard \
+  -l app.kubernetes.io/name=like-service \
+  -o jsonpath='{.items[0].metadata.name}')
+
+# Run unauthorized HTTP call via PHP curl (OneAgent captures this)
+kubectl exec -n unguard "$LIKE_POD" -- php -r "
+\$ch = curl_init('http://unguard-user-auth-service/');
+curl_setopt(\$ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt(\$ch, CURLOPT_TIMEOUT, 5);
+curl_exec(\$ch);
+echo 'HTTP: ' . curl_getinfo(\$ch, CURLINFO_HTTP_CODE) . PHP_EOL;
+curl_close(\$ch);
+"
+
+# Wait 3-5 minutes, then verify edge appears in Smartscape (Step 5 query above)
+```
+
+After applying NetworkPolicies that restrict like-service egress, re-run the same query —
+the `PHP-CLI → user-auth-service` edge will be absent.
