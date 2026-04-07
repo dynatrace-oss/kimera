@@ -15,25 +15,56 @@
 from typing import Any
 
 from kimera.container.core.k8s_client import K8sClient
-from kimera.container.core.logger import SecurityLogger, setup_logger
+from kimera.container.core.logger import SecurityLogger, console, setup_logger
 
-TOOLKIT_LABEL = "app.kubernetes.io/managed-by"
-TOOLKIT_LABEL_VALUE = "kimera"
+CILIUM_NAMESPACE = "kube-system"
+CILIUM_DAEMONSET = "cilium"
 
-KUBE_ROUTER_NAMESPACE = "kube-system"
-KUBE_ROUTER_NAME = "kube-router"
-KUBE_ROUTER_IMAGE = "docker.io/cloudnativelabs/kube-router:v2.1.3"
+_CILIUM_INSTALL_GUIDANCE = """\
+[bold]Cilium is not running in this cluster.[/bold]
+
+NetworkPolicies created by Kimera will be accepted by the Kubernetes API
+but will have [yellow]no enforcement effect[/yellow] until a policy-enforcing
+CNI is installed.
+
+[bold]Install Cilium (Helm — recommended):[/bold]
+
+  helm repo add cilium https://helm.cilium.io/
+  helm install cilium cilium/cilium --version 1.16.5 \\
+    --namespace kube-system \\
+    --set ipam.mode=kubernetes
+
+[bold]Install Cilium (Cilium CLI):[/bold]
+
+  cilium install --version 1.16.5
+
+After installation, verify with:
+
+  cilium status --wait
+  kubectl get daemonset cilium -n kube-system
+
+Then apply network policies:
+
+  kimera -n <namespace> secure missing-network-policies
+"""
+
+_CILIUM_UNINSTALL_GUIDANCE = """\
+To remove Cilium and disable NetworkPolicy enforcement:
+
+  [bold]Via Helm:[/bold]
+  helm uninstall cilium -n kube-system
+
+  [bold]Via Cilium CLI:[/bold]
+  cilium uninstall
+"""
 
 
 class PolicyEnforcementManager:
-    """Manages kube-router deployment for NetworkPolicy enforcement.
+    """Detects Cilium NetworkPolicy enforcement and provides installation guidance.
 
-    Kube-router runs in firewall-only mode alongside existing CNI plugins
-    like Flannel. It watches NetworkPolicy resources and translates them
-    into iptables/ipsets rules without replacing pod networking.
-
-    This is useful for clusters where the CNI does not enforce
-    NetworkPolicies natively (e.g., Flannel with VXLAN).
+    Kimera applies NetworkPolicy resources through the Kubernetes API and does
+    not install or manage the CNI itself. This manager checks whether Cilium
+    is running and gives operators the commands needed to enable enforcement.
     """
 
     def __init__(
@@ -46,68 +77,51 @@ class PolicyEnforcementManager:
         self.logger = logger or SecurityLogger(setup_logger(__name__))
 
     def enable(self, dry_run: bool = False) -> bool:
-        """Install kube-router in firewall-only mode.
+        """Check for Cilium and print installation guidance if not found.
 
-        Creates ServiceAccount, ClusterRole, ClusterRoleBinding, and
-        DaemonSet in kube-system. All resources are labeled for safe cleanup.
+        Kimera does not install CNI plugins — that is a cluster admin operation.
+        This method checks whether Cilium is already running and gives the
+        operator the commands to install it if not.
 
-        Returns True if all resources were created successfully.
+        Args:
+            dry_run: If True, skip the cluster check and return True.
+
+        Returns:
+            True if Cilium is running, False if guidance was printed.
         """
-        self.logger.info("Installing kube-router for NetworkPolicy enforcement...")
-
-        steps = [
-            ("ServiceAccount", self._build_service_account(), self._create_sa),
-            ("ClusterRole", self._build_cluster_role(), self._create_cr),
-            ("ClusterRoleBinding", self._build_cluster_role_binding(), self._create_crb),
-            ("DaemonSet", self._build_daemonset(), self._create_ds),
-        ]
-
-        for label, resource, create_fn in steps:
-            if not create_fn(resource, dry_run):
-                self.logger.error(f"Failed to create {label}")
-                return False
-
-        if not dry_run:
-            self.k8s.wait_for_daemonset(KUBE_ROUTER_NAME, KUBE_ROUTER_NAMESPACE)
-            self.logger.success("kube-router installed — NetworkPolicy enforcement active")
-
-        return True
-
-    def disable(self, dry_run: bool = False) -> bool:
-        """Remove kube-router and all associated resources.
-
-        Deletes in reverse order: DaemonSet, ClusterRoleBinding,
-        ClusterRole, ServiceAccount. Each deletion is independent
-        so partial failures don't block cleanup.
-
-        Returns True if all resources were removed.
-        """
-        self.logger.info("Removing kube-router...")
-        success = True
-
         if dry_run:
-            self.logger.info("DRY RUN: Would remove kube-router and associated RBAC")
+            self.logger.info("DRY RUN: Would check for Cilium enforcement")
             return True
 
-        if not self.k8s.delete_daemonset(KUBE_ROUTER_NAME, KUBE_ROUTER_NAMESPACE):
-            success = False
-        if not self.k8s.delete_cluster_role_binding(KUBE_ROUTER_NAME):
-            success = False
-        if not self.k8s.delete_cluster_role(KUBE_ROUTER_NAME):
-            success = False
-        if not self.k8s.delete_service_account(KUBE_ROUTER_NAME, KUBE_ROUTER_NAMESPACE):
-            success = False
+        if self.is_enabled():
+            self.logger.success("Cilium is running — NetworkPolicy enforcement is active")
+            return True
 
-        if success:
-            self.logger.success("kube-router removed — NetworkPolicy enforcement disabled")
-        else:
-            self.logger.warning("Some resources could not be removed; check manually")
+        console.print(_CILIUM_INSTALL_GUIDANCE)
+        return False
 
-        return success
+    def disable(self, dry_run: bool = False) -> None:
+        """Print guidance for removing Cilium.
+
+        Kimera does not uninstall CNI plugins — that is a cluster admin operation.
+        This method provides the commands needed to remove Cilium.
+
+        Args:
+            dry_run: If True, skip output.
+        """
+        if dry_run:
+            self.logger.info("DRY RUN: Would print Cilium removal guidance")
+            return
+
+        console.print(_CILIUM_UNINSTALL_GUIDANCE)
 
     def is_enabled(self) -> bool:
-        """Check if kube-router is running with ready pods."""
-        ds = self.k8s.get_daemonset(KUBE_ROUTER_NAME, KUBE_ROUTER_NAMESPACE)
+        """Check if the Cilium DaemonSet is running with all pods ready.
+
+        Returns:
+            True if Cilium is installed and all desired pods are ready.
+        """
+        ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
         if not ds or not ds.status:
             return False
         desired = ds.status.desired_number_scheduled or 0
@@ -115,196 +129,23 @@ class PolicyEnforcementManager:
         return desired > 0 and ready == desired
 
     def get_status(self) -> dict[str, Any]:
-        """Return detailed kube-router status."""
-        ds = self.k8s.get_daemonset(KUBE_ROUTER_NAME, KUBE_ROUTER_NAMESPACE)
+        """Return detailed Cilium enforcement status.
+
+        Returns:
+            Dict with ``installed`` bool and, when installed, pod counts
+            and the DaemonSet image.
+        """
+        ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
         if not ds or not ds.status:
             return {"installed": False}
+
+        containers = ds.spec.template.spec.containers if ds.spec and ds.spec.template else []
+        image = containers[0].image if containers else "unknown"
 
         return {
             "installed": True,
             "desired": ds.status.desired_number_scheduled or 0,
             "ready": ds.status.number_ready or 0,
             "available": ds.status.number_available or 0,
-            "image": KUBE_ROUTER_IMAGE,
+            "image": image,
         }
-
-    # --- Resource creation helpers ---
-
-    def _create_sa(self, body: dict[str, Any], dry_run: bool) -> bool:
-        return self.k8s.create_service_account(body, KUBE_ROUTER_NAMESPACE, dry_run)
-
-    def _create_cr(self, body: dict[str, Any], dry_run: bool) -> bool:
-        return self.k8s.create_cluster_role(body, dry_run)
-
-    def _create_crb(self, body: dict[str, Any], dry_run: bool) -> bool:
-        return self.k8s.create_cluster_role_binding(body, dry_run)
-
-    def _create_ds(self, body: dict[str, Any], dry_run: bool) -> bool:
-        return self.k8s.create_daemonset(body, KUBE_ROUTER_NAMESPACE, dry_run)
-
-    # --- Manifest builders ---
-
-    def _build_service_account(self) -> dict[str, Any]:
-        """Build ServiceAccount for kube-router."""
-        return {
-            "apiVersion": "v1",
-            "kind": "ServiceAccount",
-            "metadata": {
-                "name": KUBE_ROUTER_NAME,
-                "namespace": KUBE_ROUTER_NAMESPACE,
-                "labels": _common_labels(),
-            },
-        }
-
-    def _build_cluster_role(self) -> dict[str, Any]:
-        """Build ClusterRole with permissions required by kube-router."""
-        return {
-            "apiVersion": "rbac.authorization.k8s.io/v1",
-            "kind": "ClusterRole",
-            "metadata": {
-                "name": KUBE_ROUTER_NAME,
-                "labels": _common_labels(),
-            },
-            "rules": [
-                {
-                    "apiGroups": [""],
-                    "resources": ["namespaces", "pods", "services", "nodes", "endpoints"],
-                    "verbs": ["list", "get", "watch"],
-                },
-                {
-                    "apiGroups": ["networking.k8s.io"],
-                    "resources": ["networkpolicies"],
-                    "verbs": ["list", "get", "watch"],
-                },
-                {
-                    "apiGroups": ["extensions"],
-                    "resources": ["networkpolicies"],
-                    "verbs": ["list", "get", "watch"],
-                },
-                {
-                    "apiGroups": ["discovery.k8s.io"],
-                    "resources": ["endpointslices"],
-                    "verbs": ["list", "get", "watch"],
-                },
-            ],
-        }
-
-    def _build_cluster_role_binding(self) -> dict[str, Any]:
-        """Build ClusterRoleBinding linking the SA to the ClusterRole."""
-        return {
-            "apiVersion": "rbac.authorization.k8s.io/v1",
-            "kind": "ClusterRoleBinding",
-            "metadata": {
-                "name": KUBE_ROUTER_NAME,
-                "labels": _common_labels(),
-            },
-            "roleRef": {
-                "apiGroup": "rbac.authorization.k8s.io",
-                "kind": "ClusterRole",
-                "name": KUBE_ROUTER_NAME,
-            },
-            "subjects": [
-                {
-                    "kind": "ServiceAccount",
-                    "name": KUBE_ROUTER_NAME,
-                    "namespace": KUBE_ROUTER_NAMESPACE,
-                },
-            ],
-        }
-
-    def _build_daemonset(self) -> dict[str, Any]:
-        """Build kube-router DaemonSet in firewall-only mode."""
-        return {
-            "apiVersion": "apps/v1",
-            "kind": "DaemonSet",
-            "metadata": {
-                "name": KUBE_ROUTER_NAME,
-                "namespace": KUBE_ROUTER_NAMESPACE,
-                "labels": _common_labels(),
-            },
-            "spec": {
-                "selector": {
-                    "matchLabels": {"k8s-app": KUBE_ROUTER_NAME},
-                },
-                "template": {
-                    "metadata": {
-                        "labels": {
-                            "k8s-app": KUBE_ROUTER_NAME,
-                            **_common_labels(),
-                        },
-                    },
-                    "spec": {
-                        "priorityClassName": "system-node-critical",
-                        "serviceAccountName": KUBE_ROUTER_NAME,
-                        "hostNetwork": True,
-                        "tolerations": [
-                            {"operator": "Exists", "effect": "NoSchedule"},
-                            {"key": "CriticalAddonsOnly", "operator": "Exists"},
-                            {"operator": "Exists", "effect": "NoExecute"},
-                        ],
-                        "containers": [
-                            {
-                                "name": KUBE_ROUTER_NAME,
-                                "image": KUBE_ROUTER_IMAGE,
-                                "args": [
-                                    "--run-router=false",
-                                    "--run-firewall=true",
-                                    "--run-service-proxy=false",
-                                ],
-                                "securityContext": {"privileged": True},
-                                "env": [
-                                    {
-                                        "name": "NODE_NAME",
-                                        "valueFrom": {
-                                            "fieldRef": {"fieldPath": "spec.nodeName"},
-                                        },
-                                    },
-                                ],
-                                "resources": {
-                                    "requests": {"cpu": "100m", "memory": "128Mi"},
-                                    "limits": {"cpu": "250m", "memory": "256Mi"},
-                                },
-                                "livenessProbe": {
-                                    "httpGet": {"path": "/healthz", "port": 20244},
-                                    "initialDelaySeconds": 10,
-                                    "periodSeconds": 3,
-                                },
-                                "volumeMounts": [
-                                    {
-                                        "name": "lib-modules",
-                                        "mountPath": "/lib/modules",
-                                        "readOnly": True,
-                                    },
-                                    {
-                                        "name": "xtables-lock",
-                                        "mountPath": "/run/xtables.lock",
-                                    },
-                                ],
-                            },
-                        ],
-                        "volumes": [
-                            {
-                                "name": "lib-modules",
-                                "hostPath": {"path": "/lib/modules"},
-                            },
-                            {
-                                "name": "xtables-lock",
-                                "hostPath": {
-                                    "path": "/run/xtables.lock",
-                                    "type": "FileOrCreate",
-                                },
-                            },
-                        ],
-                    },
-                },
-            },
-        }
-
-
-def _common_labels() -> dict[str, str]:
-    """Labels applied to all kube-router resources for identification and cleanup."""
-    return {
-        TOOLKIT_LABEL: TOOLKIT_LABEL_VALUE,
-        "app.kubernetes.io/name": "kube-router",
-        "app.kubernetes.io/component": "network-policy-enforcement",
-    }
