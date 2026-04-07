@@ -26,114 +26,36 @@ from kimera.container.core.exceptions import (
 
 
 class TestExceptions:
-    """Test exception hierarchy and functionality."""
+    """Test exception hierarchy."""
 
-    def test_k8s_security_error_base(self):
-        """Test K8sSecurityError as base exception."""
-        error = K8sSecurityError("Test error")
-        assert str(error) == "Test error"
-        assert isinstance(error, Exception)
+    def test_all_exceptions_have_correct_message(self) -> None:
+        for cls in (
+            K8sSecurityError,
+            K8sError,
+            PodNotFoundError,
+            DeploymentNotFoundError,
+            ExploitError,
+            RemediationError,
+            ConfigurationError,
+        ):
+            error = cls("test message")
+            assert str(error) == "test message"
 
-    def test_k8s_error_inheritance(self):
-        """Test K8sError inherits from K8sSecurityError."""
-        error = K8sError("K8s API error")
-        assert str(error) == "K8s API error"
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
+    def test_hierarchy_root_catches_all(self) -> None:
+        """All custom exceptions are catchable as K8sSecurityError."""
+        for cls in (
+            K8sError,
+            PodNotFoundError,
+            DeploymentNotFoundError,
+            ExploitError,
+            RemediationError,
+            ConfigurationError,
+        ):
+            with pytest.raises(K8sSecurityError):
+                raise cls("test")
 
-    def test_pod_not_found_error_inheritance(self):
-        """Test PodNotFoundError inherits from K8sError."""
-        error = PodNotFoundError("Pod not found")
-        assert str(error) == "Pod not found"
-        assert isinstance(error, K8sError)
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
-
-    def test_deployment_not_found_error_inheritance(self):
-        """Test DeploymentNotFoundError inherits from K8sError."""
-        error = DeploymentNotFoundError("Deployment not found")
-        assert str(error) == "Deployment not found"
-        assert isinstance(error, K8sError)
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
-
-    def test_exploit_error_inheritance(self):
-        """Test ExploitError inherits from K8sSecurityError."""
-        error = ExploitError("Exploit failed")
-        assert str(error) == "Exploit failed"
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
-
-    def test_remediation_error_inheritance(self):
-        """Test RemediationError inherits from K8sSecurityError."""
-        error = RemediationError("Remediation failed")
-        assert str(error) == "Remediation failed"
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
-
-    def test_configuration_error_inheritance(self):
-        """Test ConfigurationError inherits from K8sSecurityError."""
-        error = ConfigurationError("Configuration invalid")
-        assert str(error) == "Configuration invalid"
-        assert isinstance(error, K8sSecurityError)
-        assert isinstance(error, Exception)
-
-    def test_exception_raising(self):
-        """Test that exceptions can be raised and caught properly."""
-        with pytest.raises(K8sSecurityError):
-            raise K8sSecurityError("Base error")
-
-        with pytest.raises(K8sError):
-            raise K8sError("K8s error")
-
-        with pytest.raises(PodNotFoundError):
-            raise PodNotFoundError("Pod error")
-
-        with pytest.raises(DeploymentNotFoundError):
-            raise DeploymentNotFoundError("Deployment error")
-
-        with pytest.raises(ExploitError):
-            raise ExploitError("Exploit error")
-
-        with pytest.raises(RemediationError):
-            raise RemediationError("Remediation error")
-
-        with pytest.raises(ConfigurationError):
-            raise ConfigurationError("Config error")
-
-    def test_exception_hierarchy_catching(self):
-        """Test that exceptions can be caught by their parent classes."""
-        # Test that K8sError can be caught as K8sSecurityError
-        with pytest.raises(K8sSecurityError):
-            raise K8sError("K8s error")
-
-        # Test that PodNotFoundError can be caught as K8sError
-        with pytest.raises(K8sError):
-            raise PodNotFoundError("Pod error")
-
-        # Test that DeploymentNotFoundError can be caught as K8sError
-        with pytest.raises(K8sError):
-            raise DeploymentNotFoundError("Deployment error")
-
-        # Test that all specific errors can be caught as K8sSecurityError
-        with pytest.raises(K8sSecurityError):
-            raise ExploitError("Exploit error")
-
-        with pytest.raises(K8sSecurityError):
-            raise RemediationError("Remediation error")
-
-        with pytest.raises(K8sSecurityError):
-            raise ConfigurationError("Config error")
-
-    def test_empty_error_messages(self):
-        """Test exceptions with empty messages."""
-        error = K8sSecurityError("")
-        assert str(error) == ""
-
-        error = K8sError("")
-        assert str(error) == ""
-
-    def test_none_error_messages(self):
-        """Test exceptions with None messages."""
-        error = K8sSecurityError(None)
-        assert str(error) == "None"
+    def test_k8s_error_catches_resource_errors(self) -> None:
+        """Resource-specific errors are catchable as K8sError."""
+        for cls in (PodNotFoundError, DeploymentNotFoundError):
+            with pytest.raises(K8sError):
+                raise cls("test")

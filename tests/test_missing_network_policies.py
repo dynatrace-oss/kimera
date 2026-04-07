@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.rest import ApiException
 
-from kimera.container.core.exceptions import K8sError
+from kimera.container.core.exceptions import K8sError  # noqa: F401
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
 from kimera.container.make_vulnerable.missing_network_policies import (
@@ -50,171 +50,6 @@ def _create_mock_k8s_client() -> tuple[K8sClient, MagicMock, MagicMock]:
         k8s = K8sClient(namespace="test-ns", logger=mock_logger)
 
     return k8s, mock_networking_v1, mock_logger
-
-
-def _make_mock_deployment(name: str, labels: dict[str, str], ports: list[int]) -> Mock:
-    """Build a mock deployment with the given labels and container ports."""
-    dep = Mock()
-    dep.metadata.name = name
-    dep.spec.selector.match_labels = labels
-
-    mock_ports = []
-    for p in ports:
-        mp = Mock()
-        mp.container_port = p
-        mock_ports.append(mp)
-
-    container = Mock()
-    container.ports = mock_ports
-    dep.spec.template.spec.containers = [container]
-    return dep
-
-
-class TestAutoDiscoverPolicies:
-    """Test auto-discovery of network policies from deployments."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.k8s, self.mock_networking, self.mock_logger = _create_mock_k8s_client()
-        self.exploit = MissingNetworkPoliciesExploit(self.k8s, "test-svc", self.mock_logger)
-
-    def test_generates_default_deny_plus_per_deployment(self):
-        """Test that auto-discovery generates default-deny + one policy per deployment."""
-        deps = [
-            _make_mock_deployment("frontend", {"app": "frontend"}, [80]),
-            _make_mock_deployment("backend", {"app": "backend"}, [8080]),
-        ]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-
-        assert len(policies) == 3  # deny-all + 2 deployments
-        assert policies[0]["metadata"]["name"] == "default-deny-all"
-        assert policies[1]["metadata"]["name"] == "allow-frontend"
-        assert policies[2]["metadata"]["name"] == "allow-backend"
-
-    def test_default_deny_structure(self):
-        """Test the default-deny policy blocks all traffic."""
-        mock_result = Mock()
-        mock_result.items = []
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        deny = policies[0]
-
-        assert deny["spec"]["podSelector"] == {}
-        assert "Ingress" in deny["spec"]["policyTypes"]
-        assert "Egress" in deny["spec"]["policyTypes"]
-
-    def test_service_policy_has_correct_labels(self):
-        """Test that per-deployment policies use the deployment's match labels."""
-        deps = [_make_mock_deployment("web", {"app.kubernetes.io/name": "web"}, [80])]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        svc_policy = policies[1]
-
-        assert svc_policy["spec"]["podSelector"]["matchLabels"] == {"app.kubernetes.io/name": "web"}
-
-    def test_service_policy_has_ingress_ports(self):
-        """Test that per-deployment policies allow ingress on declared ports."""
-        deps = [_make_mock_deployment("api", {"app": "api"}, [8080, 9090])]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        ingress_ports = policies[1]["spec"]["ingress"][0]["ports"]
-
-        assert len(ingress_ports) == 2
-        assert {"protocol": "TCP", "port": 8080} in ingress_ports
-        assert {"protocol": "TCP", "port": 9090} in ingress_ports
-
-    def test_service_policy_includes_dns_egress(self):
-        """Test that per-deployment policies include DNS egress."""
-        deps = [_make_mock_deployment("svc", {"app": "svc"}, [80])]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        egress = policies[1]["spec"]["egress"]
-
-        dns_rule = egress[-1]
-        assert dns_rule["ports"] == [{"protocol": "UDP", "port": 53}]
-
-    def test_all_policies_have_toolkit_labels(self):
-        """Test that all auto-discovered policies have the managed-by label."""
-        deps = [_make_mock_deployment("svc", {"app": "svc"}, [80])]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        for policy in policies:
-            assert policy["metadata"]["labels"][TOOLKIT_LABEL] == TOOLKIT_LABEL_VALUE
-
-    def test_all_policies_are_valid_k8s_resources(self):
-        """Test that all policies have required Kubernetes resource fields."""
-        deps = [_make_mock_deployment("app", {"app": "app"}, [80])]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        for policy in policies:
-            assert policy["apiVersion"] == "networking.k8s.io/v1"
-            assert policy["kind"] == "NetworkPolicy"
-            assert "name" in policy["metadata"]
-            assert "namespace" in policy["metadata"]
-            assert "podSelector" in policy["spec"]
-            assert "policyTypes" in policy["spec"]
-
-    def test_policy_names_are_unique(self):
-        """Test that all policy names are unique."""
-        deps = [
-            _make_mock_deployment("a", {"app": "a"}, [80]),
-            _make_mock_deployment("b", {"app": "b"}, [8080]),
-        ]
-        mock_result = Mock()
-        mock_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        names = [p["metadata"]["name"] for p in policies]
-        assert len(names) == len(set(names))
-
-    def test_handles_deployment_without_ports(self):
-        """Test discovery handles deployments with no container ports."""
-        dep = Mock()
-        dep.metadata.name = "worker"
-        dep.spec.selector.match_labels = {"app": "worker"}
-        container = Mock()
-        container.ports = None
-        dep.spec.template.spec.containers = [container]
-
-        mock_result = Mock()
-        mock_result.items = [dep]
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_result
-
-        policies = self.exploit._auto_discover_policies()
-        assert len(policies) == 2
-        # No ingress ports means empty ingress rules
-        assert policies[1]["spec"]["ingress"] == []
-
-    def test_handles_api_error(self):
-        """Test discovery returns just default-deny on API failure."""
-        self.k8s.apps_v1.list_namespaced_deployment.side_effect = ApiException(
-            status=500, reason="Server Error"
-        )
-
-        policies = self.exploit._auto_discover_policies()
-        assert len(policies) == 1
-        assert policies[0]["metadata"]["name"] == "default-deny-all"
 
 
 class TestK8sClientNetworkPolicyMethods:
@@ -452,54 +287,13 @@ class TestMissingNetworkPoliciesExploit:
         assert result is True
         self.mock_networking.delete_namespaced_network_policy.assert_not_called()
 
-    def test_make_secure_creates_policies_from_discovery(self):
-        """Test make_secure creates policies based on auto-discovered deployments."""
-        deps = [_make_mock_deployment("web", {"app": "web"}, [80])]
-        mock_dep_result = Mock()
-        mock_dep_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_dep_result
-        self.mock_networking.create_namespaced_network_policy.return_value = None
-
+    def test_make_secure_prints_guidance(self):
+        """Test make_secure prints remediation guidance instead of creating policies."""
         result = self.exploit.make_secure()
 
         assert result is True
-        # default-deny + 1 per-deployment policy = 2
-        assert self.mock_networking.create_namespaced_network_policy.call_count == 2
-
-    def test_make_secure_dry_run(self):
-        """Test make_secure dry run does not call API."""
-        deps = [_make_mock_deployment("web", {"app": "web"}, [80])]
-        mock_dep_result = Mock()
-        mock_dep_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_dep_result
-
-        result = self.exploit.make_secure(dry_run=True)
-
-        assert result is True
+        # Should NOT call the K8s API — guidance only
         self.mock_networking.create_namespaced_network_policy.assert_not_called()
-
-    def test_make_secure_partial_failure(self):
-        """Test make_secure returns False when some policies fail."""
-        deps = [
-            _make_mock_deployment("a", {"app": "a"}, [80]),
-            _make_mock_deployment("b", {"app": "b"}, [8080]),
-        ]
-        mock_dep_result = Mock()
-        mock_dep_result.items = deps
-        self.k8s.apps_v1.list_namespaced_deployment.return_value = mock_dep_result
-
-        call_count = 0
-
-        def side_effect(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 2:
-                raise ApiException(status=500, reason="Server Error")
-
-        self.mock_networking.create_namespaced_network_policy.side_effect = side_effect
-
-        result = self.exploit.make_secure()
-        assert result is False
 
     def test_demonstrate_no_pod(self):
         """Test demonstrate returns failure when no pod is found."""

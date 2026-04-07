@@ -21,7 +21,7 @@ class TestPackageStructure:
     def test_package_version(self):
         """Test package version is defined and correct."""
         assert hasattr(kimera, "__version__")
-        assert kimera.__version__ == "1.1.0"
+        assert kimera.__version__ == "2.0.0"
         assert isinstance(kimera.__version__, str)
 
     def test_package_docstring(self):
@@ -90,7 +90,7 @@ class TestPackageMetadata:
         """Test version consistency across package files."""
         # Version should match what's in pyproject.toml
         package_version = kimera.__version__
-        assert package_version == "1.1.0"
+        assert package_version == "2.0.0"
 
     def test_package_attributes(self):
         """Test that package has expected attributes."""

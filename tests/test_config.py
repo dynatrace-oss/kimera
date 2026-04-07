@@ -113,14 +113,6 @@ class TestConfigLoader:
         assert config.dry_run is True
         assert config.namespace == "custom"
 
-    def test_load_production_profile(self):
-        """Test loading the production profile sets dry_run."""
-        loader = ConfigLoader()
-        config = loader.load(profile="production")
-
-        assert config.dry_run is True
-        assert config.namespace == "security-testing"
-
     def test_load_nonexistent_profile_raises(self):
         """Test loading a missing profile raises FileNotFoundError."""
         loader = ConfigLoader()

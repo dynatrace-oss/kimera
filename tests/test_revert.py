@@ -190,20 +190,18 @@ class TestJournalIntegration:
         assert ops[0]["action"] == "make_vulnerable"
         assert ops[0]["exploit_type"] == "privileged-containers"
 
-    def test_make_secure_records_operation(self, tmp_path: Path) -> None:
-        """Test that make_secure writes to the journal."""
+    def test_make_secure_prints_guidance(self, tmp_path: Path) -> None:
+        """Test that make_secure prints guidance and does not record an operation."""
         k8s, logger = _create_mock_k8s_client()
-        k8s.patch_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
-        k8s.get_deployment = MagicMock(return_value=None)  # type: ignore[method-assign]
 
         exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
 
         with _patch_journal(tmp_path):
-            exploit.make_secure()
+            result = exploit.make_secure()
             ops = pending_operations()
 
-        assert len(ops) == 1
-        assert ops[0]["action"] == "make_secure"
+        assert result is True
+        assert len(ops) == 0
 
     def test_dry_run_does_not_record(self, tmp_path: Path) -> None:
         """Test that dry-run operations are not recorded."""

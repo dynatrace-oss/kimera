@@ -21,11 +21,8 @@ from kimera.container.core.exceptions import K8sError
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
 from kimera.container.infrastructure.enforcement import (
-    KUBE_ROUTER_IMAGE,
-    KUBE_ROUTER_NAME,
-    KUBE_ROUTER_NAMESPACE,
-    TOOLKIT_LABEL,
-    TOOLKIT_LABEL_VALUE,
+    CILIUM_DAEMONSET,
+    CILIUM_NAMESPACE,
     PolicyEnforcementManager,
 )
 
@@ -204,147 +201,50 @@ class TestK8sClientRBACMethods:
         assert self.k8s.rbac_v1 is self.mock_rbac
 
 
-# --- PolicyEnforcementManager manifest tests ---
-
-
-class TestEnforcementManifests:
-    """Test PolicyEnforcementManager manifest builders."""
-
-    def setup_method(self):
-        self.k8s, self.mock_apps, self.mock_core, self.mock_rbac, self.mock_logger = (
-            _create_mock_k8s_client()
-        )
-        self.manager = PolicyEnforcementManager(self.k8s, self.mock_logger)
-
-    def test_daemonset_firewall_only_args(self):
-        ds = self.manager._build_daemonset()
-        container = ds["spec"]["template"]["spec"]["containers"][0]
-        assert "--run-router=false" in container["args"]
-        assert "--run-firewall=true" in container["args"]
-        assert "--run-service-proxy=false" in container["args"]
-
-    def test_daemonset_has_toolkit_labels(self):
-        ds = self.manager._build_daemonset()
-        labels = ds["metadata"]["labels"]
-        assert labels[TOOLKIT_LABEL] == TOOLKIT_LABEL_VALUE
-
-    def test_daemonset_host_network(self):
-        ds = self.manager._build_daemonset()
-        assert ds["spec"]["template"]["spec"]["hostNetwork"] is True
-
-    def test_daemonset_tolerations(self):
-        ds = self.manager._build_daemonset()
-        tolerations = ds["spec"]["template"]["spec"]["tolerations"]
-        effects = [t.get("effect") for t in tolerations]
-        assert "NoSchedule" in effects
-
-    def test_daemonset_resource_limits(self):
-        ds = self.manager._build_daemonset()
-        container = ds["spec"]["template"]["spec"]["containers"][0]
-        assert "limits" in container["resources"]
-        assert "requests" in container["resources"]
-
-    def test_daemonset_pinned_image(self):
-        ds = self.manager._build_daemonset()
-        container = ds["spec"]["template"]["spec"]["containers"][0]
-        assert container["image"] == KUBE_ROUTER_IMAGE
-        assert ":latest" not in container["image"]
-
-    def test_daemonset_in_kube_system(self):
-        ds = self.manager._build_daemonset()
-        assert ds["metadata"]["namespace"] == KUBE_ROUTER_NAMESPACE
-
-    def test_service_account_structure(self):
-        sa = self.manager._build_service_account()
-        assert sa["kind"] == "ServiceAccount"
-        assert sa["metadata"]["name"] == KUBE_ROUTER_NAME
-        assert sa["metadata"]["namespace"] == KUBE_ROUTER_NAMESPACE
-        assert sa["metadata"]["labels"][TOOLKIT_LABEL] == TOOLKIT_LABEL_VALUE
-
-    def test_cluster_role_permissions(self):
-        cr = self.manager._build_cluster_role()
-        assert cr["kind"] == "ClusterRole"
-        rules = cr["rules"]
-
-        # Should have core API, networking, extensions, and discovery rules
-        api_groups = [r["apiGroups"][0] for r in rules]
-        assert "" in api_groups
-        assert "networking.k8s.io" in api_groups
-        assert "discovery.k8s.io" in api_groups
-
-        # Core API should allow pods, services, nodes, etc.
-        core_rule = next(r for r in rules if r["apiGroups"] == [""])
-        assert "pods" in core_rule["resources"]
-        assert "nodes" in core_rule["resources"]
-        assert "networkpolicies" not in core_rule["resources"]
-
-        # Networking API should allow networkpolicies
-        net_rule = next(r for r in rules if r["apiGroups"] == ["networking.k8s.io"])
-        assert "networkpolicies" in net_rule["resources"]
-
-    def test_cluster_role_binding_references(self):
-        crb = self.manager._build_cluster_role_binding()
-        assert crb["kind"] == "ClusterRoleBinding"
-        assert crb["roleRef"]["name"] == KUBE_ROUTER_NAME
-        assert crb["subjects"][0]["name"] == KUBE_ROUTER_NAME
-        assert crb["subjects"][0]["namespace"] == KUBE_ROUTER_NAMESPACE
-
-
-# --- PolicyEnforcementManager lifecycle tests ---
+# --- PolicyEnforcementManager tests ---
 
 
 class TestEnforcementEnable:
-    """Test PolicyEnforcementManager enable lifecycle."""
+    """Test PolicyEnforcementManager enable — Cilium detection and guidance."""
 
     def setup_method(self):
         self.k8s, self.mock_apps, self.mock_core, self.mock_rbac, self.mock_logger = (
             _create_mock_k8s_client()
         )
-        # Mock wait_for_daemonset to return immediately
-        self.k8s.wait_for_daemonset = Mock(return_value=True)  # type: ignore[method-assign]
         self.manager = PolicyEnforcementManager(self.k8s, self.mock_logger)
 
-    def test_enable_creates_all_resources(self):
-        result = self.manager.enable()
-
-        assert result is True
-        self.mock_core.create_namespaced_service_account.assert_called_once()
-        self.mock_rbac.create_cluster_role.assert_called_once()
-        self.mock_rbac.create_cluster_role_binding.assert_called_once()
-        self.mock_apps.create_namespaced_daemon_set.assert_called_once()
-
-    def test_enable_dry_run(self):
-        result = self.manager.enable(dry_run=True)
-
-        assert result is True
-        self.mock_core.create_namespaced_service_account.assert_not_called()
-        self.mock_rbac.create_cluster_role.assert_not_called()
-        self.mock_apps.create_namespaced_daemon_set.assert_not_called()
-
-    def test_enable_idempotent_on_conflict(self):
-        self.mock_core.create_namespaced_service_account.side_effect = ApiException(
-            status=409, reason="Conflict"
-        )
-        self.mock_rbac.create_cluster_role.side_effect = ApiException(status=409, reason="Conflict")
-        self.mock_rbac.create_cluster_role_binding.side_effect = ApiException(
-            status=409, reason="Conflict"
-        )
-        self.mock_apps.create_namespaced_daemon_set.side_effect = ApiException(
-            status=409, reason="Conflict"
-        )
+    def test_enable_returns_true_when_cilium_running(self):
+        mock_ds = Mock()
+        mock_ds.status.desired_number_scheduled = 2
+        mock_ds.status.number_ready = 2
+        self.mock_apps.read_namespaced_daemon_set.return_value = mock_ds
 
         assert self.manager.enable() is True
 
-    def test_enable_fails_on_daemonset_error(self):
-        self.mock_apps.create_namespaced_daemon_set.side_effect = ApiException(
-            status=500, reason="Server Error"
+    def test_enable_returns_false_and_prints_guidance_when_cilium_missing(self):
+        self.mock_apps.read_namespaced_daemon_set.side_effect = ApiException(
+            status=404, reason="Not Found"
         )
-
         assert self.manager.enable() is False
+
+    def test_enable_dry_run_returns_true(self):
+        assert self.manager.enable(dry_run=True) is True
+        self.mock_apps.read_namespaced_daemon_set.assert_not_called()
+
+    def test_enable_checks_cilium_daemonset_in_kube_system(self):
+        mock_ds = Mock()
+        mock_ds.status.desired_number_scheduled = 1
+        mock_ds.status.number_ready = 1
+        self.mock_apps.read_namespaced_daemon_set.return_value = mock_ds
+
+        self.manager.enable()
+        self.mock_apps.read_namespaced_daemon_set.assert_called_with(
+            CILIUM_DAEMONSET, CILIUM_NAMESPACE
+        )
 
 
 class TestEnforcementDisable:
-    """Test PolicyEnforcementManager disable lifecycle."""
+    """Test PolicyEnforcementManager disable — guidance only."""
 
     def setup_method(self):
         self.k8s, self.mock_apps, self.mock_core, self.mock_rbac, self.mock_logger = (
@@ -352,36 +252,15 @@ class TestEnforcementDisable:
         )
         self.manager = PolicyEnforcementManager(self.k8s, self.mock_logger)
 
-    def test_disable_removes_all_resources(self):
-        result = self.manager.disable()
-
-        assert result is True
-        self.mock_apps.delete_namespaced_daemon_set.assert_called_once()
-        self.mock_rbac.delete_cluster_role_binding.assert_called_once()
-        self.mock_rbac.delete_cluster_role.assert_called_once()
-        self.mock_core.delete_namespaced_service_account.assert_called_once()
-
-    def test_disable_idempotent_on_not_found(self):
-        self.mock_apps.delete_namespaced_daemon_set.side_effect = ApiException(
-            status=404, reason="Not Found"
-        )
-        self.mock_rbac.delete_cluster_role_binding.side_effect = ApiException(
-            status=404, reason="Not Found"
-        )
-        self.mock_rbac.delete_cluster_role.side_effect = ApiException(
-            status=404, reason="Not Found"
-        )
-        self.mock_core.delete_namespaced_service_account.side_effect = ApiException(
-            status=404, reason="Not Found"
-        )
-
-        assert self.manager.disable() is True
+    def test_disable_makes_no_cluster_changes(self):
+        self.manager.disable()
+        self.mock_apps.delete_namespaced_daemon_set.assert_not_called()
+        self.mock_rbac.delete_cluster_role.assert_not_called()
+        self.mock_core.delete_namespaced_service_account.assert_not_called()
 
     def test_disable_dry_run(self):
-        result = self.manager.disable(dry_run=True)
-
-        assert result is True
-        self.mock_apps.delete_namespaced_daemon_set.assert_not_called()
+        self.manager.disable(dry_run=True)
+        self.mock_logger.info.assert_called()
 
 
 class TestEnforcementStatus:
@@ -420,12 +299,14 @@ class TestEnforcementStatus:
         mock_ds.status.desired_number_scheduled = 3
         mock_ds.status.number_ready = 3
         mock_ds.status.number_available = 3
+        mock_ds.spec.template.spec.containers = [Mock(image="quay.io/cilium/cilium:v1.16.5")]
         self.mock_apps.read_namespaced_daemon_set.return_value = mock_ds
 
         status = self.manager.get_status()
         assert status["installed"] is True
         assert status["desired"] == 3
         assert status["ready"] == 3
+        assert "cilium" in status["image"]
 
     def test_get_status_not_installed(self):
         self.mock_apps.read_namespaced_daemon_set.side_effect = ApiException(
