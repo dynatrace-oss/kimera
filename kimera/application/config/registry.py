@@ -31,6 +31,7 @@ class ExploitEntry:
     name: str
     cls: type[Any]
     revert_strategy: str
+    config_key: str = ""
 
 
 def _import_class(dotted_path: str) -> type[Any]:
@@ -74,6 +75,7 @@ class ExploitRegistry:
                 name=name,
                 cls=cls,
                 revert_strategy=entry.get("revert_strategy", "rollback"),
+                config_key=entry.get("config_key", ""),
             )
 
     def get(self, name: str) -> ExploitEntry | None:
@@ -87,8 +89,21 @@ class ExploitRegistry:
 
     @property
     def classes(self) -> dict[str, type[Any]]:
-        """Return a mapping of type name to exploit class."""
-        return {name: entry.cls for name, entry in self._entries.items()}
+        """Return a mapping of type name to exploit class factory.
+
+        For DeploymentPatchExploit entries (with config_key), returns a
+        partial that pre-fills config_key. For other entries, returns
+        the class directly.
+        """
+        from functools import partial
+
+        result: dict[str, Any] = {}
+        for name, entry in self._entries.items():
+            if entry.config_key:
+                result[name] = partial(entry.cls, config_key=entry.config_key)
+            else:
+                result[name] = entry.cls
+        return result
 
     def __contains__(self, name: str) -> bool:  # noqa: D105
         return name in self._entries
