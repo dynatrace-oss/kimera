@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Structured data models for the kimera service layer.
-
-These models are returned by the service layer and consumed by both the CLI
-(Rich tables) and the MCP server (JSON). They use Pydantic for serialization
-and validation.
-"""
 
 from enum import StrEnum
 

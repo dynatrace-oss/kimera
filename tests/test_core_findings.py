@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for core findings models.
-
-Focus: computed properties (severity counts, to_summary) and edge cases
-(empty findings, defense_caught branch). Constructor-assignment and
-Pydantic serialization tests are excluded — they test the framework.
-"""
 
 from kimera.core.findings import (
     AssessmentReport,

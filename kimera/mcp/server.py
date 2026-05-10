@@ -12,27 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kimera MCP server — K8s pentest tools for AI agents.
-
-Exposes attack techniques, assessment, enumeration, and defense validation
-as MCP tools. Each tool wraps the service layer (kimera.core) and returns
-structured JSON for LLM consumption.
-
-Run:
-    uv run python -m kimera.mcp.server          # stdio (Claude Desktop)
-    uv run python -m kimera.mcp.server --http    # streamable HTTP
-
-Configure in Claude Desktop:
-    {
-      "mcpServers": {
-        "kimera": {
-          "command": "uv",
-          "args": ["run", "python", "-m", "kimera.mcp.server"],
-          "cwd": "/path/to/k8s-exploit-toolkit"
-        }
-      }
-    }
-"""
+# Run:
+#   uv run python -m kimera.mcp.server          # stdio (Claude Desktop)
+#   uv run python -m kimera.mcp.server --http    # streamable HTTP
+#
+# Claude Desktop config:
+#   {
+#     "mcpServers": {
+#       "kimera": {
+#         "command": "uv",
+#         "args": ["run", "python", "-m", "kimera.mcp.server"],
+#         "cwd": "/path/to/k8s-exploit-toolkit"
+#       }
+#     }
+#   }
 
 import logging
 from typing import Any

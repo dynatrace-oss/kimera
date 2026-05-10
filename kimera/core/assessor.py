@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Config-driven workload security assessment.
-
-Loads check definitions from config/checks/workload.yaml and evaluates
-each deployment against them. No hardcoded check logic — the YAML config
-determines what to check, the severity, and the ATT&CK/CIS mappings.
-"""
 
 import logging
 from pathlib import Path
@@ -35,7 +29,7 @@ logger = logging.getLogger(__name__)
 _CONFIG_DIR = Path(__file__).resolve().parents[2] / "config" / "checks"
 
 
-def _load_checks(config_path: Path | None = None) -> list[dict[str, Any]]:
+def _load_checks(config_path: Path | None = None) -> list[dict[str, Any]] | Any:
     """Load assessment check definitions from YAML."""
     path = config_path or (_CONFIG_DIR / "workload.yaml")
     if not path.exists():

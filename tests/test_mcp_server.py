@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for MCP server tool contracts.
-
-Focus: every tool returns a dict with a 'summary' key (MCP contract),
-error paths return structured errors not crashes, and tool inputs are
-validated correctly. Does NOT test K8s API integration (that's in
-test_core_assessor.py and test_core_technique_engine.py).
-"""
 
 from kimera.mcp.server import (
     get_remediation,

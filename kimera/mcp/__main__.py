@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Entry point for ``python -m kimera.mcp.server``."""
 
 from .server import main
 

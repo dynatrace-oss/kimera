@@ -12,17 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Config-driven technique execution engine.
-
-Loads technique definitions from config/techniques/ YAML files and executes
-them against a K8s cluster. Each technique YAML defines probes, evidence
-markers, MITRE mappings, and execution mode.
-
-The engine reuses the existing ProbeRunner for shell script generation and
-the existing K8sClient for API interaction and pod exec.
-
-Runtime extension: drop a new YAML into config/techniques/ and call reload().
-"""
 
 import logging
 from pathlib import Path

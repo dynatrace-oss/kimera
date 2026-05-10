@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for config-driven assessment engine.
-
-Focus: condition evaluator boundary cases, check-type dispatch, config loading
-error paths, and real config integration.
-"""
 
 from pathlib import Path
 from unittest.mock import MagicMock

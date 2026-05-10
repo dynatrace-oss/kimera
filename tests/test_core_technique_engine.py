@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for config-driven technique engine.
-
-Focus: registry loading/reload, exec evidence matching, error paths
-(missing pod, unknown technique, exec failure), and template substitution.
-"""
 
 from pathlib import Path
 from unittest.mock import MagicMock
