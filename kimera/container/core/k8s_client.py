@@ -58,6 +58,9 @@ class K8sClient:
         self.apps_v1 = client.AppsV1Api()
         self.networking_v1 = client.NetworkingV1Api()
         self.rbac_v1 = client.RbacAuthorizationV1Api()
+        self.batch_v1 = client.BatchV1Api()
+        self.admissionregistration_v1 = client.AdmissionregistrationV1Api()
+        self.apiextensions_v1 = client.ApiextensionsV1Api()
 
     def get_deployment(self, name: str) -> V1Deployment | None:
         """Get a deployment by name."""

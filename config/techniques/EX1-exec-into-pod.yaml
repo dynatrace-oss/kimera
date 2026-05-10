@@ -1,0 +1,56 @@
+id: EX1
+name: Exec into pod via API
+enabled: true
+
+mitre:
+  technique_id: T1609
+  technique_name: "Container Administration Command"
+  tactic: execution
+  data_sources: [Command, Process]
+
+cis_controls:
+  - "5.1.3"
+
+severity: high
+
+description: |
+  Executes a command inside a target pod via the Kubernetes API
+  (pods/exec subresource). This is the primary method for executing
+  code in a container after obtaining credentials with sufficient
+  RBAC permissions.
+
+  Falco's default k8s_audit rules detect this via "Attach/Exec Pod"
+  at NOTICE level. Tetragon detects the resulting process execution
+  at the kernel level.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "EXEC_SUCCESS:$(whoami)@$(hostname)"
+        id
+        cat /etc/os-release 2>/dev/null | head -2
+
+  evidence_markers:
+    - marker: "EXEC_SUCCESS"
+      evidence: "Command execution inside target pod succeeded"
+      impact: "Attacker can run arbitrary commands in container"
+    - marker: "EXEC_DENIED"
+      evidence: "RBAC denied pods/exec"
+
+success_indicators:
+  - "EXEC_SUCCESS"
+
+impact:
+  - "Arbitrary command execution inside the container"
+  - "Can chain with C1 (token theft), C6 (env secrets), L1 (network probe)"
+  - "Detectable by Falco (Attach/Exec Pod) and Tetragon (execve)"
+
+remediation: |
+  Restrict pods/exec permission to administrators and debugging SAs.
+  Remove exec from workload ServiceAccount roles.
+  Use Falco rule "Attach/Exec Pod" to alert on exec operations.
+  Consider PodSecurityPolicy or admission rules to restrict exec targets.

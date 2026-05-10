@@ -15,10 +15,9 @@
 import logging
 from typing import Any
 
-from kubernetes.client.rest import ApiException
-
 from ..container.core.k8s_client import K8sClient
 from ..container.make_vulnerable.probe_runner import ProbeRunner
+from .api_executor import execute_api_technique
 from .findings import TechniqueResult
 from .technique_registry import TechniqueDefinition, TechniqueRegistry
 
@@ -59,7 +58,7 @@ def execute_technique(
     if technique.mode == "exec":
         _execute_exec_technique(k8s, technique, result, target_pod, params or {})
     elif technique.mode == "api":
-        _execute_api_technique(k8s, technique, result)
+        execute_api_technique(k8s, technique, result)
     else:
         result.evidence = [f"Unknown execution mode: {technique.mode}"]
 
@@ -111,79 +110,6 @@ def _execute_exec_technique(
         if indicator in output:
             result.success = True
             break
-
-
-def _execute_api_technique(
-    k8s: K8sClient,
-    technique: TechniqueDefinition,
-    result: TechniqueResult,
-) -> None:
-    try:
-        resources = _enumerate_for_technique(k8s, technique, k8s.namespace)
-        if resources:
-            result.success = True
-            result.evidence = [f"Enumerated {len(resources)} resources"]
-            for r in resources[:10]:
-                result.evidence.append(f"{r['type']}: {r['name']}")
-    except ApiException as exc:
-        result.evidence = [f"API call failed: {exc.reason}"]
-
-
-def _enumerate_for_technique(
-    k8s: K8sClient,
-    technique: TechniqueDefinition,
-    namespace: str,
-) -> list[dict[str, Any]]:
-    resources: list[dict[str, Any]] = []
-
-    for api_call in technique.api_calls:
-        resource_type = api_call.get("resource", "")
-        try:
-            items = _list_resource(k8s, namespace, resource_type)
-            resources.extend(items)
-        except ApiException as exc:
-            logger.warning("Failed to enumerate %s: %s", resource_type, exc.reason)
-
-    return resources
-
-
-def _list_resource(k8s: K8sClient, namespace: str, resource_type: str) -> list[dict[str, Any]]:
-    """List K8s resources by type. Returns dicts with name and type keys."""
-    if resource_type == "deployments":
-        return [{"name": i.metadata.name, "type": "deployment"}
-                for i in k8s.apps_v1.list_namespaced_deployment(namespace).items]
-    if resource_type == "services":
-        return [{"name": i.metadata.name, "type": "service"}
-                for i in k8s.v1.list_namespaced_service(namespace).items]
-    if resource_type == "serviceaccounts":
-        return [{"name": i.metadata.name, "type": "serviceaccount"}
-                for i in k8s.v1.list_namespaced_service_account(namespace).items]
-    if resource_type == "secrets":
-        return [{"name": i.metadata.name, "type": f"secret/{i.type}"}
-                for i in k8s.v1.list_namespaced_secret(namespace).items]
-    if resource_type == "configmaps":
-        return [{"name": i.metadata.name, "type": "configmap",
-                 "keys": list((i.data or {}).keys())}
-                for i in k8s.v1.list_namespaced_config_map(namespace).items]
-    if resource_type == "namespaces":
-        return [{"name": i.metadata.name, "type": "namespace"}
-                for i in k8s.v1.list_namespace().items]
-    if resource_type == "networkpolicies":
-        return [{"name": i.metadata.name, "type": "networkpolicy"}
-                for i in k8s.list_network_policies(namespace)]
-    if resource_type == "rolebindings":
-        return [{"name": i.metadata.name, "type": "rolebinding", "role": i.role_ref.name}
-                for i in k8s.rbac_v1.list_namespaced_role_binding(namespace).items]
-    if resource_type == "clusterrolebindings":
-        return [{"name": i.metadata.name, "type": "clusterrolebinding", "role": i.role_ref.name}
-                for i in k8s.rbac_v1.list_cluster_role_binding().items]
-    if resource_type == "endpoints":
-        return [{"name": i.metadata.name, "type": "endpoints"}
-                for i in k8s.v1.list_namespaced_endpoints(namespace).items]
-    if resource_type == "validate_controls":
-        return []  # V1-V3: handled by MCP validate_defense tool
-    logger.warning("Unknown API resource type: %s", resource_type)
-    return []
 
 
 def _resolve_probe_params(

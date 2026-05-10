@@ -1,0 +1,55 @@
+id: EX2
+name: Ephemeral container injection
+enabled: true
+
+mitre:
+  technique_id: T1610
+  technique_name: "Deploy Container"
+  tactic: execution
+  data_sources: [Container, Pod]
+
+cis_controls: []
+
+severity: high
+
+description: |
+  Injects an ephemeral (debug) container into a running pod via the
+  Kubernetes API. Ephemeral containers share the pod's network namespace,
+  process namespace (if shared), and mounted volumes — providing access
+  to the target pod's environment without modifying its spec.
+
+  Falco detects this via "EphemeralContainers Created" at NOTICE level.
+  However, many clusters do not have this rule enabled or tuned.
+  Ephemeral containers were GA in K8s 1.25.
+
+execution:
+  mode: api
+  requires_target_pod: true
+
+  api_calls:
+    - resource: pods/ephemeralcontainers
+      verb: patch
+      scope: namespace
+      description: "Inject ephemeral debug container into target pod"
+
+  evidence_markers:
+    - marker: "EPHEMERAL_INJECTED"
+      evidence: "Ephemeral container injected into target pod"
+      impact: "Attacker has shell access inside target pod's namespaces"
+    - marker: "INJECTION_DENIED"
+      evidence: "RBAC denied ephemeral container creation or admission rejected"
+      impact: "Ephemeral containers are restricted"
+
+success_indicators:
+  - "EPHEMERAL_INJECTED"
+
+impact:
+  - "Access to target pod's network, IPC, and optionally PID namespace"
+  - "Can read mounted secrets and environment variables"
+  - "Ephemeral containers cannot be removed once added (K8s limitation)"
+  - "Detectable by Falco (EphemeralContainers Created) if rule is enabled"
+
+remediation: |
+  Restrict pods/ephemeralcontainers permission to administrators.
+  Enable and tune the Falco "EphemeralContainers Created" rule.
+  Use admission policies to restrict ephemeral container images.

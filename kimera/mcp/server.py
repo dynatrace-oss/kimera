@@ -49,12 +49,20 @@ mcp_server = FastMCP(
     instructions=(
         "Kimera is a Kubernetes penetration testing toolkit. "
         "You are an offensive security expert conducting a K8s security assessment. "
-        "Start with enumerate_targets to understand the attack surface, then use "
-        "assess_namespace to find misconfigurations. Use attempt_technique to test "
-        "specific attack paths (C1=SA token theft, L1=network probe, etc.). "
-        "After each successful technique, use validate_defense to check if the "
-        "blue team's controls caught it. All destructive operations default to "
-        "dry_run=True — set dry_run=False only when explicitly instructed."
+        "Start with list_techniques to see available attack techniques, then "
+        "enumerate_attack_surface to map the target namespace. Use assess_target "
+        "to find misconfigurations, then attempt_technique to test specific "
+        "attack paths across 8 phases: reconnaissance, credential-access, "
+        "privilege-escalation, lateral-movement, defense-evasion, persistence, "
+        "execution, and defense-validation. "
+        "Chain techniques based on results: R8 (permission probe) reveals "
+        "which techniques will succeed. C1 (token theft) chains with C7 "
+        "(secret enumeration). E1 (escape) chains with P1 (persistence). "
+        "After attacks, use validate_defense to check if blue team controls "
+        "caught them. Use noise_budget parameter to control stealth: "
+        "stealth=recon only, cautious=no exec, aggressive=all techniques. "
+        "All destructive operations default to dry_run=True — set "
+        "dry_run=False only when explicitly instructed."
     ),
 )
 
@@ -164,6 +172,7 @@ def attempt_technique(
     target_pod: str | None = None,
     params: dict[str, str] | None = None,
     dry_run: bool = True,
+    noise_budget: str = "aggressive",
     kubeconfig: str | None = None,
 ) -> dict[str, Any]:
     """Execute a specific attack technique against the cluster.
@@ -175,26 +184,64 @@ def attempt_technique(
     SAFETY: Defaults to dry_run=True. Set dry_run=False only when explicitly
     instructed by the operator.
 
+    Noise budget controls stealth:
+      stealth    = reconnaissance only (R-phase, SelfSubjectAccessReview)
+      cautious   = no exec-mode techniques (API calls only)
+      aggressive = all techniques allowed (default)
+
     Common technique IDs:
-      C1 = SA token theft from volume mount
-      C2 = Secret enumeration via API
-      C5 = Cloud metadata SSRF
-      C6 = Environment variable secrets
-      L1 = Network service probe
-      L5 = DNS service enumeration
-      R2 = Enumerate workloads
+      R8  = Permission probe (zero Falco alerts)
+      R9  = Detect admission controllers
+      C1  = SA token theft from volume mount
+      C7  = List secrets (invisible to Falco)
+      DE1 = Delete K8s events
+      DE2 = Disable PSA on namespace
+      P1  = CronJob persistence
+      EX2 = Ephemeral container injection
 
     Use list_techniques() to see all available techniques.
 
     Args:
-        technique_id: Technique ID (e.g. "C1", "L1", "E1").
+        technique_id: Technique ID (e.g. "C1", "L1", "DE1", "P1").
         namespace: Target namespace.
-        target_pod: Pod name for exec-mode techniques (required for C1, C5, L1, etc.).
-        params: Runtime parameters (e.g. {"probe_host": "redis", "probe_port": "6379"}).
-        dry_run: If True, preview only — no cluster state changes. Default: True.
+        target_pod: Pod name for exec-mode techniques.
+        params: Runtime parameters.
+        dry_run: If True, preview only. Default: True.
+        noise_budget: Stealth level (stealth, cautious, aggressive). Default: aggressive.
         kubeconfig: Path to kubeconfig file (optional).
     """
     k8s = _get_k8s(namespace, kubeconfig)
+
+    # Enforce noise budget
+    technique = _registry.get(technique_id)
+    if technique and noise_budget != "aggressive":
+        noise_levels = {"stealth": ["very-low"], "cautious": ["very-low", "low", "medium"]}
+        allowed = noise_levels.get(noise_budget, [])
+        meta = _registry._registry_data.get(technique_id, {})
+        tech_noise = meta.get("noise", "high")
+        if tech_noise not in allowed:
+            return {
+                "technique_id": technique_id,
+                "blocked_by": "noise_budget",
+                "noise_budget": noise_budget,
+                "technique_noise": tech_noise,
+                "summary": (
+                    f"Technique {technique_id} blocked: noise level '{tech_noise}' "
+                    f"exceeds budget '{noise_budget}'. "
+                    f"Allowed levels: {allowed}"
+                ),
+            }
+        if noise_budget == "cautious" and technique.mode == "exec":
+            return {
+                "technique_id": technique_id,
+                "blocked_by": "noise_budget",
+                "noise_budget": noise_budget,
+                "summary": (
+                    f"Technique {technique_id} blocked: exec-mode techniques "
+                    f"are not allowed in cautious mode (detectable by Falco/Tetragon)."
+                ),
+            }
+
     result: TechniqueResult = execute_technique(
         k8s=k8s,
         registry=_registry,

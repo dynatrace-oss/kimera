@@ -1,0 +1,64 @@
+id: P2
+name: Create ServiceAccount with role binding
+enabled: true
+
+mitre:
+  technique_id: T1136.001
+  technique_name: "Create Account: Local Account"
+  tactic: persistence
+  data_sources: [User Account]
+
+cis_controls:
+  - "5.1.1"
+  - "5.1.2"
+
+severity: critical
+
+description: |
+  Creates a new ServiceAccount and binds it to an existing Role or
+  ClusterRole, establishing a persistent identity that survives pod
+  deletion. The attacker can later create a token for this SA to
+  re-authenticate to the K8s API.
+
+  Combines T1136.001 (Create Account) with T1098.006 (Additional
+  Container Cluster Roles) in a single technique.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: serviceaccounts
+      verb: create
+      scope: namespace
+      description: "Create backdoor ServiceAccount"
+    - resource: rolebindings
+      verb: create
+      scope: namespace
+      description: "Bind SA to existing Role"
+
+  evidence_markers:
+    - marker: "SA_CREATED"
+      evidence: "Backdoor ServiceAccount created"
+      impact: "Persistent identity available for re-authentication"
+    - marker: "BINDING_CREATED"
+      evidence: "RoleBinding created linking SA to Role"
+      impact: "SA now has permissions from the bound Role"
+    - marker: "CREATE_DENIED"
+      evidence: "RBAC denied SA or RoleBinding creation"
+      impact: "Account creation is restricted"
+
+success_indicators:
+  - "BINDING_CREATED"
+
+impact:
+  - "Persistent K8s identity survives pod deletion and redeployment"
+  - "Attacker can create tokens via TokenRequest API"
+  - "SA name (e.g., monitoring-agent) blends with legitimate accounts"
+  - "Falco alerts on SA creation in kube-system but often ignores app namespaces"
+
+remediation: |
+  Restrict ServiceAccount and RoleBinding creation to administrators.
+  Audit ServiceAccounts regularly — compare against expected inventory.
+  Use Falco rule "K8s Serviceaccount Created" with namespace filtering.
+  Require labels/annotations on ServiceAccounts via admission policy.

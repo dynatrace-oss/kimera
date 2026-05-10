@@ -1,0 +1,64 @@
+id: DE2
+name: Disable PSA on namespace
+enabled: true
+
+mitre:
+  technique_id: T1562
+  technique_name: "Impair Defenses"
+  tactic: defense-evasion
+  data_sources: [Command, Process]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Overwrites the Pod Security Admission enforcement label on the target
+  namespace to "privileged", disabling all PSA controls. After this,
+  privileged pods, host namespaces, and dangerous capabilities are
+  admitted without restriction.
+
+  Falco's default k8s_audit rules have no rule for namespace label
+  changes, making this modification invisible to standard detection.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: namespaces
+      verb: patch
+      scope: cluster
+      description: "Set pod-security.kubernetes.io/enforce=privileged on namespace"
+      patch:
+        type: merge
+        body:
+          metadata:
+            labels:
+              pod-security.kubernetes.io/enforce: "privileged"
+              pod-security.kubernetes.io/audit: "privileged"
+              pod-security.kubernetes.io/warn: "privileged"
+
+  evidence_markers:
+    - marker: "PSA_DISABLED"
+      evidence: "Pod Security Admission enforcement set to privileged"
+      impact: "All pod security restrictions removed from namespace"
+    - marker: "PATCH_DENIED"
+      evidence: "RBAC denied namespace label modification"
+      impact: "Namespace labels are protected"
+
+success_indicators:
+  - "PSA_DISABLED"
+
+impact:
+  - "All Pod Security Standards enforcement disabled for the namespace"
+  - "Privileged pods, host namespaces, and dangerous capabilities now admitted"
+  - "Invisible to Falco default k8s_audit rules (no rule for namespace label changes)"
+
+remediation: |
+  Restrict namespace update/patch permissions to cluster administrators.
+  Use a ValidatingWebhookConfiguration to prevent PSA label modifications.
+  Add a Falco rule:
+    - rule: PSA Labels Modified
+      condition: kevt and namespace and kmodify
+      priority: CRITICAL

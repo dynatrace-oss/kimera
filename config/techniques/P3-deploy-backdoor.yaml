@@ -1,0 +1,55 @@
+id: P3
+name: Deploy backdoor pod
+enabled: true
+
+mitre:
+  technique_id: T1610
+  technique_name: "Deploy Container"
+  tactic: persistence
+  data_sources: [Container, Pod]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Deploys a new pod in the target namespace with the attacker's chosen
+  image and configuration. The pod name and labels are designed to blend
+  with existing workloads (masquerading).
+
+  This technique tests whether admission controllers (Kyverno, OPA,
+  PSA) block unauthorized pod creation and whether runtime security
+  (Falco, Tetragon) detects the new container.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: pods
+      verb: create
+      scope: namespace
+      description: "Deploy backdoor pod with masquerading labels"
+
+  evidence_markers:
+    - marker: "POD_DEPLOYED"
+      evidence: "Backdoor pod running in namespace"
+      impact: "Attacker has persistent compute in the cluster"
+    - marker: "POD_REJECTED"
+      evidence: "Admission controller rejected the pod"
+      impact: "Pod creation is controlled by admission policy"
+    - marker: "CREATE_DENIED"
+      evidence: "RBAC denied pod creation"
+
+success_indicators:
+  - "POD_DEPLOYED"
+
+impact:
+  - "Persistent attacker-controlled container in the namespace"
+  - "Can mount SA tokens, access network, exfiltrate data"
+  - "Masquerading name/labels reduce detection likelihood"
+
+remediation: |
+  Restrict pod creation to controllers (Deployments, Jobs) — not direct pods.
+  Use admission policies to require pods come from approved controllers.
+  Monitor for standalone pods (no ownerReferences) via Falco or OPA.
