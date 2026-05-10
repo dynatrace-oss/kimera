@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kimera v3 Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3345;
+    --text: #e2e4ea;
+    --text-dim: #8b8fa3;
+    --accent: #6366f1;
+    --accent-glow: rgba(99, 102, 241, 0.15);
+    --green: #22c55e;
+    --green-glow: rgba(34, 197, 94, 0.12);
+    --red: #ef4444;
+    --red-glow: rgba(239, 68, 68, 0.12);
+    --amber: #f59e0b;
+    --amber-glow: rgba(245, 158, 11, 0.12);
+    --cyan: #06b6d4;
+    --cyan-glow: rgba(6, 182, 212, 0.12);
+    --purple: #a855f7;
+    --purple-glow: rgba(168, 85, 247, 0.12);
+    --radius: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .header p {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+  }
+
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── Connection lines ── */
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 0;
+  }
+  .connector .line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .connector .arrow {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 1px;
+  }
+  .connector .label {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--surface);
+    padding: 2px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Tier containers ── */
+  .tier {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    position: relative;
+  }
+  .tier-label {
+    position: absolute;
+    top: -11px;
+    left: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Card styles ── */
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .card-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .card-subtitle {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .card-body {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ── Icon backgrounds ── */
+  .icon-accent  { background: var(--accent-glow); color: var(--accent); }
+  .icon-green   { background: var(--green-glow); color: var(--green); }
+  .icon-red     { background: var(--red-glow); color: var(--red); }
+  .icon-amber   { background: var(--amber-glow); color: var(--amber); }
+  .icon-cyan    { background: var(--cyan-glow); color: var(--cyan); }
+  .icon-purple  { background: var(--purple-glow); color: var(--purple); }
+
+  .label-accent { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(99,102,241,0.3); }
+  .label-green  { background: var(--green-glow); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .label-red    { background: var(--red-glow); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .label-amber  { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+  .label-cyan   { background: var(--cyan-glow); color: var(--cyan); border: 1px solid rgba(6,182,212,0.3); }
+  .label-purple { background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168,85,247,0.3); }
+
+  /* ── Tool grid ── */
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .tool-chip {
+    font-size: 0.73rem;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tool-chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Horizontal cards row ── */
+  .hrow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+
+  /* ── Defense stack ── */
+  .defense-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .defense-item {
+    font-size: 0.76rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .defense-item .status {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .badge-go { background: rgba(0,173,216,0.15); color: #00add8; }
+  .badge-py { background: rgba(255,212,59,0.15); color: #ffd43b; }
+  .badge-new { background: var(--green-glow); color: var(--green); }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  /* SVG icons inline */
+  .svg-icon { width: 20px; height: 20px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⎈ Kimera v3 — Architecture</h1>
+  <p>Agentic K8s security validation via MCP · assess → validate → exploit → remediate → verify → revert</p>
+</div>
+
+<div class="arch-grid">
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- TIER 1: MCP CLIENTS -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="tier">
+    <span class="tier-label label-purple">MCP Clients · any AI tool</span>
+    <div class="hrow">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-purple">🤖</div>
+          <div>
+            <div class="card-title">Claude Desktop</div>
+            <div class="card-subtitle">anthropic.com</div>
+          </div>
+        </div>
+        <div class="card-body">Connect to kimera-server, run security validation via natural conversation</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-purple">⌨️</div>
+          <div>
+            <div class="card-title">Cursor / IDE Agent</div>
+            <div class="card-subtitle">MCP integration</div>
+          </div>
+        </div>
+        <div class="card-body">Security checks from your editor — assess while you develop</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-purple">🔄</div>
+          <div>
+            <div class="card-title">CI/CD Pipeline</div>
+            <div class="card-subtitle">GitHub Actions / ArgoCD</div>
+          </div>
+        </div>
+        <div class="card-body">Automated control validation on every deployment — JSON output</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-purple">🐍</div>
+          <div>
+            <div class="card-title">kimera-agent</div>
+            <div class="card-subtitle badge badge-py">Python</div>
+          </div>
+        </div>
+        <div class="card-body">Agentic loop: plans attack sequences, adapts when defenses block, generates fixes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector -->
+  <div class="connector">
+    <div class="line">
+      <span class="arrow">│</span>
+      <span class="label">MCP Protocol · stdio / streamable HTTP</span>
+      <span class="arrow">▼</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- TIER 2: KIMERA SERVER (Go) -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="tier" style="border-color: rgba(99,102,241,0.4); box-shadow: 0 0 30px var(--accent-glow);">
+    <span class="tier-label label-accent">kimera-server · <span class="badge badge-go">Go</span> static binary · zero dependencies</span>
+
+    <div style="margin-top: 8px; margin-bottom: 16px;">
+      <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 14px;">
+        MCP Tools — each exposed as a standard MCP tool call
+      </div>
+
+      <div class="tool-grid">
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--cyan);"></span>
+          <span><strong>assess</strong><br><span style="color: var(--text-dim);">scan posture</span></span>
+        </div>
+        <div class="tool-chip" style="border-color: rgba(34,197,94,0.4);">
+          <span class="dot" style="background: var(--green);"></span>
+          <span><strong>validate-control</strong> <span class="badge badge-new">new</span><br><span style="color: var(--text-dim);">test defenses</span></span>
+        </div>
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--red);"></span>
+          <span><strong>exploit</strong><br><span style="color: var(--text-dim);">simulate attack</span></span>
+        </div>
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--amber);"></span>
+          <span><strong>generate-fix</strong><br><span style="color: var(--text-dim);">context for LLM</span></span>
+        </div>
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--accent);"></span>
+          <span><strong>apply</strong><br><span style="color: var(--text-dim);">tracked YAML</span></span>
+        </div>
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--cyan);"></span>
+          <span><strong>verify</strong><br><span style="color: var(--text-dim);">confirm fix</span></span>
+        </div>
+        <div class="tool-chip">
+          <span class="dot" style="background: var(--text-dim);"></span>
+          <span><strong>revert</strong><br><span style="color: var(--text-dim);">undo all</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Internal packages -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 16px;">
+      <div class="card" style="padding: 12px;">
+        <div class="card-header" style="margin-bottom: 4px;">
+          <div class="card-icon icon-cyan" style="width: 28px; height: 28px; font-size: 0.85rem;">🔍</div>
+          <div class="card-title" style="font-size: 0.8rem;">pkg/assess</div>
+        </div>
+        <div class="card-body" style="font-size: 0.72rem;">20+ CIS checks, security context audit, scanner</div>
+      </div>
+      <div class="card" style="padding: 12px; border-color: rgba(34,197,94,0.3);">
+        <div class="card-header" style="margin-bottom: 4px;">
+          <div class="card-icon icon-green" style="width: 28px; height: 28px; font-size: 0.85rem;">🛡️</div>
+          <div class="card-title" style="font-size: 0.8rem;">pkg/validate <span class="badge badge-new">new</span></div>
+        </div>
+        <div class="card-body" style="font-size: 0.72rem;">NetworkPolicy probes, admission dry-run, RBAC analysis</div>
+      </div>
+      <div class="card" style="padding: 12px;">
+        <div class="card-header" style="margin-bottom: 4px;">
+          <div class="card-icon icon-red" style="width: 28px; height: 28px; font-size: 0.85rem;">💥</div>
+          <div class="card-title" style="font-size: 0.8rem;">pkg/exploit</div>
+        </div>
+        <div class="card-body" style="font-size: 0.72rem;">10+ types: privileged, caps, RBAC, secrets, hostPath, SSRF</div>
+      </div>
+      <div class="card" style="padding: 12px;">
+        <div class="card-header" style="margin-bottom: 4px;">
+          <div class="card-icon icon-accent" style="width: 28px; height: 28px; font-size: 0.85rem;">⎈</div>
+          <div class="card-title" style="font-size: 0.8rem;">pkg/k8s</div>
+        </div>
+        <div class="card-body" style="font-size: 0.72rem;">Native client-go, no kubectl dependency</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector -->
+  <div class="connector">
+    <div class="line">
+      <span class="arrow">│</span>
+      <span class="label">Kubernetes API · client-go</span>
+      <span class="arrow">▼</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- TIER 3: KUBERNETES CLUSTER -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="tier">
+    <span class="tier-label label-cyan">Kubernetes Cluster · any: kind, EKS, GKE, AKS, on-prem</span>
+
+    <div style="margin-top: 8px; margin-bottom: 14px; font-size: 0.82rem; color: var(--text-dim);">
+      Security controls — kimera validates these actually work, not just that they exist
+    </div>
+
+    <div class="defense-grid">
+      <div class="defense-item">
+        <span class="status">🐝</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">Cilium CNI</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">NetworkPolicy enforcement</div>
+        </div>
+      </div>
+      <div class="defense-item">
+        <span class="status">🦊</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">Kyverno</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Policy-as-code admission</div>
+        </div>
+      </div>
+      <div class="defense-item">
+        <span class="status">🐊</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">OPA Gatekeeper</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Constraint-based admission</div>
+        </div>
+      </div>
+      <div class="defense-item">
+        <span class="status">🔒</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">PSA</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Pod Security Admission</div>
+        </div>
+      </div>
+      <div class="defense-item">
+        <span class="status">👁️</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">Falco</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Runtime detection (eBPF)</div>
+        </div>
+      </div>
+      <div class="defense-item">
+        <span class="status">🔑</span>
+        <div>
+          <div style="font-weight: 600; font-size: 0.8rem;">RBAC</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Roles, bindings, SA tokens</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workloads -->
+    <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
+      <div style="font-size: 0.78rem; color: var(--text-dim); margin-bottom: 10px;">Workloads (demo namespace)</div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <div class="tool-chip" style="font-family: 'Inter', sans-serif;">
+          <span class="dot" style="background: var(--green);"></span>
+          🌐 frontend
+        </div>
+        <div class="tool-chip" style="font-family: 'Inter', sans-serif;">
+          <span class="dot" style="background: var(--green);"></span>
+          ⚙️ api-server
+        </div>
+        <div class="tool-chip" style="font-family: 'Inter', sans-serif;">
+          <span class="dot" style="background: var(--red);"></span>
+          🗄️ redis
+        </div>
+        <div class="tool-chip" style="font-family: 'Inter', sans-serif; border-color: rgba(239,68,68,0.3);">
+          <span class="dot" style="background: var(--red);"></span>
+          ⚠️ overpermissive-sa
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- TIER 4: OPTIONAL ENRICHMENT -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+    <div class="tier" style="border-style: dashed;">
+      <span class="tier-label label-amber">Optional · Observability Enrichment</span>
+      <div class="card" style="margin-top: 8px;">
+        <div class="card-header">
+          <div class="card-icon icon-amber">📊</div>
+          <div>
+            <div class="card-title">Dynatrace MCP</div>
+            <div class="card-subtitle">KSPM + Smartscape topology</div>
+          </div>
+        </div>
+        <div class="card-body">Enrich remediation context with real observability data. Three strategies: targeted DQL, LLM-query, Davis CoPilot.</div>
+      </div>
+    </div>
+    <div class="tier" style="border-style: dashed;">
+      <span class="tier-label label-amber">Optional · LLM Providers</span>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+        <div class="card" style="padding: 10px;">
+          <div class="card-header" style="margin-bottom: 0;">
+            <div class="card-icon icon-purple" style="width: 28px; height: 28px; font-size: 0.85rem;">🧠</div>
+            <div>
+              <div class="card-title" style="font-size: 0.8rem;">Anthropic Claude</div>
+              <div class="card-subtitle">API</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 10px;">
+          <div class="card-header" style="margin-bottom: 0;">
+            <div class="card-icon icon-green" style="width: 28px; height: 28px; font-size: 0.85rem;">🧠</div>
+            <div>
+              <div class="card-title" style="font-size: 0.8rem;">OpenAI GPT</div>
+              <div class="card-subtitle">API</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 10px;">
+          <div class="card-header" style="margin-bottom: 0;">
+            <div class="card-icon icon-cyan" style="width: 28px; height: 28px; font-size: 0.85rem;">🦙</div>
+            <div>
+              <div class="card-title" style="font-size: 0.8rem;">Ollama (local, air-gapped)</div>
+              <div class="card-subtitle">localhost</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--green);"></div>
+    validate-control (new capability)
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--accent);"></div>
+    MCP tool
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--red);"></div>
+    exploit / security gap
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--amber);"></div>
+    optional integration
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="border: 2px dashed var(--text-dim); background: none;"></div>
+    not required (works without)
+  </div>
+</div>
+
+<div style="text-align: center; margin-top: 24px; color: var(--text-dim); font-size: 0.75rem; font-family: 'JetBrains Mono', monospace;">
+  kimera v3 · github.com/dynatrace-oss/kimera · Apache-2.0
+</div>
+
+</body>
+</html>
