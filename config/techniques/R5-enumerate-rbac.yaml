@@ -1,0 +1,41 @@
+# Technique: Enumerate RBAC bindings
+# ID: R5
+# Tactic: Discovery
+
+id: R5
+name: Enumerate RBAC bindings
+enabled: true
+
+mitre:
+  technique_id: T1069.003
+  technique_name: "Permission Groups Discovery: Cloud Groups"
+  tactic: discovery
+  data_sources: [Kubernetes API]
+
+severity: low
+
+description: |
+  Lists RoleBindings and ClusterRoleBindings in the target namespace.
+  Identifies service accounts bound to powerful roles (cluster-admin,
+  edit, admin) that are candidates for RBAC escalation (E8).
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: rolebindings
+      verb: list
+    - resource: clusterrolebindings
+      verb: list
+
+success_indicators:
+  - "bindings_found"
+
+impact:
+  - "Identifies over-privileged service accounts"
+  - "Maps escalation paths from compromised pods to cluster-admin"
+
+remediation: |
+  Follow principle of least privilege. Avoid binding cluster-admin to
+  namespace-scoped service accounts. Use namespace-scoped Roles instead
+  of ClusterRoles. Audit bindings regularly with 'kubectl auth can-i'.

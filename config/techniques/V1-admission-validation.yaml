@@ -1,0 +1,49 @@
+# Technique: Admission controller validation
+# ID: V1
+# Tactic: Defense Validation
+
+id: V1
+name: Admission controller validation
+enabled: true
+
+mitre:
+  technique_id: T1611
+  technique_name: "Escape to Host"
+  tactic: defense-validation
+  data_sources: [Kubernetes API]
+
+severity: info
+
+description: |
+  Tests whether admission controllers (Kyverno, OPA Gatekeeper, Pod Security
+  Standards) block the creation of insecure workloads. Uses server-side
+  dry-run to test without creating any real resources.
+
+  Tests privileged pods, host namespace pods, pods with dangerous capabilities,
+  pods running as root, and pods with writable root filesystem.
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: validate_controls
+      verb: validate
+      parameters:
+        control_type: admission
+
+  parameters:
+    - name: control_type
+      default: admission
+
+success_indicators:
+  - "all_passed"
+
+impact:
+  - "Failed validation means insecure pods can be created"
+  - "Identifies gaps in admission controller coverage"
+
+remediation: |
+  Deploy Pod Security Standards (Baseline or Restricted) at namespace level.
+  Add admission controllers (Kyverno, OPA Gatekeeper) for custom policies.
+  Test that policies block all escalation vectors: privileged, hostPID,
+  hostNetwork, dangerous capabilities, root execution.

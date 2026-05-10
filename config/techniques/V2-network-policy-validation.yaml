@@ -1,0 +1,49 @@
+# Technique: NetworkPolicy validation
+# ID: V2
+# Tactic: Defense Validation
+
+id: V2
+name: NetworkPolicy validation
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: defense-validation
+  data_sources: [Network Traffic]
+
+severity: info
+
+description: |
+  Tests whether NetworkPolicies actually block unauthorized pod-to-pod
+  traffic. Deploys ephemeral probe pods with activeDeadlineSeconds TTL
+  and tests connectivity to services that should be isolated.
+
+  Validates both ingress restrictions (who can reach a service) and
+  default-deny policies.
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: validate_controls
+      verb: validate
+      parameters:
+        control_type: network-policy
+
+  parameters:
+    - name: control_type
+      default: network-policy
+
+success_indicators:
+  - "all_passed"
+
+impact:
+  - "Failed validation means lateral movement is unrestricted"
+  - "Pods can reach services they should be isolated from"
+
+remediation: |
+  Create a default-deny ingress NetworkPolicy in every namespace. Add
+  explicit allow rules only for required traffic flows. Use a CNI that
+  supports NetworkPolicy enforcement (Cilium, Calico). Test policies
+  regularly — they can be silently broken by CNI upgrades.

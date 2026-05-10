@@ -1,0 +1,77 @@
+# Technique: Host namespace escape
+# ID: E3
+# Tactic: Privilege Escalation
+
+id: E3
+name: Host namespace escape
+enabled: true
+
+mitre:
+  technique_id: T1611
+  technique_name: "Escape to Host"
+  tactic: privilege-escalation
+  data_sources: [Container Logs, Process Monitoring]
+
+cis_controls:
+  - "5.2.2"
+  - "5.2.3"
+  - "5.2.4"
+
+severity: critical
+
+description: |
+  Exploits hostPID, hostNetwork, or hostIPC to break container isolation.
+  hostPID allows seeing and signalling all host processes. hostNetwork
+  gives direct access to the node's network stack. hostIPC allows
+  interprocess communication with host processes.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "[*] Checking host namespace sharing..."
+        # Check hostPID
+        if [ "$(ls /proc/1/cmdline 2>/dev/null | head -1)" ] && \
+           grep -q "kubelet\|systemd\|containerd" /proc/1/cmdline 2>/dev/null; then
+            echo "HOST_PID_SHARED"
+            echo "[*] Host processes visible:"
+            ps aux 2>/dev/null | head -20
+        else
+            echo "HOST_PID_ISOLATED"
+        fi
+        # Check hostNetwork
+        if ip addr show 2>/dev/null | grep -q "eth0.*scope global" && \
+           ip route show 2>/dev/null | grep -q "default via"; then
+            # Check if we see the host's full network stack
+            iface_count=$(ip link show 2>/dev/null | grep -c "^[0-9]")
+            if [ "$iface_count" -gt 5 ]; then
+                echo "HOST_NETWORK_LIKELY"
+            fi
+        fi
+
+  evidence_markers:
+    - marker: "HOST_PID_SHARED"
+      evidence: "Host PID namespace shared — all host processes visible"
+      impact: "Can signal host processes, read /proc data, inject into processes"
+    - marker: "HOST_PID_ISOLATED"
+      evidence: "PID namespace is properly isolated"
+    - marker: "HOST_NETWORK_LIKELY"
+      evidence: "Host network namespace likely shared (many interfaces visible)"
+      impact: "Direct access to node network — can sniff traffic, bind ports"
+
+success_indicators:
+  - "HOST_PID_SHARED"
+  - "HOST_NETWORK_LIKELY"
+
+impact:
+  - "hostPID: read kubelet credentials from /proc, inject into host processes"
+  - "hostNetwork: sniff pod-to-pod traffic, access cloud metadata directly"
+  - "hostIPC: communicate with host processes via shared memory"
+
+remediation: |
+  Remove hostPID, hostNetwork, and hostIPC from pod specs. Enforce via
+  Pod Security Standards (Baseline profile blocks all three). Use admission
+  controllers to prevent creation of pods with host namespace sharing.

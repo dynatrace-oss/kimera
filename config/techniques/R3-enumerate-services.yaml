@@ -1,0 +1,40 @@
+# Technique: Enumerate services and endpoints
+# ID: R3
+# Tactic: Discovery
+
+id: R3
+name: Enumerate services and endpoints
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: discovery
+  data_sources: [Kubernetes API]
+
+severity: info
+
+description: |
+  Lists services and their endpoints in the target namespace. Reveals
+  internal service topology, port mappings, and service selectors.
+  Combined with L1 (network probe), identifies reachable services.
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: services
+      verb: list
+    - resource: endpoints
+      verb: list
+
+success_indicators:
+  - "services_found"
+
+impact:
+  - "Maps internal service topology for lateral movement planning"
+  - "Identifies services exposed on known vulnerable ports"
+
+remediation: |
+  Restrict service/endpoint list permissions. Use RBAC to limit which
+  service accounts can enumerate services outside their own namespace.

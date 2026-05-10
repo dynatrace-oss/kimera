@@ -1,0 +1,39 @@
+# Technique: Enumerate namespaces
+# ID: R1
+# Tactic: Discovery
+
+id: R1
+name: Enumerate namespaces
+enabled: true
+
+mitre:
+  technique_id: T1613
+  technique_name: "Container and Resource Discovery"
+  tactic: discovery
+  data_sources: [Kubernetes API]
+
+severity: info
+
+description: |
+  Lists all namespaces accessible to the current kubeconfig context.
+  Reveals the blast radius of current credentials and identifies
+  namespaces that may contain sensitive workloads.
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: namespaces
+      verb: list
+
+success_indicators:
+  - "namespaces_found"
+
+impact:
+  - "Attacker maps organizational structure from namespace names"
+  - "Identifies high-value targets (prod, payments, secrets, infra)"
+
+remediation: |
+  Restrict namespace list permissions via RBAC. Most service accounts
+  should not have cluster-wide namespace listing. Use namespace-scoped
+  roles instead of ClusterRoles where possible.

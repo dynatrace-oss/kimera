@@ -1,0 +1,39 @@
+# Technique: Enumerate network policies
+# ID: R6
+# Tactic: Discovery
+
+id: R6
+name: Enumerate network policies
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: discovery
+  data_sources: [Kubernetes API]
+
+severity: info
+
+description: |
+  Lists NetworkPolicies in the target namespace. Absence of policies
+  means all pod-to-pod traffic is allowed — a prerequisite for
+  lateral movement techniques (L1, L5, L6).
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: networkpolicies
+      verb: list
+
+success_indicators:
+  - "no_network_policies"
+
+impact:
+  - "Confirms whether lateral movement is unrestricted"
+  - "Identifies gaps in network segmentation"
+
+remediation: |
+  Create a default-deny ingress NetworkPolicy in every namespace, then
+  add explicit allow rules for required traffic flows. Use a CNI that
+  supports NetworkPolicy enforcement (Cilium, Calico).
