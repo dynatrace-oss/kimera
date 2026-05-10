@@ -1,0 +1,73 @@
+# Technique: Data store access
+# ID: L6
+# Tactic: Lateral Movement
+
+id: L6
+name: Data store access
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: lateral-movement
+  data_sources: [Network Traffic]
+
+cis_controls:
+  - "5.3.2"
+
+severity: high
+
+description: |
+  Probes common data store ports from inside a pod to test whether
+  databases and caches are accessible from unauthorized workloads.
+  Tests MySQL (3306), PostgreSQL (5432), Redis (6379), and MongoDB (27017).
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "[*] Probing data store ports..."
+        for target in {{ data_store_targets }}; do
+            host=$(echo "$target" | cut -d: -f1)
+            port=$(echo "$target" | cut -d: -f2)
+            label=$(echo "$target" | cut -d: -f3)
+            echo -n "  ${label} (${host}:${port}) -> "
+            if nc -z -w 3 "$host" "$port" 2>/dev/null; then
+                echo "DATASTORE_OPEN:${label}:${host}:${port}"
+            else
+                echo "CLOSED"
+            fi
+        done
+
+  evidence_markers:
+    - marker: "DATASTORE_OPEN"
+      evidence: "Data store port reachable from application pod"
+      impact: "Database/cache accessible from unauthorized service"
+    - marker: "CLOSED"
+      evidence: "Data store port is blocked"
+
+success_indicators:
+  - "DATASTORE_OPEN"
+
+# Common data store ports to probe (used by the technique engine)
+data_store_ports:
+  3306: MySQL/MariaDB
+  5432: PostgreSQL
+  6379: Redis
+  27017: MongoDB
+  9200: Elasticsearch
+  8529: ArangoDB
+
+impact:
+  - "Database/cache accessible from unauthorized service"
+  - "Combined with stolen credentials (C2/C3), enables data exfiltration"
+  - "Redis without authentication allows arbitrary command execution"
+
+remediation: |
+  Create NetworkPolicies restricting ingress to data stores. Only pods
+  with matching labels (e.g., the application backend) should be allowed
+  to connect. Use authentication on all data stores — never run Redis
+  or MongoDB without a password in a shared namespace.

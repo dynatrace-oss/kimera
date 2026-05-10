@@ -1,0 +1,65 @@
+# Technique: Network service probe
+# ID: L1
+# Tactic: Lateral Movement / Discovery
+
+id: L1
+name: Network service probe
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: discovery
+  data_sources: [Network Traffic]
+
+cis_controls:
+  - "5.3.2"  # All namespaces have NetworkPolicies defined
+
+severity: high
+
+description: |
+  Tests TCP connectivity from a pod to a specific host and port.
+  Used to verify whether NetworkPolicies actually block lateral movement
+  between services. The probe target is provided as a parameter — the
+  agent decides which services to probe based on reconnaissance results.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  # Parameters injected at runtime by the technique engine
+  parameters:
+    - name: probe_host
+      type: string
+      required: true
+      description: Target hostname or IP
+    - name: probe_port
+      type: integer
+      required: true
+      description: Target TCP port
+
+  probes:
+    - type: port_open
+      host: "{{ probe_host }}"
+      port: "{{ probe_port }}"
+      timeout: 3
+      label: "{{ probe_host }}:{{ probe_port }}"
+
+  evidence_markers:
+    - marker: "OPEN"
+      evidence: "Target port is reachable from pod"
+      impact: "Lateral movement to this service is possible"
+    - marker: "CLOSED"
+      evidence: "Target port is blocked"
+
+success_indicators:
+  - "OPEN"
+
+impact:
+  - "Lateral movement to the target service is possible"
+  - "NetworkPolicy does not block this traffic path"
+
+remediation: |
+  Add a NetworkPolicy restricting egress from the source pod to only
+  the services it legitimately needs to reach. Implement a default-deny
+  egress policy for the namespace.

@@ -1,0 +1,64 @@
+# Technique: DNS service enumeration
+# ID: L5
+# Tactic: Discovery / Lateral Movement
+
+id: L5
+name: DNS service enumeration
+enabled: true
+
+mitre:
+  technique_id: T1046
+  technique_name: "Network Service Discovery"
+  tactic: discovery
+  data_sources: [Network Traffic]
+
+cis_controls:
+  - "5.3.2"
+
+severity: medium
+
+description: |
+  Enumerates services in the target namespace via DNS lookups using
+  predictable Kubernetes service DNS names (<svc>.<ns>.svc.cluster.local).
+  The list of services to probe is gathered from the K8s API first, then
+  validated via DNS from inside a pod to confirm reachability.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        ns="{{ namespace }}"
+        found=0
+        for svc in {{ service_names }}; do
+            fqdn="${svc}.${ns}.svc.cluster.local"
+            if nslookup "$fqdn" >/dev/null 2>&1; then
+                addr=$(nslookup "$fqdn" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}')
+                echo "DNS_FOUND:${svc}:${addr}"
+                found=$((found + 1))
+            fi
+        done
+        echo "DNS_TOTAL:$found"
+
+  evidence_markers:
+    - marker: "DNS_FOUND"
+      evidence: "Service discovered via DNS lookup"
+      impact: "Attacker can map service topology via predictable DNS names"
+    - marker: "DNS_TOTAL"
+      evidence: "Total count of DNS-resolvable services"
+
+success_indicators:
+  - "DNS_FOUND"
+
+impact:
+  - "Attacker maps the service topology via predictable DNS names"
+  - "Service discovery enables targeted lateral movement"
+  - "Cross-namespace DNS names reveal services in other namespaces"
+
+remediation: |
+  NetworkPolicies cannot block DNS resolution but can block the
+  subsequent TCP connections. Ensure default-deny egress policies
+  are in place with explicit allow rules for required service
+  communication paths only.
