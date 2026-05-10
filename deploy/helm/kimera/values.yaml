@@ -1,0 +1,53 @@
+image:
+  repository: ghcr.io/dynatrace-oss/kimera
+  tag: "3.0.0"
+  pullPolicy: IfNotPresent
+
+# -- Deployment mode: "server" (MCP server) or "job" (one-shot scan)
+mode: server
+
+# -- Target namespace to assess (the namespace kimera scans, not where it runs)
+targetNamespace: default
+
+serviceAccount:
+  create: true
+  name: kimera-pentest
+  # -- Annotations for the SA (e.g., for IRSA on EKS)
+  annotations: {}
+
+# -- RBAC permissions for the pentest SA.
+# Deliberately scoped — the SA's permissions are part of the test.
+# kimera reports what THIS level of access can reach.
+rbac:
+  create: true
+  # -- Cluster-wide read access for reconnaissance techniques
+  clusterReadAccess: true
+  # -- Namespace-scoped write access for exploit techniques (dry-run safe)
+  namespaceWriteAccess: true
+
+server:
+  replicas: 1
+  port: 8000
+  # -- Resource limits for the kimera pod itself
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+job:
+  # -- CLI arguments for job mode
+  args: ["assess", "--json"]
+  # -- TTL for completed jobs (seconds)
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 0
+
+# -- Extra environment variables (e.g., ANTHROPIC_API_KEY for generate)
+env: []
+  # - name: ANTHROPIC_API_KEY
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: kimera-secrets
+  #       key: anthropic-api-key

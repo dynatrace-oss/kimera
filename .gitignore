@@ -24,7 +24,6 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 o*/
-.c*
 *.egg
 MANIFEST
 

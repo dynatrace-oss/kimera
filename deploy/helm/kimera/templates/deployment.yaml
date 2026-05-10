@@ -1,0 +1,68 @@
+{{- if eq .Values.mode "server" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kimera-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kimera
+    app.kubernetes.io/component: mcp-server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kimera
+      app.kubernetes.io/component: mcp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kimera
+        app.kubernetes.io/component: mcp-server
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kimera
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["kimera-mcp", "--http"]
+          args: []
+          ports:
+            - name: mcp
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          env:
+            - name: KIMERA_TARGET_NAMESPACE
+              value: {{ .Values.targetNamespace | quote }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kimera-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kimera
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.server.port }}
+      targetPort: mcp
+      protocol: TCP
+      name: mcp
+  selector:
+    app.kubernetes.io/name: kimera
+    app.kubernetes.io/component: mcp-server
+{{- end }}
