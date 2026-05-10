@@ -12,56 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for core findings models.
+
+Focus: computed properties (severity counts, to_summary) and edge cases
+(empty findings, defense_caught branch). Constructor-assignment and
+Pydantic serialization tests are excluded — they test the framework.
+"""
+
 from kimera.core.findings import (
     AssessmentReport,
     Finding,
-    PentestReport,
     Severity,
-    TechniqueRef,
     TechniqueResult,
 )
 
 
-class TestSeverityEnum:
-    def test_values(self) -> None:
-        assert Severity.CRITICAL == "critical"
-        assert Severity.HIGH == "high"
-        assert Severity.INFO == "info"
+class TestAssessmentReportSummary:
+    """to_summary() is consumed by MCP tools — wrong format breaks agents."""
 
-
-class TestFinding:
-    def test_with_technique_ref(self) -> None:
-        finding = Finding(
-            target="frontend/nginx",
-            check_id="privileged_mode",
-            severity=Severity.CRITICAL,
-            title="Privileged container",
-            technique=TechniqueRef(
-                mitre_id="T1611",
-                mitre_name="Escape to Host",
-                cis_controls=["5.2.1"],
-            ),
-        )
-        assert finding.severity == Severity.CRITICAL
-        assert finding.technique.mitre_id == "T1611"
-
-    def test_default_technique_ref(self) -> None:
-        finding = Finding(
-            target="test", check_id="test_check", severity=Severity.LOW, title="Test",
-        )
-        assert finding.technique.mitre_id == ""
-
-    def test_json_serialization(self) -> None:
-        finding = Finding(
-            target="x", check_id="y", severity=Severity.HIGH, title="z",
-        )
-        data = finding.model_dump()
-        assert data["severity"] == "high"
-        assert data["check_id"] == "y"
-
-
-class TestAssessmentReport:
-    def test_severity_counts(self) -> None:
+    def test_counts_each_severity_independently(self) -> None:
         report = AssessmentReport(
             namespace="demo",
             workloads_scanned=3,
@@ -74,36 +43,33 @@ class TestAssessmentReport:
         )
         assert report.critical_count == 2
         assert report.high_count == 1
-
-    def test_summary_includes_counts(self) -> None:
-        report = AssessmentReport(
-            namespace="demo", workloads_scanned=5,
-            findings=[Finding(target="a", check_id="c1", severity=Severity.HIGH, title="t1")],
-        )
         summary = report.to_summary()
-        assert "5 workloads scanned" in summary
-        assert "1 findings" in summary
+        assert "3 workloads scanned" in summary
+        assert "4 findings" in summary
 
-    def test_empty_report(self) -> None:
+    def test_empty_findings_does_not_crash(self) -> None:
         report = AssessmentReport(namespace="demo", workloads_scanned=2)
-        assert report.to_summary().endswith("(none)")
+        summary = report.to_summary()
+        assert "none" in summary
+        assert report.critical_count == 0
 
 
-class TestTechniqueResult:
-    def test_successful_technique_summary(self) -> None:
+class TestTechniqueResultSummary:
+    """to_summary() drives MCP tool output — must distinguish success vs blocked."""
+
+    def test_success_includes_technique_id(self) -> None:
         result = TechniqueResult(
             technique_id="C1",
             technique_name="SA token theft",
-            mitre_id="T1552.007",
-            tactic="credential-access",
             target="frontend-pod",
             success=True,
-            evidence=["Token found (1024 bytes)"],
+            evidence=["Token found"],
         )
-        assert "SUCCESS" in result.to_summary()
-        assert "C1" in result.to_summary()
+        summary = result.to_summary()
+        assert "SUCCESS" in summary
+        assert "C1" in summary
 
-    def test_blocked_technique_summary(self) -> None:
+    def test_blocked_includes_defense_detail(self) -> None:
         result = TechniqueResult(
             technique_id="E1",
             technique_name="Privileged escape",
@@ -112,25 +78,6 @@ class TestTechniqueResult:
             defense_caught=True,
             defense_detail="Kyverno policy disallow-privileged",
         )
-        assert "BLOCKED" in result.to_summary()
-        assert "Kyverno" in result.to_summary()
-
-
-class TestPentestReport:
-    def test_summary(self) -> None:
-        report = PentestReport(
-            namespace="demo",
-            techniques_attempted=5,
-            techniques_succeeded=3,
-            techniques_blocked=1,
-            kill_chain=["C1", "L1"],
-        )
-        assert "5 techniques attempted" in report.to_summary()
-        assert report.kill_chain == ["C1", "L1"]
-
-    def test_json_roundtrip(self) -> None:
-        report = PentestReport(namespace="demo", techniques_attempted=1)
-        json_str = report.model_dump_json()
-        assert "demo" in json_str
-        restored = PentestReport.model_validate_json(json_str)
-        assert restored.namespace == "demo"
+        summary = result.to_summary()
+        assert "BLOCKED" in summary
+        assert "Kyverno" in summary

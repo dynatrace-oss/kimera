@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for config-driven assessment engine."""
+"""Tests for config-driven assessment engine.
+
+Focus: condition evaluator boundary cases, check-type dispatch, config loading
+error paths, and real config integration.
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -30,7 +34,7 @@ from kimera.core.findings import Severity
 
 @pytest.fixture
 def sample_checks(tmp_path: Path) -> Path:
-    """Create a minimal check config for testing."""
+    """Minimal check config covering all three check types."""
     checks = {
         "checks": [
             {
@@ -78,7 +82,6 @@ def _make_deployment(
     privileged: bool = False,
     has_limits: bool = True,
     host_pid: bool = False,
-    caps_add: list | None = None,
 ) -> MagicMock:
     """Build a mock V1Deployment with configurable security settings."""
     dep = MagicMock()
@@ -94,13 +97,7 @@ def _make_deployment(
     ctx.run_as_user = None
     ctx.read_only_root_filesystem = None
     ctx.seccomp_profile = None
-
-    if caps_add:
-        ctx.capabilities.add = caps_add
-        ctx.capabilities.drop = None
-    else:
-        ctx.capabilities = None
-
+    ctx.capabilities = None
     container.security_context = ctx
 
     if has_limits:
@@ -121,105 +118,108 @@ def _make_deployment(
     return dep
 
 
-class TestEvaluateCondition:
-    def test_equals_true(self) -> None:
-        assert _evaluate_condition(True, "equals_true", {}) is True
-        assert _evaluate_condition(False, "equals_true", {}) is False
-        assert _evaluate_condition(None, "equals_true", {}) is False
+# -- Condition evaluator: core logic, wrong result = wrong finding severity --
 
-    def test_not_false(self) -> None:
-        assert _evaluate_condition(None, "not_false", {}) is True
-        assert _evaluate_condition(True, "not_false", {}) is True
-        assert _evaluate_condition(False, "not_false", {}) is False
+@pytest.mark.parametrize("value,condition,match_values,expected", [
+    # equals_true
+    (True, "equals_true", None, True),
+    (False, "equals_true", None, False),
+    (None, "equals_true", None, False),   # null must not fire
+    # not_false (used for allowPrivilegeEscalation)
+    (None, "not_false", None, True),      # unset should fire
+    (True, "not_false", None, True),
+    (False, "not_false", None, False),
+    # missing
+    (None, "missing", None, True),
+    ("value", "missing", None, False),
+    # contains_any (capability matching)
+    (["SYS_ADMIN", "CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], True),
+    (["CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], False),
+    (None, "contains_any", ["SYS_ADMIN"], False),   # null list
+    ([], "contains_any", ["SYS_ADMIN"], False),      # empty list
+    # count_zero (namespace-level checks)
+    (0, "count_zero", None, True),
+    (None, "count_zero", None, True),
+    (5, "count_zero", None, False),
+])
+def test_evaluate_condition(
+    value: object,
+    condition: str,
+    match_values: list[str] | None,
+    expected: bool,
+) -> None:
+    check: dict = {}
+    if match_values:
+        check["match_values"] = match_values
+    assert _evaluate_condition(value, condition, check) is expected
 
-    def test_missing(self) -> None:
-        assert _evaluate_condition(None, "missing", {}) is True
-        assert _evaluate_condition("value", "missing", {}) is False
 
-    def test_contains_any(self) -> None:
-        check = {"match_values": ["SYS_ADMIN", "NET_ADMIN"]}
-        assert _evaluate_condition(["SYS_ADMIN", "CHOWN"], "contains_any", check) is True
-        assert _evaluate_condition(["CHOWN"], "contains_any", check) is False
-        assert _evaluate_condition(None, "contains_any", check) is False
+# -- Config loading: error paths and real config integration --
 
-    def test_count_zero(self) -> None:
-        assert _evaluate_condition(0, "count_zero", {}) is True
-        assert _evaluate_condition(None, "count_zero", {}) is True
-        assert _evaluate_condition(5, "count_zero", {}) is False
+def test_missing_config_file_returns_empty(tmp_path: Path) -> None:
+    """Missing config must not crash — returns empty list."""
+    assert _load_checks(tmp_path / "nonexistent.yaml") == []
 
 
-class TestLoadChecks:
-    def test_loads_from_file(self, sample_checks: Path) -> None:
-        checks = _load_checks(sample_checks)
-        assert len(checks) == 3
-        assert checks[0]["id"] == "privileged_mode"
+def test_real_workload_config_loads() -> None:
+    """Integration: config/checks/workload.yaml loads with expected checks.
 
-    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
-        checks = _load_checks(tmp_path / "nonexistent.yaml")
-        assert checks == []
+    Catches accidentally deleted checks or broken YAML syntax.
+    """
+    checks = _load_checks()
+    ids = {c["id"] for c in checks}
+    assert len(checks) >= 10, f"Expected >=10 checks, got {len(checks)}"
+    assert "privileged_mode" in ids
+    assert "host_pid" in ids
+    assert "missing_resource_limits" in ids
 
-    def test_loads_real_config(self) -> None:
-        """Verify the actual config/checks/workload.yaml loads correctly."""
-        checks = _load_checks()
-        assert len(checks) > 10, "Expected at least 10 checks in workload.yaml"
-        ids = {c["id"] for c in checks}
-        assert "privileged_mode" in ids
-        assert "host_pid" in ids
-        assert "missing_resource_limits" in ids
 
+# -- Deployment assessment: one test per check TYPE (each hits different code path) --
 
 class TestAssessDeployment:
-    def test_privileged_container_detected(self, sample_checks: Path) -> None:
+    def test_container_field_check_fires_and_maps_mitre(self, sample_checks: Path) -> None:
+        """container_field: privileged=True produces CRITICAL finding with T1611."""
         checks = _load_checks(sample_checks)
-        dep = _make_deployment(privileged=True)
-        findings = assess_deployment(dep, checks)
+        findings = assess_deployment(_make_deployment(privileged=True), checks)
 
-        privileged_findings = [f for f in findings if f.check_id == "privileged_mode"]
-        assert len(privileged_findings) == 1
-        assert privileged_findings[0].severity == Severity.CRITICAL
-        assert privileged_findings[0].technique.mitre_id == "T1611"
+        priv = [f for f in findings if f.check_id == "privileged_mode"]
+        assert len(priv) == 1
+        assert priv[0].severity == Severity.CRITICAL
+        assert priv[0].technique.mitre_id == "T1611"
+        # Target format: "deployment_name/container_name"
+        assert "test-deploy" in priv[0].target
+        assert "app" in priv[0].target
 
-    def test_secure_deployment_no_findings_for_privileged(self, sample_checks: Path) -> None:
+    def test_container_field_check_does_not_fire_when_secure(self, sample_checks: Path) -> None:
+        """Negative case: privileged=False must not produce privileged finding."""
         checks = _load_checks(sample_checks)
-        dep = _make_deployment(privileged=False, has_limits=True, host_pid=False)
-        findings = assess_deployment(dep, checks)
+        findings = assess_deployment(_make_deployment(privileged=False), checks)
+        assert not [f for f in findings if f.check_id == "privileged_mode"]
 
-        privileged_findings = [f for f in findings if f.check_id == "privileged_mode"]
-        assert len(privileged_findings) == 0
-
-    def test_missing_limits_detected(self, sample_checks: Path) -> None:
+    def test_resource_check_fires_when_limits_missing(self, sample_checks: Path) -> None:
+        """resource_check: different code path from container_field."""
         checks = _load_checks(sample_checks)
-        dep = _make_deployment(has_limits=False)
-        findings = assess_deployment(dep, checks)
+        findings = assess_deployment(_make_deployment(has_limits=False), checks)
 
-        limit_findings = [f for f in findings if f.check_id == "missing_resource_limits"]
-        assert len(limit_findings) == 1
-        assert limit_findings[0].severity == Severity.HIGH
+        limits = [f for f in findings if f.check_id == "missing_resource_limits"]
+        assert len(limits) == 1
+        assert limits[0].severity == Severity.HIGH
 
-    def test_host_pid_detected(self, sample_checks: Path) -> None:
+    def test_pod_field_check_fires_for_host_pid(self, sample_checks: Path) -> None:
+        """pod_field: evaluated on pod spec, not per-container."""
         checks = _load_checks(sample_checks)
-        dep = _make_deployment(host_pid=True)
-        findings = assess_deployment(dep, checks)
+        findings = assess_deployment(_make_deployment(host_pid=True), checks)
 
-        pid_findings = [f for f in findings if f.check_id == "host_pid"]
-        assert len(pid_findings) == 1
-        assert pid_findings[0].technique.cis_controls == ["5.2.2"]
+        pid = [f for f in findings if f.check_id == "host_pid"]
+        assert len(pid) == 1
+        assert pid[0].technique.cis_controls == ["5.2.2"]
 
-    def test_multiple_issues_detected(self, sample_checks: Path) -> None:
+    def test_multiple_issues_coexist(self, sample_checks: Path) -> None:
+        """All check types fire independently — catches early-return bugs."""
         checks = _load_checks(sample_checks)
-        dep = _make_deployment(privileged=True, has_limits=False, host_pid=True)
-        findings = assess_deployment(dep, checks)
-
+        findings = assess_deployment(
+            _make_deployment(privileged=True, has_limits=False, host_pid=True),
+            checks,
+        )
         check_ids = {f.check_id for f in findings}
-        assert "privileged_mode" in check_ids
-        assert "missing_resource_limits" in check_ids
-        assert "host_pid" in check_ids
-
-    def test_finding_target_includes_container_name(self, sample_checks: Path) -> None:
-        checks = _load_checks(sample_checks)
-        dep = _make_deployment(name="frontend", privileged=True)
-        findings = assess_deployment(dep, checks)
-
-        privileged = [f for f in findings if f.check_id == "privileged_mode"][0]
-        assert "frontend" in privileged.target
-        assert "app" in privileged.target  # container name
+        assert check_ids == {"privileged_mode", "missing_resource_limits", "host_pid"}

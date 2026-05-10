@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kimera"
-version = "2.0.0"
+version = "3.0.0"
 description = "Kubernetes Security Testing Toolkit"
 authors = [{name = "Dynatrace OSS", email = "opensource@dynatrace.com"}]
 license = "Apache-2.0"
@@ -26,13 +26,13 @@ llm = [
     "anthropic>=0.40.0",
     "jinja2>=3.1.0",
 ]
-dt-mcp = [
-    "mcp>=1.0.0",
+mcp-server = [
+    "mcp[cli]>=1.0.0",
 ]
 all = [
     "anthropic>=0.40.0",
     "jinja2>=3.1.0",
-    "mcp>=1.0.0",
+    "mcp[cli]>=1.0.0",
 ]
 
 [project.urls]
@@ -41,6 +41,7 @@ Repository = "https://github.com/dynatrace-oss/kimera"
 
 [project.scripts]
 kimera = "kimera.exploit_k8s:main"
+kimera-mcp = "kimera.mcp.server:main"
 
 [dependency-groups]
 dev = [

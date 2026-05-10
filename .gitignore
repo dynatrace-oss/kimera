@@ -80,3 +80,7 @@ temp/*
 
 # coverage reports
 coverage.xml
+
+# dev tooling (openspec, claude code)
+openspec/
+.claude/
