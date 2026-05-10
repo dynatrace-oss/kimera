@@ -34,8 +34,9 @@ from mcp.server.fastmcp import FastMCP
 
 from ..container.core.k8s_client import K8sClient
 from ..core.assessor import assess_namespace
+from ..core.enumerator import enumerate_targets
 from ..core.findings import AssessmentReport, TechniqueResult
-from ..core.technique_engine import TechniqueRegistry, enumerate_targets, execute_technique
+from ..core.technique_engine import TechniqueRegistry, execute_technique
 
 logger = logging.getLogger(__name__)
 

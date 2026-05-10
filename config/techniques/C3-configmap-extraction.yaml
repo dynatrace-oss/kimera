@@ -7,63 +7,41 @@ name: ConfigMap credential extraction
 enabled: true
 
 mitre:
-  technique_id: T1552.001
-  technique_name: "Unsecured Credentials: Credentials In Files"
+  technique_id: T1552
+  technique_name: "Unsecured Credentials"
   tactic: credential-access
-  data_sources: [Container, File]
+  data_sources: [Container, User Account]
 
-cis_controls: []
+cis_controls:
+  - "5.4.1"
 
 severity: high
 
 description: |
-  Uses the pod's mounted ServiceAccount token to list ConfigMaps in the
-  namespace and search for credential patterns (database URLs, API keys,
-  passwords). ConfigMaps are often used to store configuration that
-  includes embedded credentials.
+  Lists ConfigMaps in the target namespace and scans their data keys for
+  credential patterns (password, token, key, secret, connection string).
+  Developers frequently store credentials in ConfigMaps instead of Secrets,
+  bypassing RBAC restrictions on secret access.
+
+  Uses the K8s API directly — tests the same permissions an attacker with
+  stolen kubeconfig or SA token would have.
 
 execution:
-  mode: exec
-  requires_target_pod: true
+  mode: api
 
-  probes:
-    - type: command
-      run: |
-        SA_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
-        if [ ! -f "$SA_DIR/token" ]; then echo "NO_TOKEN"; exit 0; fi
-        TOKEN=$(cat "$SA_DIR/token")
-        NS=$(cat "$SA_DIR/namespace")
-        API="https://kubernetes.default.svc.cluster.local"
-        RESP=$(wget -q -O- --header="Authorization: Bearer $TOKEN" \
-            --no-check-certificate "$API/api/v1/namespaces/$NS/configmaps" 2>&1)
-        if echo "$RESP" | grep -q '"items"'; then
-            COUNT=$(echo "$RESP" | grep -c '"name"' || true)
-            echo "CONFIGMAP_COUNT:$COUNT"
-            # Search for credential patterns in ConfigMap data
-            echo "$RESP" | grep -iE '"(password|secret|key|token|database_url|dsn|connection_string)"' | head -5 | \
-                sed 's/.*"\([^"]*\)".*/CREDENTIAL_PATTERN:\1/'
-        else
-            echo "ACCESS_DENIED"
-        fi
-
-  evidence_markers:
-    - marker: "CONFIGMAP_COUNT"
-      evidence: "SA can enumerate ConfigMaps in namespace"
-    - marker: "CREDENTIAL_PATTERN"
-      evidence: "Credential pattern found in ConfigMap data"
-      impact: "Plaintext credentials exposed in ConfigMap"
-    - marker: "ACCESS_DENIED"
-      evidence: "API server denied ConfigMap access"
+  api_calls:
+    - resource: configmaps
+      verb: list
 
 success_indicators:
-  - "CREDENTIAL_PATTERN"
+  - "credential_patterns_found"
 
 impact:
-  - "Database connection strings with embedded passwords exposed"
-  - "API keys and service credentials in plaintext"
-  - "Enables chain to L6 (data store access) with extracted credentials"
+  - "Credentials stored in ConfigMaps are not encrypted at rest"
+  - "ConfigMaps are often readable by all SAs in the namespace"
+  - "Connection strings may contain database passwords"
 
 remediation: |
-  Move credentials from ConfigMaps to Secrets (encrypted at rest).
-  Use external secret management (Vault, AWS Secrets Manager) via
-  CSI driver or operator. Never store plaintext credentials in ConfigMaps.
+  Move credentials from ConfigMaps to Secrets. Use external secret
+  managers (Vault, AWS Secrets Manager) for production credentials.
+  Restrict ConfigMap list permissions via RBAC.

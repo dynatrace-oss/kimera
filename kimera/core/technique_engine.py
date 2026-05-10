@@ -12,138 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import logging
-from pathlib import Path
 from typing import Any
 
-import yaml
 from kubernetes.client.rest import ApiException
 
 from ..container.core.k8s_client import K8sClient
 from ..container.make_vulnerable.probe_runner import ProbeRunner
 from .findings import TechniqueResult
+from .technique_registry import TechniqueDefinition, TechniqueRegistry
 
 logger = logging.getLogger(__name__)
-
-_CONFIG_DIR = Path(__file__).resolve().parents[2] / "config" / "techniques"
 _probe_runner = ProbeRunner()
 
-
-class TechniqueDefinition:
-    """A loaded technique definition from YAML config."""
-
-    def __init__(self, technique_id: str, data: dict[str, Any]) -> None:
-        """Load technique from parsed YAML data."""
-        self.technique_id = technique_id
-        self.name: str = data.get("name", technique_id)
-        self.enabled: bool = data.get("enabled", True)
-        self.severity: str = data.get("severity", "medium")
-        self.description: str = data.get("description", "")
-
-        mitre = data.get("mitre", {})
-        self.mitre_id: str = mitre.get("technique_id", "")
-        self.mitre_name: str = mitre.get("technique_name", "")
-        self.tactic: str = mitre.get("tactic", "")
-
-        execution = data.get("execution", {})
-        self.mode: str = execution.get("mode", "exec")
-        self.requires_target_pod: bool = execution.get("requires_target_pod", True)
-        self.probes: list[dict[str, Any]] = execution.get("probes", [])
-        self.parameters: list[dict[str, Any]] = execution.get("parameters", [])
-        self.api_calls: list[dict[str, Any]] = execution.get("api_calls", [])
-
-        self.evidence_markers: list[dict[str, str]] = data.get(
-            "execution", {},
-        ).get("evidence_markers", [])
-        self.success_indicators: list[str] = data.get("success_indicators", [])
-        self.impact: list[str] = data.get("impact", [])
-        self.remediation: str = data.get("remediation", "")
-        self.data_store_ports: dict[int, str] = data.get("data_store_ports", {})
-
-
-class TechniqueRegistry:
-    """Loads and manages technique definitions from YAML configs.
-
-    Supports runtime extension: call reload() after adding new YAML files
-    to config/techniques/.
-    """
-
-    def __init__(self, config_dir: Path | None = None) -> None:
-        """Load all technique definitions from the config directory."""
-        self._config_dir = config_dir or _CONFIG_DIR
-        self._techniques: dict[str, TechniqueDefinition] = {}
-        self._registry_data: dict[str, dict[str, Any]] = {}
-        self.reload()
-
-    def reload(self) -> None:
-        """Reload all technique definitions from disk.
-
-        Call after adding new technique YAML files at runtime.
-        """
-        self._techniques.clear()
-        self._registry_data.clear()
-
-        registry_path = self._config_dir / "registry.yaml"
-        if not registry_path.exists():
-            logger.warning("Technique registry not found: %s", registry_path)
-            return
-
-        with open(registry_path) as fh:
-            registry = yaml.safe_load(fh) or {}
-
-        for tech_id, meta in registry.get("techniques", {}).items():
-            tech_file = self._config_dir / meta["file"]
-            if not tech_file.exists():
-                logger.debug("Technique file not found (skipping): %s", tech_file)
-                continue
-
-            with open(tech_file) as fh:
-                tech_data = yaml.safe_load(fh) or {}
-
-            self._techniques[tech_id] = TechniqueDefinition(tech_id, tech_data)
-            self._registry_data[tech_id] = {
-                "name": meta["name"],
-                "phase": meta.get("phase", "unknown"),
-                "noise": meta.get("noise", "medium"),
-            }
-
-    def get(self, technique_id: str) -> TechniqueDefinition | None:
-        """Look up a technique by ID."""
-        return self._techniques.get(technique_id)
-
-    def list_techniques(self) -> list[dict[str, str]]:
-        """List all registered techniques with metadata."""
-        result = []
-        for tech_id, meta in self._registry_data.items():
-            tech = self._techniques.get(tech_id)
-            if tech and tech.enabled:
-                result.append({
-                    "id": tech_id,
-                    "name": meta["name"],
-                    "phase": meta["phase"],
-                    "noise": meta["noise"],
-                    "mitre_id": tech.mitre_id,
-                    "tactic": tech.tactic,
-                    "mode": tech.mode,
-                })
-        return result
-
-    def list_by_phase(self, phase: str) -> list[str]:
-        """List technique IDs for a given phase."""
-        return [
-            tech_id for tech_id, meta in self._registry_data.items()
-            if meta["phase"] == phase and self._techniques.get(tech_id, TechniqueDefinition(tech_id, {})).enabled
-        ]
-
-    @property
-    def technique_count(self) -> int:
-        """Count of loaded, enabled techniques."""
-        return sum(1 for t in self._techniques.values() if t.enabled)
-
-    def __contains__(self, technique_id: str) -> bool:
-        """Check if a technique ID is registered."""
-        return technique_id in self._techniques
+# Re-export for backward compatibility
+__all__ = ["TechniqueDefinition", "TechniqueRegistry", "execute_technique"]
 
 
 def execute_technique(
@@ -153,21 +36,7 @@ def execute_technique(
     target_pod: str | None = None,
     params: dict[str, Any] | None = None,
 ) -> TechniqueResult:
-    """Execute a technique from the registry against a target.
-
-    Loads the technique YAML, builds probe scripts, executes via the
-    appropriate mode (exec, api, probe), and returns structured results.
-
-    Args:
-        k8s: Kubernetes client configured for the target namespace.
-        registry: Loaded technique registry.
-        technique_id: ID of the technique to execute (e.g. "C1", "L1").
-        target_pod: Pod name for exec-mode techniques.
-        params: Runtime parameters (e.g. probe_host, probe_port for L1).
-
-    Returns:
-        TechniqueResult with evidence and ATT&CK mapping.
-    """
+    """Execute a technique from the registry against a target."""
     technique = registry.get(technique_id)
     if not technique:
         return TechniqueResult(
@@ -204,22 +73,19 @@ def _execute_exec_technique(
     target_pod: str | None,
     params: dict[str, Any],
 ) -> None:
-    """Execute a technique that runs shell commands inside a pod."""
     if not target_pod:
         result.evidence = ["No target pod specified for exec-mode technique"]
         return
 
-    # Build script from probes, substituting parameters
     probes = technique.probes
     if not probes:
         result.evidence = ["No probes defined for technique"]
         return
 
-    # Template substitution for parameterized probes
-    resolved_probes = []
-    for probe in probes:
-        resolved = _resolve_probe_params(probe, params, k8s.namespace)
-        resolved_probes.append(resolved)
+    resolved_probes = [
+        _resolve_probe_params(probe, params, k8s.namespace)
+        for probe in probes
+    ]
 
     try:
         script = _probe_runner.build_script(resolved_probes)
@@ -233,7 +99,6 @@ def _execute_exec_technique(
         result.evidence = [f"Exec failed: {exc}"]
         return
 
-    # Parse output against evidence markers
     for marker_def in technique.evidence_markers:
         marker = marker_def.get("marker", "")
         if marker and marker in output:
@@ -242,7 +107,6 @@ def _execute_exec_technique(
             if impact_text:
                 result.impact.append(impact_text)
 
-    # Check success indicators
     for indicator in technique.success_indicators:
         if indicator in output:
             result.success = True
@@ -254,17 +118,13 @@ def _execute_api_technique(
     technique: TechniqueDefinition,
     result: TechniqueResult,
 ) -> None:
-    """Execute a technique that uses K8s API calls directly."""
-    namespace = k8s.namespace
-
-    # API-mode techniques gather information via API calls
     try:
-        if technique.technique_id.startswith("R"):
-            # Reconnaissance techniques — enumerate resources
-            inventory = _enumerate_for_technique(k8s, technique, namespace)
-            if inventory:
-                result.success = True
-                result.evidence = [f"Enumerated {len(inventory)} resources"]
+        resources = _enumerate_for_technique(k8s, technique, k8s.namespace)
+        if resources:
+            result.success = True
+            result.evidence = [f"Enumerated {len(resources)} resources"]
+            for r in resources[:10]:
+                result.evidence.append(f"{r['type']}: {r['name']}")
     except ApiException as exc:
         result.evidence = [f"API call failed: {exc.reason}"]
 
@@ -274,28 +134,56 @@ def _enumerate_for_technique(
     technique: TechniqueDefinition,
     namespace: str,
 ) -> list[dict[str, Any]]:
-    """Run API enumeration for reconnaissance techniques."""
     resources: list[dict[str, Any]] = []
 
     for api_call in technique.api_calls:
         resource_type = api_call.get("resource", "")
         try:
-            if resource_type == "deployments":
-                deps = k8s.apps_v1.list_namespaced_deployment(namespace)
-                for dep in deps.items:
-                    resources.append({"name": dep.metadata.name, "type": "deployment"})
-            elif resource_type == "services":
-                svcs = k8s.v1.list_namespaced_service(namespace)
-                for svc in svcs.items:
-                    resources.append({"name": svc.metadata.name, "type": "service"})
-            elif resource_type == "serviceaccounts":
-                sas = k8s.v1.list_namespaced_service_account(namespace)
-                for sa in sas.items:
-                    resources.append({"name": sa.metadata.name, "type": "serviceaccount"})
+            items = _list_resource(k8s, namespace, resource_type)
+            resources.extend(items)
         except ApiException as exc:
             logger.warning("Failed to enumerate %s: %s", resource_type, exc.reason)
 
     return resources
+
+
+def _list_resource(k8s: K8sClient, namespace: str, resource_type: str) -> list[dict[str, Any]]:
+    """List K8s resources by type. Returns dicts with name and type keys."""
+    if resource_type == "deployments":
+        return [{"name": i.metadata.name, "type": "deployment"}
+                for i in k8s.apps_v1.list_namespaced_deployment(namespace).items]
+    if resource_type == "services":
+        return [{"name": i.metadata.name, "type": "service"}
+                for i in k8s.v1.list_namespaced_service(namespace).items]
+    if resource_type == "serviceaccounts":
+        return [{"name": i.metadata.name, "type": "serviceaccount"}
+                for i in k8s.v1.list_namespaced_service_account(namespace).items]
+    if resource_type == "secrets":
+        return [{"name": i.metadata.name, "type": f"secret/{i.type}"}
+                for i in k8s.v1.list_namespaced_secret(namespace).items]
+    if resource_type == "configmaps":
+        return [{"name": i.metadata.name, "type": "configmap",
+                 "keys": list((i.data or {}).keys())}
+                for i in k8s.v1.list_namespaced_config_map(namespace).items]
+    if resource_type == "namespaces":
+        return [{"name": i.metadata.name, "type": "namespace"}
+                for i in k8s.v1.list_namespace().items]
+    if resource_type == "networkpolicies":
+        return [{"name": i.metadata.name, "type": "networkpolicy"}
+                for i in k8s.list_network_policies(namespace)]
+    if resource_type == "rolebindings":
+        return [{"name": i.metadata.name, "type": "rolebinding", "role": i.role_ref.name}
+                for i in k8s.rbac_v1.list_namespaced_role_binding(namespace).items]
+    if resource_type == "clusterrolebindings":
+        return [{"name": i.metadata.name, "type": "clusterrolebinding", "role": i.role_ref.name}
+                for i in k8s.rbac_v1.list_cluster_role_binding().items]
+    if resource_type == "endpoints":
+        return [{"name": i.metadata.name, "type": "endpoints"}
+                for i in k8s.v1.list_namespaced_endpoints(namespace).items]
+    if resource_type == "validate_controls":
+        return []  # V1-V3: handled by MCP validate_defense tool
+    logger.warning("Unknown API resource type: %s", resource_type)
+    return []
 
 
 def _resolve_probe_params(
@@ -303,10 +191,7 @@ def _resolve_probe_params(
     params: dict[str, Any],
     namespace: str,
 ) -> dict[str, Any]:
-    """Substitute template parameters in a probe definition.
-
-    Handles {{ param_name }} placeholders in probe fields.
-    """
+    """Substitute {{ param_name }} placeholders in probe fields."""
     resolved = {}
     params_with_ns = {**params, "namespace": namespace}
 
@@ -319,103 +204,3 @@ def _resolve_probe_params(
             resolved[key] = value
 
     return resolved
-
-
-def enumerate_targets(k8s: K8sClient) -> dict[str, Any]:
-    """Discover all security-relevant resources in the namespace.
-
-    Low-noise reconnaissance via standard API list calls. Returns structured
-    inventory. No console output. Maps to T1613.
-    """
-    namespace = k8s.namespace
-    inventory: dict[str, Any] = {
-        "namespace": namespace,
-        "deployments": [],
-        "services": [],
-        "service_accounts": [],
-        "network_policies": [],
-        "secrets_metadata": [],
-        "role_bindings": [],
-    }
-
-    try:
-        deps = k8s.apps_v1.list_namespaced_deployment(namespace)
-        for dep in deps.items:
-            pod_spec = dep.spec.template.spec
-            containers = []
-            for c in pod_spec.containers:
-                ctx = c.security_context
-                containers.append({
-                    "name": c.name,
-                    "image": c.image,
-                    "privileged": bool(ctx and ctx.privileged),
-                    "capabilities_add": list(ctx.capabilities.add or [])
-                    if ctx and ctx.capabilities and ctx.capabilities.add else [],
-                    "has_limits": bool(c.resources and c.resources.limits),
-                })
-            inventory["deployments"].append({
-                "name": dep.metadata.name,
-                "replicas": dep.spec.replicas,
-                "service_account": pod_spec.service_account_name or "default",
-                "host_pid": bool(pod_spec.host_pid),
-                "host_network": bool(pod_spec.host_network),
-                "automount_token": pod_spec.automount_service_account_token is not False,
-                "containers": containers,
-            })
-    except ApiException as exc:
-        logger.warning("Failed to list deployments: %s", exc.reason)
-
-    try:
-        svcs = k8s.v1.list_namespaced_service(namespace)
-        for svc in svcs.items:
-            ports = [
-                {"port": p.port, "protocol": p.protocol or "TCP"}
-                for p in (svc.spec.ports or [])
-            ]
-            inventory["services"].append({
-                "name": svc.metadata.name,
-                "type": svc.spec.type,
-                "ports": ports,
-                "selector": dict(svc.spec.selector) if svc.spec.selector else {},
-            })
-    except ApiException as exc:
-        logger.warning("Failed to list services: %s", exc.reason)
-
-    try:
-        sas = k8s.v1.list_namespaced_service_account(namespace)
-        inventory["service_accounts"] = [sa.metadata.name for sa in sas.items]
-    except ApiException as exc:
-        logger.warning("Failed to list service accounts: %s", exc.reason)
-
-    try:
-        policies = k8s.list_network_policies(namespace)
-        inventory["network_policies"] = [p.metadata.name for p in policies]
-    except ApiException as exc:
-        logger.warning("Failed to list network policies: %s", exc.reason)
-
-    try:
-        secrets = k8s.v1.list_namespaced_secret(namespace)
-        inventory["secrets_metadata"] = [
-            {"name": s.metadata.name, "type": s.type}
-            for s in secrets.items
-        ]
-    except ApiException as exc:
-        logger.warning("Failed to list secrets: %s", exc.reason)
-
-    try:
-        bindings = k8s.rbac_v1.list_namespaced_role_binding(namespace)
-        for rb in bindings.items:
-            subjects = [
-                {"kind": s.kind, "name": s.name}
-                for s in (rb.subjects or [])
-            ]
-            inventory["role_bindings"].append({
-                "name": rb.metadata.name,
-                "role": rb.role_ref.name,
-                "role_kind": rb.role_ref.kind,
-                "subjects": subjects,
-            })
-    except ApiException as exc:
-        logger.warning("Failed to list role bindings: %s", exc.reason)
-
-    return inventory
