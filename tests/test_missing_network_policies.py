@@ -312,7 +312,7 @@ class TestExploitRegistration:
 
     def test_exploit_in_registry(self):
         """Test that missing-network-policies is in the EXPLOITS registry."""
-        from kimera.exploit_k8s import EXPLOITS
+        from kimera.cli import EXPLOITS
 
         assert "missing-network-policies" in EXPLOITS
         assert EXPLOITS["missing-network-policies"] is MissingNetworkPoliciesExploit
