@@ -15,7 +15,7 @@
 import click
 
 from ..container.core.logger import console
-from ..container.infrastructure.enforcement import PolicyEnforcementManager
+from ..container.enforcement import PolicyEnforcementManager
 
 
 @click.group()

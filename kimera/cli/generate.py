@@ -16,7 +16,7 @@ import click
 
 from ..container.core.journal import record_operation
 from ..container.core.logger import console
-from ..container.infrastructure.resource_applier import ResourceApplier
+from ..container.resource_applier import ResourceApplier
 from . import REGISTRY
 
 
@@ -144,7 +144,7 @@ def _create_enrichment_provider(
     Returns None if the provider's dependencies are not installed.
     """
     if name == "dynatrace":
-        from ..container.infrastructure.dt_enrichment import DynatraceEnrichmentProvider
+        from ..container.integrations.dynatrace.enrichment import DynatraceEnrichmentProvider
         kwargs: dict[str, str] = {}
         if model:
             kwargs["model"] = model

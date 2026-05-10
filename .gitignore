@@ -23,6 +23,8 @@ pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
+o*/
+.c*
 *.egg
 MANIFEST
 
@@ -80,7 +82,3 @@ temp/*
 
 # coverage reports
 coverage.xml
-
-# dev tooling (openspec, claude code)
-openspec/
-.claude/

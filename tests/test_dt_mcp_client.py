@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kimera.container.infrastructure.dt_mcp_client import DynatraceMCPClient
+from kimera.container.integrations.dynatrace.mcp_client import DynatraceMCPClient
 
 # ---------------------------------------------------------------------------
 # Helpers

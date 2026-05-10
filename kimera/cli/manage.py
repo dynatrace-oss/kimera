@@ -18,7 +18,7 @@ from ..container.assessment.scanner import SecurityScanner
 from ..container.core.journal import clear_all, pending_operations, record_operation
 from ..container.core.k8s_client import K8sClient
 from ..container.core.logger import SecurityLogger, console
-from ..container.infrastructure.resource_applier import ResourceApplier
+from ..container.resource_applier import ResourceApplier
 from . import EXPLOITS, REGISTRY, _resolve_services
 
 
@@ -162,7 +162,7 @@ def apply_resources(ctx: click.Context, file: str) -> None:
 def _revert_applied_resources(
     k8s: K8sClient, logger: SecurityLogger, namespace: str, dry_run: bool,
 ) -> None:
-    from ..container.infrastructure.resource_applier import TOOLKIT_LABEL, TOOLKIT_LABEL_VALUE
+    from ..container.resource_applier import TOOLKIT_LABEL, TOOLKIT_LABEL_VALUE
 
     policies = k8s.list_network_policies(namespace)
     removed = 0

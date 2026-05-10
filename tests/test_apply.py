@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
-from kimera.container.infrastructure.resource_applier import (
+from kimera.container.resource_applier import (
     SUPPORTED_KINDS,
     TOOLKIT_LABEL,
     TOOLKIT_LABEL_VALUE,

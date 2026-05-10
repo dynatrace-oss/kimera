@@ -21,11 +21,11 @@ from typing import Any
 
 import yaml
 
-from .dt_data_models import DtContext, KspmFinding, SmartscapeEdge
+from .data_models import DtContext, KspmFinding, SmartscapeEdge
 
 logger = logging.getLogger(__name__)
 
-_PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+_PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts"
 
 
 @lru_cache(maxsize=1)

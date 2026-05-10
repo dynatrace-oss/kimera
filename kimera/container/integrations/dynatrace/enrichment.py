@@ -15,8 +15,8 @@
 import asyncio
 import os
 
-from ..container.core.logger import SecurityLogger
-from ..core.enrichment import EnrichmentContext
+from ....core.enrichment import EnrichmentContext
+from ...core.logger import SecurityLogger
 
 
 class DynatraceEnrichmentProvider:
@@ -54,9 +54,9 @@ class DynatraceEnrichmentProvider:
             return None
 
         try:
-            from ..container.infrastructure.dt_data_models import DtContext
-            from ..container.infrastructure.dt_mcp_client import DynatraceMCPClient
-            from ..container.infrastructure.dt_query_strategies import create_strategy
+            from .data_models import DtContext
+            from .mcp_client import DynatraceMCPClient
+            from .query_strategies import create_strategy
         except ImportError as e:
             logger.warning(f"DT MCP client not available: {e}. Skipping enrichment.")
             return None
