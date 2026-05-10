@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -88,16 +90,14 @@ class ExploitRegistry:
         return list(self._entries.keys())
 
     @property
-    def classes(self) -> dict[str, type[Any]]:
+    def classes(self) -> dict[str, Callable[..., Any]]:
         """Return a mapping of type name to exploit class factory.
 
         For DeploymentPatchExploit entries (with config_key), returns a
         partial that pre-fills config_key. For other entries, returns
         the class directly.
         """
-        from functools import partial
-
-        result: dict[str, Any] = {}
+        result: dict[str, Callable[..., Any]] = {}
         for name, entry in self._entries.items():
             if entry.config_key:
                 result[name] = partial(entry.cls, config_key=entry.config_key)

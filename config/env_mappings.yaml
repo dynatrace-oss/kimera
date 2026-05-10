@@ -1,0 +1,53 @@
+# Environment variable to config path mappings
+#
+# Maps K8S_EXPLOIT_* environment variables to their config paths.
+# Used by ConfigLoader._load_env_vars() to override config from the environment.
+
+mappings:
+  K8S_EXPLOIT_NAMESPACE:
+    path: [kubernetes, namespace]
+    type: string
+
+  K8S_EXPLOIT_CONTEXT:
+    path: [kubernetes, context]
+    type: string
+
+  K8S_EXPLOIT_KUBECONFIG:
+    path: [kubernetes, kubeconfig_path]
+    type: string
+
+  K8S_EXPLOIT_DRY_RUN:
+    path: [dry_run]
+    type: bool
+
+  K8S_EXPLOIT_DEBUG:
+    path: [debug]
+    type: bool
+
+  K8S_EXPLOIT_VERBOSE:
+    path: [verbose]
+    type: bool
+
+  K8S_EXPLOIT_TIMEOUT_OPERATION:
+    path: [timeouts, operation]
+    type: int
+
+  K8S_EXPLOIT_TIMEOUT_ROLLOUT:
+    path: [timeouts, rollout]
+    type: int
+
+  K8S_EXPLOIT_TIMEOUT_STREAM:
+    path: [timeouts, stream]
+    type: int
+
+  K8S_EXPLOIT_TIMEOUT_COMMAND:
+    path: [timeouts, command]
+    type: int
+
+  K8S_EXPLOIT_LOG_LEVEL:
+    path: [logging, level]
+    type: string
+
+  K8S_EXPLOIT_LOG_FILE:
+    path: [logging, file]
+    type: string

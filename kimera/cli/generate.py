@@ -12,13 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
-
 import click
 
-from ..application.config.schemas import ToolkitConfig
 from ..container.core.journal import record_operation
-from ..container.core.logger import SecurityLogger, console
+from ..container.core.logger import console
 from ..container.infrastructure.resource_applier import ResourceApplier
 from . import REGISTRY
 
@@ -38,12 +35,11 @@ from . import REGISTRY
 @click.option("--output", "-o", default=None, help="Output file path.")
 @click.option("--model", default="claude-sonnet-4-6", show_default=True, help="Anthropic model.")
 @click.option("--apply", "apply_generated", is_flag=True, default=False, help="Apply after generation.")
-@click.option("--use-dt-mcp", is_flag=True, default=False, help="Enrich with Dynatrace MCP data.")
-@click.option(
-    "--dt-strategy", default="targeted", show_default=True,
-    type=click.Choice(["targeted", "llm-query", "davis"]),
-    help="DT data fetching strategy.",
-)
+@click.option("--enrich", default=None, type=click.Choice(["dynatrace"]),
+              help="Enrich LLM context with observability data.")
+@click.option("--enrich-strategy", default="targeted", show_default=True,
+              type=click.Choice(["targeted", "llm-query", "davis"]),
+              help="Enrichment data fetching strategy.")
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 @click.pass_context
 def generate(
@@ -54,8 +50,8 @@ def generate(
     output: str | None,
     model: str,
     apply_generated: bool,
-    use_dt_mcp: bool,
-    dt_strategy: str,
+    enrich: str | None,
+    enrich_strategy: str,
     yes: bool,
 ) -> None:
     """Generate security remediations or exploit patches using an LLM."""
@@ -68,18 +64,22 @@ def generate(
     if output is None:
         output = "kimera-exploit.yaml" if mode == "exploit" else "kimera-remediations.yaml"
 
-    if dt_strategy != "targeted" and not use_dt_mcp:
-        logger.error("--dt-strategy requires --use-dt-mcp")
-        return
+    # Fetch enrichment context from observability platform
+    compliance_context: str | None = None
+    topology_context: str | None = None
 
-    smartscape_context: str | None = None
-    kspm_context: str | None = None
-
-    if use_dt_mcp:
-        dt_context = _fetch_dt_context(config, logger, dt_strategy, exploit_type, model)
-        if dt_context:
-            smartscape_context = dt_context.raw_smartscape or None
-            kspm_context = dt_context.raw_kspm or None
+    if enrich:
+        provider = _create_enrichment_provider(enrich, strategy=enrich_strategy, model=model)
+        if provider:
+            enrichment = provider.fetch(
+                logger=logger,
+                namespace=config.namespace,
+                cluster_name=config.kubernetes.context or "",
+                exploit_type=exploit_type,
+            )
+            if enrichment:
+                compliance_context = enrichment.compliance_context
+                topology_context = enrichment.topology_context
 
     generator = LLMRemediationGenerator(
         k8s=k8s, logger=logger, network_topology=config.network_topology, model=model,
@@ -89,12 +89,12 @@ def generate(
         if mode == "exploit":
             yaml_output = generator.generate_exploit(
                 exploit_type=exploit_type, service=service,
-                kspm_context=kspm_context, smartscape_context=smartscape_context,
+                kspm_context=compliance_context, smartscape_context=topology_context,
             )
         else:
             yaml_output = generator.generate(
                 exploit_type=exploit_type,
-                kspm_context=kspm_context, smartscape_context=smartscape_context,
+                kspm_context=compliance_context, smartscape_context=topology_context,
             )
     except ImportError as e:
         logger.error(str(e))
@@ -133,59 +133,20 @@ def generate(
         record_operation(op_action, exploit_type, output, config.namespace)
 
 
-def _fetch_dt_context(
-    config: ToolkitConfig,
-    logger: SecurityLogger,
-    strategy_name: str,
-    exploit_type: str,
-    model: str,
-) -> Any:
-    import asyncio
-    import os
+def _create_enrichment_provider(
+    name: str,
+    *,
+    strategy: str = "targeted",
+    model: str = "",
+) -> object | None:
+    """Create an enrichment provider by name.
 
-    from ..container.infrastructure.dt_data_models import DtContext
-    from ..container.infrastructure.dt_query_strategies import create_strategy
-
-    dt_env = os.environ.get("DT_ENVIRONMENT", "")
-    dt_token = os.environ.get("DT_PLATFORM_TOKEN", "")
-
-    if not dt_env or not dt_token:
-        logger.warning(
-            "DT MCP requires DT_ENVIRONMENT and DT_PLATFORM_TOKEN. "
-            "Skipping DT MCP enrichment."
-        )
-        return None
-
-    try:
-        from ..container.infrastructure.dt_mcp_client import DynatraceMCPClient
-    except ImportError as e:
-        logger.warning(f"DT MCP client not available: {e}. Skipping enrichment.")
-        return None
-
-    strategy_kwargs: dict[str, str] = {}
-    if strategy_name == "llm-query":
-        strategy_kwargs["model"] = model
-
-    try:
-        strategy = create_strategy(strategy_name, **strategy_kwargs)
-    except (ValueError, ImportError) as e:
-        logger.error(f"Failed to create DT strategy '{strategy_name}': {e}")
-        return None
-
-    async def _fetch() -> DtContext | None:
-        mcp_client = DynatraceMCPClient(dt_env, dt_token)
-        try:
-            await mcp_client.connect()
-            logger.info(f"Connected to DT MCP gateway (strategy: {strategy.name})")
-            namespace = config.namespace
-            cluster_name = config.kubernetes.context or ""
-            ctx = await strategy.fetch(mcp_client, exploit_type, namespace, cluster_name)
-            logger.info(ctx.summary)
-            return ctx
-        except Exception as e:
-            logger.warning(f"DT MCP enrichment failed: {e}")
-            return None
-        finally:
-            await mcp_client.close()
-
-    return asyncio.run(_fetch())
+    Returns None if the provider's dependencies are not installed.
+    """
+    if name == "dynatrace":
+        from ..container.infrastructure.dt_enrichment import DynatraceEnrichmentProvider
+        kwargs: dict[str, str] = {}
+        if model:
+            kwargs["model"] = model
+        return DynatraceEnrichmentProvider(strategy_name=strategy, **kwargs)
+    return None

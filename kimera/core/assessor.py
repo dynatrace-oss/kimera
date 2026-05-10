@@ -57,31 +57,31 @@ def _get_nested(obj: Any, dotted_path: str) -> Any:
     return current
 
 
+def _contains_any(value: Any, check: dict[str, Any]) -> bool:
+    if not value or not isinstance(value, list):
+        return False
+    return bool(set(check.get("match_values", [])) & set(value))
+
+
+_CONDITION_EVALUATORS: dict[str, Any] = {
+    "equals_true": lambda v, _: v is True,
+    "equals_zero": lambda v, _: v == 0,
+    "not_true": lambda v, _: v is not True,
+    "not_false": lambda v, _: v is not False,
+    "missing": lambda v, _: v is None,
+    "missing_or_empty": lambda v, _: not v,
+    "count_zero": lambda v, _: v == 0 or v is None,
+    "contains_any": _contains_any,
+}
+
+
 def _evaluate_condition(value: Any, condition: str, check: dict[str, Any]) -> bool:
     """Evaluate a condition against a value. Returns True if the check FIRES (finding exists)."""
-    if condition == "equals_true":
-        return value is True
-    if condition == "equals_zero":
-        return value == 0
-    if condition == "not_true":
-        return value is not True
-    if condition == "not_false":
-        return value is not False
-    if condition == "missing":
-        return value is None
-    if condition == "missing_or_empty":
-        return not value
-    if condition == "contains_any":
-        if not value:
-            return False
-        match_values = set(check.get("match_values", []))
-        if isinstance(value, list):
-            return bool(match_values & set(value))
+    evaluator = _CONDITION_EVALUATORS.get(condition)
+    if evaluator is None:
+        logger.warning("Unknown condition: %s", condition)
         return False
-    if condition == "count_zero":
-        return value == 0 or value is None
-    logger.warning("Unknown condition: %s", condition)
-    return False
+    return evaluator(value, check)
 
 
 def _build_technique_ref(check: dict[str, Any]) -> TechniqueRef:

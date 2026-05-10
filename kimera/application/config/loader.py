@@ -116,53 +116,36 @@ class ConfigLoader:
     def _load_env_vars(self) -> dict[str, Any]:
         """Load configuration from environment variables.
 
-        Environment variables follow the pattern:
-        - K8S_EXPLOIT_NAMESPACE -> kubernetes.namespace
-        - K8S_EXPLOIT_DRY_RUN -> dry_run
-        - K8S_EXPLOIT_DEBUG -> debug
-        - K8S_EXPLOIT_VERBOSE -> verbose
-        - K8S_EXPLOIT_TIMEOUT_OPERATION -> timeouts.operation
-        - K8S_EXPLOIT_LOG_LEVEL -> logging.level
-
-        Returns:
-            Configuration overrides from environment
+        Mappings are defined in config/env_mappings.yaml.
         """
-        env_mappings = {
-            "K8S_EXPLOIT_NAMESPACE": ("kubernetes", "namespace"),
-            "K8S_EXPLOIT_CONTEXT": ("kubernetes", "context"),
-            "K8S_EXPLOIT_KUBECONFIG": ("kubernetes", "kubeconfig_path"),
-            "K8S_EXPLOIT_DRY_RUN": ("dry_run",),
-            "K8S_EXPLOIT_DEBUG": ("debug",),
-            "K8S_EXPLOIT_VERBOSE": ("verbose",),
-            "K8S_EXPLOIT_TIMEOUT_OPERATION": ("timeouts", "operation"),
-            "K8S_EXPLOIT_TIMEOUT_ROLLOUT": ("timeouts", "rollout"),
-            "K8S_EXPLOIT_TIMEOUT_STREAM": ("timeouts", "stream"),
-            "K8S_EXPLOIT_TIMEOUT_COMMAND": ("timeouts", "command"),
-            "K8S_EXPLOIT_LOG_LEVEL": ("logging", "level"),
-            "K8S_EXPLOIT_LOG_FILE": ("logging", "file"),
+        mappings_path = self.config_dir / "env_mappings.yaml"
+        if not mappings_path.exists():
+            return {}
+
+        with open(mappings_path) as f:
+            raw = yaml.safe_load(f) or {}
+
+        type_parsers: dict[str, Any] = {
+            "bool": lambda v: v.lower() in ("true", "1", "yes"),
+            "int": int,
+            "string": str,
         }
 
         config: dict[str, Any] = {}
 
-        for env_var, path in env_mappings.items():
+        for env_var, spec in raw.get("mappings", {}).items():
             raw_value = os.getenv(env_var)
-            if raw_value is not None:
-                # Convert string values to appropriate types
-                parsed_value: Any
-                if env_var.endswith(("DRY_RUN", "DEBUG", "VERBOSE")):
-                    parsed_value = raw_value.lower() in ("true", "1", "yes")
-                elif env_var.startswith("K8S_EXPLOIT_TIMEOUT"):
-                    parsed_value = int(raw_value)
-                else:
-                    parsed_value = raw_value
+            if raw_value is None:
+                continue
 
-                # Build nested structure
-                current = config
-                for key in path[:-1]:
-                    if key not in current:
-                        current[key] = {}
-                    current = current[key]
-                current[path[-1]] = parsed_value
+            path: list[str] = spec["path"]
+            parser = type_parsers.get(spec.get("type", "string"), str)
+            parsed_value = parser(raw_value)
+
+            current = config
+            for key in path[:-1]:
+                current = current.setdefault(key, {})
+            current[path[-1]] = parsed_value
 
         return config
 
