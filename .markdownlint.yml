@@ -3,3 +3,7 @@ MD013: false
 
 # punctuation in headings
 MD026: false
+
+# allow duplicate headings in different sections (keepachangelog uses ### Added, ### Fixed etc. per version)
+MD024:
+  siblings_only: true

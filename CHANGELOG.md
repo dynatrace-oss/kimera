@@ -56,19 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed legacy remediation patcher (`kimera/container/remediations/patcher.py`)
 - Trimmed redundant tests (`test_basic.py`, trivial CLI import tests, Python inheritance tests)
 - Streamlined exploit base class and implementations (removed redundant docstrings and dead code)
-- - `SmartscapeEdge` dataclass gains optional `source_workload` / `target_workload` fields
-  populated from `getNodeField(entity_id, "k8s.workload.name")` in Smartscape DQL queries.
-  `classify_records()` extracts these when present; `_format_smartscape()` appends
-  `(k8s: <workload>)` annotations so LLM prompts can correlate Smartscape display names
-  with KSPM K8s workload names. Fields default to `""` — no regression for non-K8s nodes.
-- `_build_smartscape_query("full")` now fetches `source_workload` / `target_workload` via
-  `getNodeField(id, "k8s.workload.name")` and includes them in the `fields` projection.
-- Davis smartscape request enriched with `k8s.workload.name` hint so `create-dql` generates
-  queries that include the workload mapping fields.
-- `dql_reference.yaml` — `naming_model.process` and `naming_model.bridge_pattern` updated with
-  DT entity approach; `smartscape_full` template includes workload fields;
-  `syntax_rules.smartscape.name_resolution` documents the workload field option.
-  - Updated all documentation to reflect current architecture
+- `SmartscapeEdge` dataclass gains optional `source_workload` / `target_workload` fields populated from `getNodeField(entity_id, "k8s.workload.name")` in Smartscape DQL queries; `classify_records()` extracts these when present; `_format_smartscape()` appends `(k8s: <workload>)` annotations so LLM prompts can correlate Smartscape display names with KSPM K8s workload names
+- `_build_smartscape_query("full")` now fetches `source_workload` / `target_workload` via `getNodeField(id, "k8s.workload.name")` and includes them in the `fields` projection
+- Davis smartscape request enriched with `k8s.workload.name` hint so `create-dql` generates queries that include the workload mapping fields
+- `dql_reference.yaml` updated: `naming_model.process` and `naming_model.bridge_pattern` reflect DT entity approach; `smartscape_full` template includes workload fields; `syntax_rules.smartscape.name_resolution` documents the workload field option
+- Updated all documentation to reflect current architecture
 
 ### Fixed
 

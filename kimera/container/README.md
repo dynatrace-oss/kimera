@@ -89,18 +89,22 @@ manager.enable()   # Check Cilium status / print guidance
 ## Vulnerability Details
 
 ### Privileged Containers
+
 - **Risk**: Complete bypass of container isolation
 - **Impact**: Root access to host system
 
 ### Dangerous Capabilities
+
 - **Risk**: Container escape through Linux capabilities
 - **Impact**: Kernel manipulation, host compromise
 
 ### Host Namespace Sharing
+
 - **Risk**: Access to host processes and network
 - **Impact**: Information disclosure, lateral movement
 
 ### Missing Resource Limits
+
 - **Risk**: Denial of service through resource exhaustion
 - **Impact**: Node instability, service degradation
 
