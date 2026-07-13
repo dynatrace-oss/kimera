@@ -81,7 +81,7 @@ def _evaluate_condition(value: Any, condition: str, check: dict[str, Any]) -> bo
     if evaluator is None:
         logger.warning("Unknown condition: %s", condition)
         return False
-    return evaluator(value, check)
+    return bool(evaluator(value, check))
 
 
 def _build_technique_ref(check: dict[str, Any]) -> TechniqueRef:

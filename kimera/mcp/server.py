@@ -67,13 +67,15 @@ mcp_server = FastMCP(
 )
 
 
-def _get_k8s(namespace: str, kubeconfig: str | None = None) -> K8sClient:
+def _get_k8s(namespace: str, kubeconfig: str | None = None) -> K8sClient:  # noqa: ARG001
     """Create a K8sClient for the given namespace.
 
     The client is created per-call rather than held as server state so that
     different tool invocations can target different namespaces.
+    ``kubeconfig`` is accepted for API compatibility but K8sClient uses the
+    ambient kubeconfig (in-cluster or ``~/.kube/config``).
     """
-    return K8sClient(namespace=namespace, kubeconfig=kubeconfig)
+    return K8sClient(namespace=namespace)
 
 
 # ── Tools ─────────────────────────────────────────────────────────────
@@ -127,7 +129,7 @@ def assess_target(
     """
     k8s = _get_k8s(namespace, kubeconfig)
     report: AssessmentReport = assess_namespace(k8s)
-    data = report.model_dump()
+    data: dict[str, Any] = report.model_dump()
     data["summary"] = report.to_summary()
     return data
 
@@ -250,7 +252,7 @@ def attempt_technique(
         params=params,
     )
     result.dry_run = dry_run
-    data = result.model_dump()
+    data: dict[str, Any] = result.model_dump()
     data["summary"] = result.to_summary()
     return data
 
@@ -282,7 +284,7 @@ def validate_defense(
     from ..container.validation.engine import validate_controls
 
     k8s = _get_k8s(namespace, kubeconfig)
-    log = SecurityLogger(namespace=namespace)
+    log = SecurityLogger(logging.getLogger(f"kimera.mcp.{namespace}"))
 
     reports = validate_controls(
         k8s=k8s,

@@ -24,17 +24,17 @@ from kimera.container.validation.models import (
 
 class TestValidationVerdict:
     def test_enum_values(self):
-        assert ValidationVerdict.PASS == "pass"  # noqa: S105
-        assert ValidationVerdict.FAIL == "fail"
-        assert ValidationVerdict.ERROR == "error"
-        assert ValidationVerdict.SKIPPED == "skipped"
+        assert ValidationVerdict.PASS.value == "pass"
+        assert ValidationVerdict.FAIL.value == "fail"
+        assert ValidationVerdict.ERROR.value == "error"
+        assert ValidationVerdict.SKIPPED.value == "skipped"
 
 
 class TestControlType:
     def test_enum_values(self):
-        assert ControlType.NETWORK_POLICY == "network-policy"
-        assert ControlType.ADMISSION == "admission"
-        assert ControlType.RBAC == "rbac"
+        assert ControlType.NETWORK_POLICY.value == "network-policy"
+        assert ControlType.ADMISSION.value == "admission"
+        assert ControlType.RBAC.value == "rbac"
 
 
 class TestValidationResult:

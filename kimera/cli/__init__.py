@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import sys
+from collections.abc import Callable
 from typing import Any
 
 import click
@@ -23,8 +24,8 @@ from ..application.config.schemas import ToolkitConfig
 from ..container.core.k8s_client import K8sClient
 from ..container.core.logger import SecurityLogger, setup_logger
 
-REGISTRY = ExploitRegistry()
-EXPLOITS = REGISTRY.classes
+REGISTRY: ExploitRegistry = ExploitRegistry()
+EXPLOITS: dict[str, Callable[..., Any]] = REGISTRY.classes
 
 
 def _load_config(

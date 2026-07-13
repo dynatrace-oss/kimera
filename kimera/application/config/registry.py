@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -100,10 +100,16 @@ class ExploitRegistry:
         result: dict[str, Callable[..., Any]] = {}
         for name, entry in self._entries.items():
             if entry.config_key:
-                result[name] = partial(entry.cls, config_key=entry.config_key)
+                callable_cls = cast(Callable[..., Any], entry.cls)
+                result[name] = partial(callable_cls, config_key=entry.config_key)
             else:
                 result[name] = entry.cls
         return result
+
+    @property
+    def entries(self) -> dict[str, ExploitEntry]:
+        """Return all registry entries by name."""
+        return dict(self._entries)
 
     def __contains__(self, name: str) -> bool:  # noqa: D105
         return name in self._entries

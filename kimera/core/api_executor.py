@@ -417,4 +417,4 @@ def list_resource(k8s: K8sClient, namespace: str, resource_type: str) -> list[di
     if handler is None:
         logger.warning("Unknown API resource type: %s", resource_type)
         return []
-    return handler()
+    return list(handler())

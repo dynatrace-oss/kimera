@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kimera"
-version = "3.0.0"
+version = "0.1.0"
 description = "Kubernetes Security Testing Toolkit"
 authors = [{name = "Dynatrace OSS", email = "opensource@dynatrace.com"}]
 license = "Apache-2.0"

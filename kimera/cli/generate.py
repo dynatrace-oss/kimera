@@ -14,10 +14,14 @@
 
 import click
 
+from ..application.config.registry import ExploitRegistry
 from ..container.core.journal import record_operation
 from ..container.core.logger import console
 from ..container.resource_applier import ResourceApplier
-from . import REGISTRY
+from ..core.enrichment import EnrichmentProvider
+from . import REGISTRY as _REGISTRY
+
+REGISTRY: ExploitRegistry = _REGISTRY
 
 
 @click.command("generate")
@@ -160,7 +164,7 @@ def _create_enrichment_provider(
     *,
     strategy: str = "targeted",
     model: str = "",
-) -> object | None:
+) -> EnrichmentProvider | None:
     """Create an enrichment provider by name.
 
     Returns None if the provider's dependencies are not installed.

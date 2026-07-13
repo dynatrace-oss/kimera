@@ -62,7 +62,7 @@ class DeploymentPatchExploit(BaseExploit):
         super().__init__(k8s_client, service, logger)
 
     def get_vulnerable_patch(self) -> list[dict[str, Any]]:  # noqa: D102
-        return self._exploit_config.get("vulnerable_patch", [])
+        return list(self._exploit_config.get("vulnerable_patch", []))
 
     def check_vulnerability(self) -> bool:  # noqa: D102
         pod_name = self.k8s.find_pod_for_service(self.service)
