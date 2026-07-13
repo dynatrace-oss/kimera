@@ -1,0 +1,89 @@
+id: S7
+name: Kyverno SSRF and policy bypass version check
+enabled: true
+
+mitre:
+  technique_id: T1562.001
+  technique_name: "Impair Defenses: Disable or Modify Tools"
+  tactic: defense-evasion
+  data_sources: [Container, Kubernetes API]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Detects whether Kyverno is installed and checks its version against two critical
+  vulnerabilities: CVE-2024-48921 (PolicyException namespace bypass) and the
+  SSRF class of vulnerabilities via CEL HTTP functions.
+
+  CVE-2024-48921 (CVSS 8.7): PolicyExceptions are consumed from any namespace by
+  design in Kyverno < 1.13.0. A user with create permissions in any namespace can
+  create a PolicyException that exempts pods from cluster-wide security policies
+  (disallow-privileged-containers, disallow-host-namespaces, etc.). The DE3 technique
+  demonstrates active exploitation of this path. Fixed in 1.13.0 by requiring
+  explicit namespace allowlisting in the Kyverno ConfigMap.
+
+  CEL SSRF class (CVEs against Kyverno 1.16.x): Kyverno's CEL-based policy engine
+  introduced HTTP request functions with no URL validation, allowing policy authors
+  (or attackers with policy create permissions) to trigger server-side requests from
+  Kyverno's elevated ServiceAccount to internal endpoints including the instance
+  metadata service (169.254.169.254). Fixed in 1.16.3 and 1.15.3.
+
+  Additional known weaknesses (non-CVE):
+  - validationFailureAction defaults to Audit in bundled PSS policies — violations
+    are logged but not blocked; teams copy these policies assuming enforcement.
+  - Baseline PSS allows DAC_OVERRIDE, SETUID, SETGID, SYS_CHROOT; only Restricted
+    blocks them.
+
+  Kimera checks the Kyverno controller version against the CVE-2024-48921 fix
+  boundary (1.13.0) as the most broadly impactful version check.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - verb: detect_tool_version
+      tool: kyverno
+      namespace: kyverno
+      resource_kind: deployment
+      name_prefix: kyverno
+      fixed_version: "1.13.0"
+      cve: "CVE-2024-48921"
+      description: "Check Kyverno controller version for PolicyException namespace bypass"
+
+  evidence_markers:
+    - marker: "TOOL_NOT_FOUND"
+      evidence: "Kyverno not detected in kyverno namespace"
+      impact: "Cluster does not use Kyverno for policy enforcement"
+    - marker: "TOOL_FOUND"
+      evidence: "Kyverno deployment detected"
+      impact: "Cluster uses Kyverno for admission policy enforcement"
+    - marker: "TOOL_VULNERABLE"
+      evidence: "Kyverno version is vulnerable to CVE-2024-48921 (PolicyException bypass)"
+      impact: "Any namespace can create a PolicyException overriding ClusterPolicies — combine with DE3"
+    - marker: "TOOL_PATCHED"
+      evidence: "Kyverno version includes the CVE-2024-48921 fix (PolicyException namespace restriction)"
+      impact: "Verify Kyverno ConfigMap restricts PolicyException namespaces; check for CEL SSRF if 1.16.x"
+    - marker: "VERSION_UNKNOWN"
+      evidence: "Kyverno version could not be determined from container image tag"
+      impact: "Manual version verification required"
+
+success_indicators:
+  - "TOOL_FOUND"
+
+impact:
+  - "CVE-2024-48921: PolicyException from any namespace overrides ClusterPolicy in Kyverno < 1.13.0"
+  - "CEL HTTP functions enable SSRF from Kyverno's elevated SA in vulnerable 1.16.x releases"
+  - "Audit-mode policies log violations but do not block — commonly misconfigured as enforcement"
+  - "Baseline PSS allows DAC_OVERRIDE, SETUID, SETGID — only Restricted blocks capability abuse"
+
+remediation: |
+  Upgrade Kyverno to 1.13.0+ for CVE-2024-48921 fix; 1.16.3+ for CEL SSRF fixes.
+  Set spec.exceptions.namespace in the Kyverno ConfigMap to restrict where
+  PolicyExceptions can be created (security-admin namespace only).
+  Audit all policies for validationFailureAction=Audit and switch to Enforce
+  for policies that must block violations.
+  Restrict PolicyException and ClusterPolicy create/update permissions via RBAC.
+  Use Kimera DE3 to test whether PolicyException bypass is exploitable on your cluster.

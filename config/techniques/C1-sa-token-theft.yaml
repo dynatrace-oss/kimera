@@ -1,0 +1,66 @@
+# Technique: SA token theft from volume
+# ID: C1
+# Tactic: Credential Access
+# Reads the auto-mounted service account token from inside a pod.
+
+id: C1
+name: SA token theft from volume
+enabled: true
+
+mitre:
+  technique_id: T1552.007
+  technique_name: "Unsecured Credentials: Container API"
+  tactic: credential-access
+  data_sources: [Container, File]
+
+cis_controls:
+  - "5.1.6"  # SA tokens only mounted where necessary
+
+severity: high
+
+description: |
+  Reads the auto-mounted ServiceAccount token from
+  /var/run/secrets/kubernetes.io/serviceaccount/token inside a target pod.
+  If present, the token can authenticate to the Kubernetes API server with
+  whatever permissions the bound Role/ClusterRole grants.
+
+# How the technique executes
+execution:
+  # "exec" = run script inside a target pod via kubectl exec / API exec
+  # "api"  = call K8s API directly (no pod exec needed)
+  # "probe" = deploy ephemeral pod and test from it
+  mode: exec
+  requires_target_pod: true
+
+  # Script to run inside the target pod
+  probes:
+    - type: command
+      run: |
+        SA_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
+        if [ -d "$SA_DIR" ] && [ -f "$SA_DIR/token" ]; then
+            TOKEN_SIZE=$(wc -c < "$SA_DIR/token")
+            NS=$(cat "$SA_DIR/namespace" 2>/dev/null || echo "unknown")
+            echo "TOKEN_FOUND:${TOKEN_SIZE}:${NS}"
+        else
+            echo "TOKEN_NOT_FOUND"
+        fi
+
+  evidence_markers:
+    - marker: "TOKEN_FOUND"
+      evidence: "SA token readable from pod volume"
+      impact: "Attacker can authenticate to K8s API server as this ServiceAccount"
+    - marker: "TOKEN_NOT_FOUND"
+      evidence: "SA token not mounted or not readable"
+
+# What a successful execution means
+success_indicators:
+  - "TOKEN_FOUND"
+
+impact:
+  - "Authenticate to the Kubernetes API server as the pod's ServiceAccount"
+  - "Scope of access depends on bound Roles/ClusterRoles"
+  - "Can chain with C2 (secret enumeration) if SA has secrets access"
+
+remediation: |
+  Set automountServiceAccountToken: false on pods that do not need API access.
+  Use projected service account tokens with audience and expiry constraints.

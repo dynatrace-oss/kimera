@@ -17,8 +17,8 @@ from typing import Any
 
 import yaml
 
-from ..core.k8s_client import K8sClient
-from ..core.logger import SecurityLogger
+from .core.k8s_client import K8sClient
+from .core.logger import SecurityLogger
 
 TOOLKIT_LABEL = "app.kubernetes.io/managed-by"
 TOOLKIT_LABEL_VALUE = "kimera"

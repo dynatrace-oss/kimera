@@ -1,0 +1,54 @@
+id: DE1
+name: Delete Kubernetes events
+enabled: true
+
+mitre:
+  technique_id: T1070
+  technique_name: "Indicator Removal"
+  tactic: defense-evasion
+  data_sources: [Command, Process]
+
+cis_controls: []
+
+severity: high
+
+description: |
+  Deletes all Kubernetes events in the target namespace to remove evidence
+  of malicious activity. Events record pod creation, scheduling failures,
+  image pulls, and other operations that defenders use to reconstruct
+  attack timelines.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: events
+      verb: delete
+      scope: namespace
+      description: "Delete all events in namespace"
+
+  evidence_markers:
+    - marker: "EVENTS_DELETED"
+      evidence: "Kubernetes events deleted from namespace"
+      impact: "Defenders lose audit trail for recent cluster operations"
+    - marker: "DELETE_DENIED"
+      evidence: "RBAC denied event deletion"
+      impact: "Least-privilege RBAC prevents evidence tampering"
+
+success_indicators:
+  - "EVENTS_DELETED"
+
+impact:
+  - "Defenders lose visibility into recent cluster operations"
+  - "Attack timeline reconstruction becomes impossible"
+  - "Falco k8s_audit has no default rule for event deletion"
+
+remediation: |
+  Restrict delete verb on events to cluster administrators only.
+  Forward events to an external log aggregator (Loki, Elasticsearch)
+  so deletion from the API server does not destroy the record.
+  Add a Falco rule for event deletion:
+    - rule: K8s Events Deleted
+      condition: kevt and ka.target.resource=events and kdelete
+      priority: WARNING

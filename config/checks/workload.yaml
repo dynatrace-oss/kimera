@@ -1,0 +1,194 @@
+# Workload Security Assessment Checks
+#
+# Defines what to check on each deployment and the severity/mapping of each finding.
+# The assessor engine iterates these checks against each deployment's pod spec.
+#
+# Check types:
+#   container_field  — inspect a field on each container's security context
+#   pod_field        — inspect a field on the pod spec
+#   resource_check   — inspect container resource limits/requests
+#   namespace_check  — inspect namespace-level resources (policies, etc.)
+
+checks:
+  # ── Container-level checks ─────────────────────────────────────────
+
+  - id: privileged_mode
+    type: container_field
+    field: security_context.privileged
+    condition: "equals_true"
+    severity: critical
+    title: "Privileged container"
+    detail: "Container runs in privileged mode with full host access"
+    remediation: "Set securityContext.privileged: false"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.1"]
+
+  - id: dangerous_capabilities
+    type: container_field
+    field: security_context.capabilities.add
+    condition: "contains_any"
+    match_values:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - SYS_PTRACE
+      - DAC_OVERRIDE
+      - DAC_READ_SEARCH
+      - SYS_MODULE
+      - NET_RAW
+      - ALL
+    severity: critical
+    title: "Dangerous capabilities"
+    detail: "Container has capabilities that enable container escape"
+    remediation: "Drop all capabilities, add only what is needed"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.7", "5.2.9"]
+
+  - id: missing_capabilities_drop
+    type: container_field
+    field: security_context.capabilities.drop
+    condition: "missing_or_empty"
+    severity: medium
+    title: "Capabilities not dropped"
+    detail: "Container does not drop any capabilities"
+    remediation: "Add securityContext.capabilities.drop: ['ALL']"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.7"]
+
+  - id: privilege_escalation
+    type: container_field
+    field: security_context.allow_privilege_escalation
+    condition: "not_false"
+    severity: high
+    title: "Privilege escalation not disabled"
+    detail: "allowPrivilegeEscalation is not explicitly set to false"
+    remediation: "Set securityContext.allowPrivilegeEscalation: false"
+    mitre_id: T1068
+    mitre_name: "Exploitation for Privilege Escalation"
+    cis_controls: ["5.2.5"]
+
+  - id: run_as_root
+    type: container_field
+    field: security_context.run_as_user
+    condition: "equals_zero"
+    severity: high
+    title: "Container runs as root (UID 0)"
+    remediation: "Set runAsUser to a non-zero UID and runAsNonRoot: true"
+    mitre_id: T1068
+    mitre_name: "Exploitation for Privilege Escalation"
+    cis_controls: ["5.2.6"]
+
+  - id: missing_run_as_non_root
+    type: container_field
+    field: security_context.run_as_non_root
+    condition: "not_true"
+    # Also checks pod-level security_context.run_as_non_root
+    check_pod_level: true
+    severity: medium
+    title: "runAsNonRoot not enforced"
+    detail: "Neither container nor pod security context sets runAsNonRoot: true"
+    remediation: "Set securityContext.runAsNonRoot: true"
+    mitre_id: T1068
+    mitre_name: "Exploitation for Privilege Escalation"
+    cis_controls: ["5.2.6"]
+
+  - id: writable_root_filesystem
+    type: container_field
+    field: security_context.read_only_root_filesystem
+    condition: "not_true"
+    severity: medium
+    title: "Root filesystem is writable"
+    remediation: "Set securityContext.readOnlyRootFilesystem: true"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.8"]
+
+  - id: missing_seccomp
+    type: container_field
+    field: security_context.seccomp_profile
+    condition: "missing"
+    severity: low
+    title: "No seccomp profile set"
+    remediation: "Set securityContext.seccompProfile.type: RuntimeDefault"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: []
+
+  # ── Resource checks ────────────────────────────────────────────────
+
+  - id: missing_resource_limits
+    type: resource_check
+    field: resources.limits
+    condition: "missing"
+    severity: high
+    title: "No resource limits set"
+    detail: "Container has no CPU or memory limits, enabling resource exhaustion"
+    remediation: "Set resources.limits.cpu and resources.limits.memory"
+    mitre_id: T1499
+    mitre_name: "Endpoint Denial of Service"
+    cis_controls: ["5.4.1"]
+
+  # ── Pod-level checks ───────────────────────────────────────────────
+
+  - id: host_pid
+    type: pod_field
+    field: host_pid
+    condition: "equals_true"
+    severity: critical
+    title: "Host PID namespace shared"
+    detail: "Pod can see and interact with all host processes"
+    remediation: "Remove hostPID: true from pod spec"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.2"]
+
+  - id: host_network
+    type: pod_field
+    field: host_network
+    condition: "equals_true"
+    severity: critical
+    title: "Host network namespace shared"
+    detail: "Pod has direct access to host network interfaces"
+    remediation: "Remove hostNetwork: true from pod spec"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.3"]
+
+  - id: host_ipc
+    type: pod_field
+    field: host_ipc
+    condition: "equals_true"
+    severity: high
+    title: "Host IPC namespace shared"
+    remediation: "Remove hostIPC: true from pod spec"
+    mitre_id: T1611
+    mitre_name: "Escape to Host"
+    cis_controls: ["5.2.4"]
+
+  - id: sa_token_automounted
+    type: pod_field
+    field: automount_service_account_token
+    condition: "not_false"
+    severity: medium
+    title: "SA token auto-mounted"
+    detail: "Service account token is automatically mounted into pods"
+    remediation: "Set automountServiceAccountToken: false unless required"
+    mitre_id: T1528
+    mitre_name: "Steal Application Access Token"
+    cis_controls: ["5.1.6"]
+
+  # ── Namespace-level checks ─────────────────────────────────────────
+
+  - id: no_network_policies
+    type: namespace_check
+    resource: network_policies
+    condition: "count_zero"
+    severity: high
+    title: "No NetworkPolicies in namespace"
+    detail: "All pods can communicate freely with any other pod"
+    remediation: "Create a default-deny NetworkPolicy and explicit allow rules"
+    mitre_id: T1046
+    mitre_name: "Network Service Discovery"
+    cis_controls: ["5.3.2"]

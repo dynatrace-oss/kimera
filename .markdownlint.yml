@@ -3,3 +3,16 @@ MD013: false
 
 # punctuation in headings
 MD026: false
+
+# allow duplicate headings in different sections (keepachangelog uses ### Added, ### Fixed etc. per version)
+MD024:
+  siblings_only: true
+
+# allow inline HTML (used for centered logo and badge links in README)
+MD033: false
+
+# allow non-heading first line (README starts with HTML logo block)
+MD041: false
+
+# allow fenced code blocks without language specifier
+MD040: false

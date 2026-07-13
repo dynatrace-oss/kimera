@@ -1,0 +1,64 @@
+id: DE4
+name: Mutate pod labels (Cilium policy bypass)
+enabled: true
+
+mitre:
+  technique_id: T1036
+  technique_name: "Masquerading"
+  tactic: defense-evasion
+  data_sources: [Pod, Process]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Modifies pod labels to cause Cilium to apply incorrect network policies.
+
+  CVE-2023-39347: Cilium uses user-provided pod labels (including
+  io.kubernetes.pod.namespace) to select applicable policies. Setting
+  a non-existent namespace label causes all namespace-scoped network
+  policies to be bypassed. Fixed in Cilium 1.12.14, 1.13.7, 1.14.2,
+  but many clusters run older or unpatched versions.
+
+  Even on patched Cilium, label mutation can shift a pod between policy
+  selectors, potentially moving it from a restricted to a permissive
+  policy set.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: pods
+      verb: patch
+      scope: namespace
+      description: "Patch pod labels to bypass Cilium network policy selectors"
+      patch:
+        type: merge
+        body:
+          metadata:
+            labels:
+              io.kubernetes.pod.namespace: "nonexistent-ns"
+
+  evidence_markers:
+    - marker: "LABELS_MUTATED"
+      evidence: "Pod labels modified — network policy selectors may no longer match"
+      impact: "Cilium may apply incorrect or no network policies to this pod"
+    - marker: "PATCH_DENIED"
+      evidence: "RBAC denied pod label modification"
+      impact: "Pod labels are protected"
+
+success_indicators:
+  - "LABELS_MUTATED"
+
+impact:
+  - "CVE-2023-39347: Cilium applies incorrect network policies based on mutated labels"
+  - "Pod may bypass namespace-scoped network policies entirely"
+  - "Lateral movement to previously isolated services becomes possible"
+
+remediation: |
+  Upgrade Cilium to 1.14.2+ where reserved label mutation is rejected.
+  Use admission policies (Kyverno/OPA) to prevent modification of
+  io.kubernetes.pod.namespace and other reserved labels.
+  Restrict pod patch/update permissions via RBAC.

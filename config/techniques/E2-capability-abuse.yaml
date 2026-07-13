@@ -1,0 +1,80 @@
+# Technique: SYS_ADMIN capability abuse
+# ID: E2
+# Tactic: Privilege Escalation
+
+id: E2
+name: SYS_ADMIN capability abuse
+enabled: true
+
+mitre:
+  technique_id: T1611
+  technique_name: "Escape to Host"
+  tactic: privilege-escalation
+  data_sources: [Container Logs, Process Monitoring]
+
+cis_controls:
+  - "5.2.7"
+  - "5.2.9"
+
+severity: critical
+
+description: |
+  Exploits SYS_ADMIN capability to escape the container via cgroup
+  manipulation or mount namespace abuse. SYS_ADMIN is the most dangerous
+  individual capability — it enables most privileged operations without
+  requiring full privileged mode.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "[*] Checking for SYS_ADMIN capability..."
+        caps=$(grep "CapEff" /proc/self/status 2>/dev/null | awk '{print $2}')
+        # SYS_ADMIN is bit 21 (0x200000)
+        if [ -n "$caps" ]; then
+            dec_caps=$((16#${caps}))
+            if [ $((dec_caps & 0x200000)) -ne 0 ]; then
+                echo "SYS_ADMIN_PRESENT"
+                echo "[*] Checking cgroup mount capability..."
+                if mount -t cgroup2 none /tmp/cgrp 2>/dev/null || \
+                   mount -t cgroup -o rdma cgroup /tmp/cgrp 2>/dev/null; then
+                    echo "CGROUP_MOUNT_SUCCESS"
+                    umount /tmp/cgrp 2>/dev/null
+                else
+                    echo "CGROUP_MOUNT_BLOCKED"
+                fi
+            else
+                echo "SYS_ADMIN_ABSENT"
+            fi
+        else
+            echo "CAPS_UNREADABLE"
+        fi
+
+  evidence_markers:
+    - marker: "SYS_ADMIN_PRESENT"
+      evidence: "Container has CAP_SYS_ADMIN capability"
+      impact: "Container escape via cgroup or mount namespace possible"
+    - marker: "CGROUP_MOUNT_SUCCESS"
+      evidence: "Cgroup filesystem mounted from inside container"
+      impact: "Container escape achievable via cgroup release_agent"
+    - marker: "SYS_ADMIN_ABSENT"
+      evidence: "SYS_ADMIN capability not present"
+    - marker: "CGROUP_MOUNT_BLOCKED"
+      evidence: "Cgroup mount blocked (seccomp or LSM)"
+
+success_indicators:
+  - "SYS_ADMIN_PRESENT"
+  - "CGROUP_MOUNT_SUCCESS"
+
+impact:
+  - "Container escape via cgroup release_agent or notify_on_release"
+  - "Mount host filesystems via mount namespace abuse"
+  - "Bypass network namespaces for traffic interception"
+
+remediation: |
+  Drop ALL capabilities and add only what is needed. Never add SYS_ADMIN.
+  Use seccomp profiles (RuntimeDefault or custom) to block mount/umount
+  syscalls even if SYS_ADMIN is present. Enforce via admission controller.

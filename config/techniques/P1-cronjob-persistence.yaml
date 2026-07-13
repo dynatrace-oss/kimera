@@ -1,0 +1,71 @@
+id: P1
+name: CronJob persistence
+enabled: true
+
+mitre:
+  technique_id: T1053.007
+  technique_name: "Scheduled Task/Job: Container Orchestration Job"
+  tactic: persistence
+  data_sources: [Container, Scheduled Job]
+
+cis_controls: []
+
+severity: high
+
+description: |
+  Creates a Kubernetes CronJob that runs on a schedule, maintaining
+  attacker access even if the original compromised pod is deleted.
+  The CronJob mounts the default ServiceAccount token and can
+  periodically exfiltrate data or re-establish access.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: cronjobs
+      verb: create
+      scope: namespace
+      api_group: batch/v1
+      description: "Create CronJob for persistent access"
+      body:
+        apiVersion: batch/v1
+        kind: CronJob
+        metadata:
+          name: "system-health-check"
+          labels:
+            app: system-monitor
+        spec:
+          schedule: "*/15 * * * *"
+          jobTemplate:
+            spec:
+              activeDeadlineSeconds: 60
+              template:
+                spec:
+                  restartPolicy: Never
+                  containers:
+                    - name: check
+                      image: busybox:latest
+                      command: ["sh", "-c", "echo heartbeat"]
+
+  evidence_markers:
+    - marker: "CRONJOB_CREATED"
+      evidence: "CronJob created for persistent access"
+      impact: "Attacker maintains scheduled access to namespace"
+    - marker: "CREATE_DENIED"
+      evidence: "RBAC denied CronJob creation"
+      impact: "CronJob creation is restricted"
+
+success_indicators:
+  - "CRONJOB_CREATED"
+
+impact:
+  - "Attacker maintains periodic access even after pod remediation"
+  - "CronJob name (system-health-check) blends with legitimate workloads"
+  - "Masquerading as monitoring reduces detection likelihood"
+
+remediation: |
+  Restrict CronJob creation to CI/CD service accounts and administrators.
+  Monitor for unexpected CronJob creation via Falco k8s_audit rules.
+  Regularly audit CronJobs in all namespaces for unrecognized entries.
+  Use admission policies to require specific labels or annotations on CronJobs.

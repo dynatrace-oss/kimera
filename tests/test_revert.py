@@ -20,12 +20,12 @@ from unittest.mock import MagicMock, Mock, patch
 from kimera.container.core.journal import pending_operations, record_operation
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
+from kimera.container.make_vulnerable.deployment_patch import DeploymentPatchExploit
 from kimera.container.make_vulnerable.missing_network_policies import (
     TOOLKIT_LABEL,
     TOOLKIT_LABEL_VALUE,
     MissingNetworkPoliciesExploit,
 )
-from kimera.container.make_vulnerable.privileged_containers import PrivilegedContainersExploit
 
 
 def _create_mock_k8s_client() -> tuple[K8sClient, MagicMock]:
@@ -65,7 +65,9 @@ class TestDeploymentRevert:
         k8s, logger = _create_mock_k8s_client()
         k8s.rollback_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
         # Stub check_vulnerability to return False (no longer vulnerable)
         exploit.check_vulnerability = MagicMock(return_value=False)  # type: ignore[method-assign]
 
@@ -80,7 +82,9 @@ class TestDeploymentRevert:
         k8s, logger = _create_mock_k8s_client()
         k8s.rollback_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
         exploit.check_vulnerability = MagicMock(return_value=False)  # type: ignore[method-assign]
 
         with _patch_journal(tmp_path):
@@ -93,7 +97,9 @@ class TestDeploymentRevert:
         k8s, logger = _create_mock_k8s_client()
         k8s.rollback_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
         exploit.check_vulnerability = MagicMock(return_value=True)  # type: ignore[method-assign]
 
         with _patch_journal(tmp_path):
@@ -107,7 +113,9 @@ class TestDeploymentRevert:
         k8s, logger = _create_mock_k8s_client()
         k8s.rollback_deployment = MagicMock()  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         with _patch_journal(tmp_path):
             result = exploit.revert(dry_run=True)
@@ -120,7 +128,9 @@ class TestDeploymentRevert:
         k8s, logger = _create_mock_k8s_client()
         k8s.rollback_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
         exploit.check_vulnerability = MagicMock(return_value=False)  # type: ignore[method-assign]
 
         with _patch_journal(tmp_path):
@@ -180,7 +190,9 @@ class TestJournalIntegration:
         k8s, logger = _create_mock_k8s_client()
         k8s.patch_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         with _patch_journal(tmp_path):
             exploit.make_vulnerable()
@@ -194,7 +206,9 @@ class TestJournalIntegration:
         """Test that make_secure prints guidance and does not record an operation."""
         k8s, logger = _create_mock_k8s_client()
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         with _patch_journal(tmp_path):
             result = exploit.make_secure()
@@ -208,7 +222,9 @@ class TestJournalIntegration:
         k8s, logger = _create_mock_k8s_client()
         k8s.patch_deployment = MagicMock(return_value=True)  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         with _patch_journal(tmp_path):
             exploit.make_vulnerable(dry_run=True)

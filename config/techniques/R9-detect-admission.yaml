@@ -1,0 +1,73 @@
+id: R9
+name: Detect admission controllers
+enabled: true
+
+mitre:
+  technique_id: T1613
+  technique_name: "Container and Resource Discovery"
+  tactic: reconnaissance
+  data_sources: [Cluster]
+
+cis_controls: []
+
+severity: low
+
+description: |
+  Identifies which admission controllers are active in the cluster by
+  checking PSA namespace labels, Kyverno/OPA CRDs, and
+  ValidatingWebhookConfigurations. Understanding the defense stack
+  determines which attack techniques are likely to succeed.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: validatingwebhookconfigurations
+      verb: list
+      scope: cluster
+      description: "List validating admission webhooks"
+    - resource: mutatingwebhookconfigurations
+      verb: list
+      scope: cluster
+      description: "List mutating admission webhooks"
+    - resource: customresourcedefinitions
+      verb: list
+      scope: cluster
+      description: "Check for Kyverno/OPA/Falco CRDs"
+
+  evidence_markers:
+    - marker: "KYVERNO_DETECTED"
+      evidence: "Kyverno admission controller active"
+      impact: "Pod security policies may be enforced via Kyverno"
+    - marker: "GATEKEEPER_DETECTED"
+      evidence: "OPA Gatekeeper active"
+      impact: "Constraint templates may restrict operations"
+    - marker: "PSA_DETECTED"
+      evidence: "Pod Security Admission labels found on namespace"
+      impact: "PSA enforcement level determines pod restrictions"
+    - marker: "FALCO_DETECTED"
+      evidence: "Falco CRDs or DaemonSet detected"
+      impact: "Runtime behavior monitoring is active"
+    - marker: "TETRAGON_DETECTED"
+      evidence: "Tetragon CRDs or DaemonSet detected"
+      impact: "eBPF-based runtime enforcement is active"
+    - marker: "NO_ADMISSION"
+      evidence: "No admission controllers detected"
+      impact: "No admission-level defense — all pod specs accepted"
+
+success_indicators:
+  - "KYVERNO_DETECTED"
+  - "GATEKEEPER_DETECTED"
+  - "PSA_DETECTED"
+  - "NO_ADMISSION"
+
+impact:
+  - "Attacker knows which defense tools to evade"
+  - "Informs technique selection: API-mode if Tetragon present, exec-mode if Falco absent"
+  - "Read-only LIST operations — very low noise"
+
+remediation: |
+  This technique cannot be prevented — LIST operations are normal.
+  Detection: correlate multiple LIST calls on security CRDs from
+  a single identity as reconnaissance activity.

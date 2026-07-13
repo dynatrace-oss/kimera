@@ -18,6 +18,6 @@ class TestCLI:
 
     def test_cli_exposes_main(self) -> None:
         """Test that the CLI module exposes a callable main function."""
-        from kimera.cli import main
+        from kimera.exploit_k8s import main
 
         assert callable(main)

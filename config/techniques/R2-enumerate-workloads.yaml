@@ -1,0 +1,54 @@
+# Technique: Enumerate workloads
+# ID: R2
+# Tactic: Discovery
+# Lists all deployments, pods, and their security configurations.
+
+id: R2
+name: Enumerate workloads
+enabled: true
+
+mitre:
+  technique_id: T1613
+  technique_name: "Container and Resource Discovery"
+  tactic: discovery
+  data_sources: [Container, Pod]
+
+cis_controls: []
+
+severity: info
+
+description: |
+  Lists all deployments and pods in the target namespace, extracting
+  security-relevant configuration: service account, security context,
+  capabilities, host namespace sharing, resource limits, and volume mounts.
+  This is the primary reconnaissance step that feeds attack planning.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  # API calls to make (resolved by the technique engine)
+  api_calls:
+    - resource: deployments
+      api_group: apps/v1
+      extract:
+        - name: metadata.name
+        - service_account: spec.template.spec.serviceAccountName
+        - host_pid: spec.template.spec.hostPID
+        - host_network: spec.template.spec.hostNetwork
+        - containers: spec.template.spec.containers[*].name
+        - privileged: spec.template.spec.containers[*].securityContext.privileged
+        - capabilities: spec.template.spec.containers[*].securityContext.capabilities.add
+        - has_limits: spec.template.spec.containers[*].resources.limits
+
+success_indicators:
+  - "WORKLOADS_FOUND"
+
+impact:
+  - "Attacker maps all workloads and their security posture"
+  - "Identifies targets for privilege escalation and credential theft"
+  - "Reveals which pods run privileged or with dangerous capabilities"
+
+remediation: |
+  Restrict list/get permissions on deployments and pods to authorized
+  ServiceAccounts only. Use RBAC to enforce least-privilege access.

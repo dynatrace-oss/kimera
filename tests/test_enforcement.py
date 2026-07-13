@@ -20,7 +20,7 @@ from kubernetes.client.rest import ApiException
 from kimera.container.core.exceptions import K8sError
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
-from kimera.container.infrastructure.enforcement import (
+from kimera.container.enforcement import (
     CILIUM_DAEMONSET,
     CILIUM_NAMESPACE,
     PolicyEnforcementManager,

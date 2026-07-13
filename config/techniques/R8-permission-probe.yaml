@@ -1,0 +1,106 @@
+id: R8
+name: Permission probe via SelfSubjectAccessReview
+enabled: true
+
+mitre:
+  technique_id: T1069.003
+  technique_name: "Permission Groups Discovery: Cloud Groups"
+  tactic: reconnaissance
+  data_sources: [User Account, Group]
+
+cis_controls: []
+
+severity: low
+
+description: |
+  Uses SelfSubjectAccessReview and SelfSubjectRulesReview to map the
+  complete permission set of the current identity without touching any
+  target resources.
+
+  This is the stealthiest reconnaissance technique in Kubernetes.
+  Falco's default k8s_audit rules have NO rule for SelfSubjectAccessReview.
+  The operation probes permissions without accessing the actual resources,
+  producing near-zero forensic evidence.
+
+  Probes a curated list of dangerous permissions:
+  - secrets (list, get) — credential access
+  - pods/exec — execution
+  - pods (create) — persistence
+  - rolebindings (create) — privilege escalation
+  - events (delete) — defense evasion
+  - namespaces (patch) — PSA disable
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: selfsubjectaccessreviews
+      verb: create
+      scope: cluster
+      api_group: authorization.k8s.io/v1
+      description: "Probe individual permissions via SelfSubjectAccessReview"
+    - resource: selfsubjectrulesreviews
+      verb: create
+      scope: cluster
+      api_group: authorization.k8s.io/v1
+      description: "List all permissions for current identity"
+
+  # Permissions to probe (high-value for attack planning)
+  parameters:
+    - name: permission_checks
+      type: list
+      default:
+        - resource: secrets
+          verb: list
+        - resource: secrets
+          verb: get
+        - resource: pods
+          verb: create
+        - resource: pods/exec
+          verb: create
+        - resource: rolebindings
+          verb: create
+        - resource: clusterrolebindings
+          verb: create
+        - resource: events
+          verb: delete
+        - resource: namespaces
+          verb: patch
+        - resource: cronjobs
+          verb: create
+        - resource: serviceaccounts
+          verb: create
+        - resource: daemonsets
+          verb: create
+
+  evidence_markers:
+    - marker: "PERMISSIONS_MAPPED"
+      evidence: "Full permission set mapped via SelfSubjectAccessReview"
+      impact: "Attacker knows exactly which techniques are available"
+    - marker: "DANGEROUS_PERMISSIONS"
+      evidence: "Identity has dangerous permissions (secrets, exec, create)"
+      impact: "Attack chain planning enabled with high confidence"
+
+success_indicators:
+  - "PERMISSIONS_MAPPED"
+
+impact:
+  - "Complete RBAC permission map without touching any target resource"
+  - "Zero Falco alerts — no default rule for SelfSubjectAccessReview"
+  - "Zero Tetragon visibility — API-level operation, no kernel involvement"
+  - "Enables precise attack planning — agent knows which techniques will work"
+
+remediation: |
+  SelfSubjectAccessReview cannot be restricted — it is how kubectl auth
+  can-i works and is required for normal operation.
+
+  Detection: Add a custom Falco rule:
+    - rule: Excessive Permission Probing
+      condition: >
+        kevt and ka.target.resource=selfsubjectaccessreviews
+        and ka.verb=create
+      output: Permission probing detected (user=%ka.user.name)
+      priority: NOTICE
+
+  Monitor for high-frequency SelfSubjectAccessReview from non-system accounts.

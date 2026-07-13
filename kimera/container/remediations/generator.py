@@ -31,6 +31,7 @@ SUPPORTED_TYPES = frozenset(
         "dangerous-capabilities",
         "host-namespace-sharing",
         "missing-resource-limits",
+        "rbac-abuse",
         "all",
     }
 )

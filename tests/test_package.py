@@ -61,7 +61,7 @@ class TestPackageStructure:
         from kimera import cli
 
         assert cli is not None
-        assert hasattr(cli, "main")
+        assert hasattr(cli, "cli")
 
     def test_exploit_k8s_import(self):
         """Test that exploit_k8s module can be imported."""

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: kimera
+description: K8s security testing toolkit with MCP server for AI-driven pentesting
+type: application
+version: 0.1.0
+appVersion: "3.0.0"
+keywords:
+  - kubernetes
+  - security
+  - pentest
+  - mcp
+  - ai
+home: https://github.com/dynatrace-oss/kimera
+sources:
+  - https://github.com/dynatrace-oss/kimera
+maintainers:
+  - name: Dynatrace OSS
+    url: https://github.com/dynatrace-oss

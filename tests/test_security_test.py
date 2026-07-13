@@ -19,8 +19,8 @@ from unittest.mock import MagicMock, patch
 
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
-from kimera.container.make_vulnerable.privileged_containers import (
-    PrivilegedContainersExploit,
+from kimera.container.make_vulnerable.deployment_patch import (
+    DeploymentPatchExploit,
 )
 from kimera.container.make_vulnerable.test_loader import load_exploit_tests
 from kimera.domain.models import EvidenceMarker, SecurityTest
@@ -102,7 +102,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="❌ VULNERABLE: Can write to /sys")  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -128,7 +130,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="✅ Protected: All good")  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -151,7 +155,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(side_effect=Exception("Connection refused"))  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -177,7 +183,9 @@ class TestRunTests:
             ]
         )
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -209,7 +217,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="Found WARNING here")  # type: ignore[method-assign]
 
-        exploit = PrivilegedContainersExploit(k8s, "test-svc", logger)
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(

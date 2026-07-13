@@ -1,0 +1,272 @@
+# Technique Registry
+#
+# Defines all available attack techniques for the MCP pentest server.
+# Each technique maps to a YAML config file in config/techniques/<id>.yaml.
+#
+# Technique IDs follow MITRE ATT&CK tactic prefixes:
+#   R* = Reconnaissance / Discovery
+#   C* = Credential Access
+#   E* = Privilege Escalation (Escape)
+#   L* = Lateral Movement
+#   P* = Persistence
+#   V* = Defense Validation
+#
+# Adding a new technique:
+#   1. Create config/techniques/<id>.yaml with the technique definition
+#   2. Add the entry below
+#   3. The technique is automatically available via MCP tools
+#
+# Runtime extension:
+#   Drop a YAML file into config/techniques/ and call the reload endpoint.
+#   The MCP server emits notifications/tools/list_changed.
+
+techniques:
+  # ── Reconnaissance (read-only API calls, very low noise) ──────────
+
+  R1:
+    name: Enumerate namespaces
+    file: R1-enumerate-namespaces.yaml
+    phase: reconnaissance
+    noise: very-low
+
+  R2:
+    name: Enumerate workloads
+    file: R2-enumerate-workloads.yaml
+    phase: reconnaissance
+    noise: low
+
+  R3:
+    name: Enumerate services and endpoints
+    file: R3-enumerate-services.yaml
+    phase: reconnaissance
+    noise: low
+
+  R4:
+    name: Enumerate service accounts
+    file: R4-enumerate-service-accounts.yaml
+    phase: reconnaissance
+    noise: low
+
+  R5:
+    name: Enumerate RBAC bindings
+    file: R5-enumerate-rbac.yaml
+    phase: reconnaissance
+    noise: low
+
+  R6:
+    name: Enumerate network policies
+    file: R6-enumerate-network-policies.yaml
+    phase: reconnaissance
+    noise: low
+
+  R7:
+    name: Enumerate secrets metadata
+    file: R7-enumerate-secrets-metadata.yaml
+    phase: reconnaissance
+    noise: low
+
+  R8:
+    name: Permission probe (SelfSubjectAccessReview)
+    file: R8-permission-probe.yaml
+    phase: reconnaissance
+    noise: very-low  # Zero Falco rules
+
+  R9:
+    name: Detect admission controllers
+    file: R9-detect-admission.yaml
+    phase: reconnaissance
+    noise: low
+
+  R10:
+    name: Detect CNI and runtime security
+    file: R10-detect-cni-runtime.yaml
+    phase: reconnaissance
+    noise: low
+
+  # ── Credential Access (exec in pod, medium noise) ─────────────────
+
+  C1:
+    name: SA token theft from volume
+    file: C1-sa-token-theft.yaml
+    phase: credential-access
+    noise: medium
+
+  C2:
+    name: Secret enumeration via API
+    file: C2-secret-enumeration.yaml
+    phase: credential-access
+    noise: medium
+
+  C3:
+    name: ConfigMap credential extraction
+    file: C3-configmap-extraction.yaml
+    phase: credential-access
+    noise: medium
+
+  C5:
+    name: Cloud metadata SSRF
+    file: C5-metadata-ssrf.yaml
+    phase: credential-access
+    noise: medium
+
+  C6:
+    name: Environment variable secrets
+    file: C6-env-var-secrets.yaml
+    phase: credential-access
+    noise: low
+
+  C7:
+    name: List secrets (Falco-invisible)
+    file: C7-list-secrets-stealth.yaml
+    phase: credential-access
+    noise: low  # LIST verb has no Falco rule
+
+  # ── Privilege Escalation (modifies cluster state, high noise) ─────
+
+  E1:
+    name: Privileged container escape
+    file: E1-privileged-escape.yaml
+    phase: privilege-escalation
+    noise: high
+
+  E2:
+    name: SYS_ADMIN capability abuse
+    file: E2-capability-abuse.yaml
+    phase: privilege-escalation
+    noise: high
+
+  E3:
+    name: Host namespace escape
+    file: E3-host-namespace-escape.yaml
+    phase: privilege-escalation
+    noise: high
+
+  E8:
+    name: RBAC privilege escalation
+    file: E8-rbac-escalation.yaml
+    phase: privilege-escalation
+    noise: high
+
+  # ── Lateral Movement (exec or network probe, medium noise) ────────
+
+  L1:
+    name: Network service probe
+    file: L1-network-probe.yaml
+    phase: lateral-movement
+    noise: medium
+
+  L2:
+    name: Pod exec lateral movement
+    file: L2-pod-exec-lateral.yaml
+    phase: lateral-movement
+    noise: high
+
+  L5:
+    name: DNS service enumeration
+    file: L5-dns-enumeration.yaml
+    phase: lateral-movement
+    noise: low
+
+  L6:
+    name: Data store access
+    file: L6-data-store-access.yaml
+    phase: lateral-movement
+    noise: medium
+
+  # ── Defense Evasion (modifies cluster state, variable noise) ──────
+
+  DE1:
+    name: Delete Kubernetes events
+    file: DE1-delete-events.yaml
+    phase: defense-evasion
+    noise: high
+
+  DE2:
+    name: Disable PSA on namespace
+    file: DE2-disable-psa.yaml
+    phase: defense-evasion
+    noise: low  # No Falco rule for namespace label changes
+
+  DE3:
+    name: Kyverno PolicyException bypass
+    file: DE3-policy-exception-bypass.yaml
+    phase: defense-evasion
+    noise: medium
+
+  DE4:
+    name: Mutate pod labels (Cilium bypass)
+    file: DE4-label-mutation-bypass.yaml
+    phase: defense-evasion
+    noise: medium
+
+  # ── Persistence (creates resources, high noise) ───────────────────
+
+  P1:
+    name: CronJob persistence
+    file: P1-cronjob-persistence.yaml
+    phase: persistence
+    noise: high
+
+  P2:
+    name: Create SA with role binding
+    file: P2-sa-persistence.yaml
+    phase: persistence
+    noise: high
+
+  P3:
+    name: Deploy backdoor pod
+    file: P3-deploy-backdoor.yaml
+    phase: persistence
+    noise: high
+
+  # ── Execution (exec into pods, high noise) ────────────────────────
+
+  EX1:
+    name: Exec into pod via API
+    file: EX1-exec-into-pod.yaml
+    phase: execution
+    noise: high
+
+  EX2:
+    name: Ephemeral container injection
+    file: EX2-ephemeral-container.yaml
+    phase: execution
+    noise: medium  # Falco rule exists but often not enabled
+
+  # ── Defense Validation (production-safe) ──────────────────────────
+
+  V1:
+    name: Admission controller validation
+    file: V1-admission-validation.yaml
+    phase: defense-validation
+    noise: very-low
+
+  V2:
+    name: NetworkPolicy validation
+    file: V2-network-policy-validation.yaml
+    phase: defense-validation
+    noise: low
+
+  V3:
+    name: RBAC validation
+    file: V3-rbac-validation.yaml
+    phase: defense-validation
+    noise: very-low
+
+  S5:
+    name: Cilium startup window (CVE-2023-27595)
+    file: S5-cilium-startup-window.yaml
+    phase: defense-validation
+    noise: very-low
+
+  S6:
+    name: OPA Gatekeeper sync race (CVE-2021-43979)
+    file: S6-gatekeeper-sync-race.yaml
+    phase: defense-validation
+    noise: very-low
+
+  S7:
+    name: Kyverno SSRF and policy bypass (CVE-2024-48921)
+    file: S7-kyverno-ssrf.yaml
+    phase: defense-validation
+    noise: very-low

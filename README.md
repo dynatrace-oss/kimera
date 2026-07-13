@@ -1,193 +1,205 @@
 <p align="center">
   <img src="assets/kimera_logo.png" alt="Kimera" width="400"><br>
-  <em>Kubernetes security testing framework — assess, exploit, remediate, enforce.</em><br><br>
+  <em>AI-agent-driven Kubernetes penetration testing via MCP</em><br><br>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13+-blue.svg" alt="Python"></a>
   <a href="https://kubernetes.io/"><img src="https://img.shields.io/badge/kubernetes-1.24+-blue.svg" alt="Kubernetes"></a>
 </p>
 
-> **Note**
-> This product is not officially supported by Dynatrace!
+> **Note:** This product is not officially supported by Dynatrace.
 
 ## What is Kimera?
 
-Kimera is a Kubernetes security posture management (KSPM) tool that identifies container misconfigurations, demonstrates their real-world impact, and applies targeted remediations. It operates directly against live clusters, giving security teams and platform engineers a practical way to validate their defenses.
+Kimera is a Kubernetes security testing toolkit that exposes attack techniques as [MCP](https://modelcontextprotocol.io/) tools. An AI agent connects to kimera's MCP server, plans multi-step attack chains using MITRE ATT&CK techniques, executes them against a cluster, and validates whether defenses caught each attack.
+
+22 techniques across 5 phases — reconnaissance, credential access, privilege escalation, lateral movement, and defense validation — all defined as YAML configs and executable via MCP or CLI.
 
 ## Disclaimer
 
-This toolkit is intended for **security testing only**. It should only be used on systems you own or have explicit permission to test. The authors and contributors are not responsible for any misuse or damage caused by this tool.
+This toolkit is for **authorized security testing only**. Use only on clusters you own or have explicit permission to test.
 
-## Features
+## Architecture
 
-### Security Testing
-
-| Type | Description | Impact |
-|------|-------------|---------|
-| `privileged` | Privileged container mode | Complete host access |
-| `capabilities` | Dangerous Linux capabilities | Container escape potential |
-| `host-namespace` | Host namespace sharing | Process/network visibility |
-| `no-limits` | Missing resource limits | Denial of service risk |
-| `no-network-policies` | Missing NetworkPolicy resources | Unrestricted lateral movement |
-
-### Operational Modes
-
-- **Assess** — Scan deployments for security misconfigurations
-- **Exploit** — Introduce and demonstrate specific vulnerabilities
-- **Secure** — Print remediation guidance (use `generate` + `apply`)
-- **Generate** — LLM-based YAML generation for remediations and exploit patches
-- **Apply** — Apply externally or LLM-generated YAML with label injection and journal tracking
-- **Enforce** — Check Cilium for NetworkPolicy enforcement
-- **Revert** — Undo all changes, restoring original deployment state
-- **Verify** — Confirm security posture after remediation
+```
+┌─────────────────┐     MCP (stdio/HTTP)     ┌──────────────┐
+│   AI Agent      │◄───────────────────────►  │ kimera-mcp   │
+│  (Claude, etc.) │                           │  7 tools     │
+└─────────────────┘                           └──────┬───────┘
+                                                     │
+                                              ┌──────▼───────┐
+                                              │ Service Layer │
+                                              │  assessor     │
+                                              │  technique    │
+                                              │  engine       │
+                                              │  enumerator   │
+                                              └──────┬───────┘
+                                                     │ K8s API
+                                              ┌──────▼───────┐
+                                              │  Target       │
+                                              │  Cluster      │
+                                              └──────────────┘
+```
 
 ## Quick Start
 
 ### Prerequisites
 
-- Kubernetes cluster (1.24+)
-- `kubectl` configured with cluster access
+- Kubernetes cluster (1.24+) with `kubectl` configured
 - Python 3.13+ with [uv](https://docs.astral.sh/uv/)
-- Appropriate RBAC permissions for target namespace
 
-### Installation
+### Install
 
 ```bash
 git clone https://github.com/dynatrace-oss/kimera
 cd kimera
-uv sync
+uv sync --all-extras
 ```
 
-### Usage
+### MCP Server (for AI agents)
 
 ```bash
-# Assess security posture (auto-discovers services)
-kimera -n unguard assess
+# stdio transport (Claude Desktop, Cursor)
+kimera-mcp
 
-# Introduce a specific vulnerability
-kimera -p unguard vuln-service unguard-payment-service privileged
-
-# Demonstrate the exploit
-kimera -p unguard exploit privileged-containers
-
-# Apply security fixes
-kimera -p unguard secure
-
-# Verify improvements
-kimera -p unguard verify
-
-# Revert all changes (restores original state)
-kimera -p unguard revert
+# HTTP transport (remote agents, CI/CD)
+kimera-mcp --http
 ```
 
-## Command Reference
+Claude Desktop configuration:
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `assess [service]` | Scan security posture | `kimera -n unguard assess` |
-| `vuln-service <svc> <type>` | Introduce a vulnerability | `kimera vuln-service app privileged` |
-| `exploit <type>` | Demonstrate an exploit | `kimera exploit privileged-containers` |
-| `secure [type]` | Print remediation guidance | `kimera secure` |
-| `generate --type <type>` | Generate YAML via LLM | `kimera generate --type network-policies` |
-| `generate --mode exploit` | Generate exploit patches via LLM | `kimera generate --mode exploit --type privileged-containers` |
-| `apply <file>` | Apply YAML with label injection | `kimera apply policies.yaml` |
-| `verify` | Verify security status | `kimera verify` |
-| `revert [type]` | Undo all kimera changes | `kimera revert` |
-| `rollback [service]` | Rollback a deployment revision | `kimera rollback` |
-| `enforce enable\|disable\|status` | Manage NetworkPolicy enforcement (Cilium) | `kimera enforce enable` |
+```json
+{
+  "mcpServers": {
+    "kimera": {
+      "command": "uv",
+      "args": ["run", "kimera-mcp"],
+      "cwd": "/path/to/kimera"
+    }
+  }
+}
+```
 
-## LLM-Based Generation
-
-Kimera uses Anthropic Claude to generate both remediations and exploit patches.
-The `generate` command gathers Kubernetes context and produces YAML.
+### CLI
 
 ```bash
-# Generate remediations (default mode)
-kimera -n unguard generate --type network-policies -o policies.yaml
-kimera -n unguard generate --type network-policies --apply
+# Assess workloads against CIS Kubernetes Benchmark
+kimera -n target-namespace assess
 
-# Generate exploit patches (cluster-aware, targets correct containers)
-kimera -n unguard generate --mode exploit --type privileged-containers
-kimera -n unguard generate --mode exploit --type all --apply
+# Assess with JSON output
+kimera -n target-namespace assess --json
 
-# Enrich with Dynatrace MCP (requires DT_ENVIRONMENT, DT_PLATFORM_TOKEN)
-kimera -n unguard generate --type missing-network-policies --use-dt-mcp
-kimera -n unguard generate --type missing-network-policies --use-dt-mcp --dt-strategy llm-query
-kimera -n unguard generate --type missing-network-policies --use-dt-mcp --dt-strategy davis
-
-# Apply externally generated YAML
-kimera -n unguard apply policies.yaml
+# Validate that security controls actually block attacks
+kimera -n target-namespace validate-control --type all
 ```
 
-Install extras: `uv pip install 'kimera[llm]'` for LLM, `uv pip install 'kimera[dt-mcp]'` for DT MCP, or `uv pip install 'kimera[all]'` for both.
+## MCP Tools
 
-### DT Data Strategies
+| Tool | Description |
+|------|-------------|
+| `list_techniques` | Browse 22 attack techniques by phase, with MITRE ATT&CK mappings |
+| `assess_target` | Scan namespace for misconfigurations (CIS checks, structured findings) |
+| `enumerate_attack_surface` | Discover deployments, services, secrets, RBAC in a namespace |
+| `attempt_technique` | Execute a specific technique (C1=SA token theft, L1=network probe, etc.) |
+| `validate_defense` | Test admission controllers, NetworkPolicies, RBAC (production-safe) |
+| `get_remediation` | Look up fix guidance for a specific finding |
+| `reload_techniques` | Pick up new YAML technique definitions without restart |
 
-When using `--use-dt-mcp`, choose a data fetching strategy with `--dt-strategy`:
+## Technique Registry
 
-| Strategy | Description | Requirements |
-|---|---|---|
-| `targeted` (default) | Exploit-type-specific DQL queries (CIS rule IDs, category keywords) | `kimera[dt-mcp]` |
-| `llm-query` | Claude generates DQL queries from few-shot examples | `kimera[all]` |
-| `davis` | Davis CoPilot natural language queries (falls back to targeted) | `kimera[dt-mcp]` |
+22 techniques defined in `config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
 
-## NetworkPolicy Enforcement
+| Phase | ID Range | Count | Examples |
+|-------|----------|-------|---------|
+| Reconnaissance | R1–R7 | 7 | Enumerate namespaces, services, RBAC, secrets metadata |
+| Credential Access | C1–C6 | 5 | SA token theft, secret enumeration, cloud metadata SSRF |
+| Privilege Escalation | E1–E8 | 4 | Privileged escape, SYS_ADMIN abuse, RBAC escalation |
+| Lateral Movement | L1–L6 | 3 | Network probe, DNS enumeration, data store access |
+| Defense Validation | V1–V3 | 3 | Admission, NetworkPolicy, RBAC validation |
 
-NetworkPolicies require a policy-enforcing CNI. Kimera checks for
-[Cilium](https://cilium.io/) and prints installation guidance if not found.
+Add a technique: drop a YAML file in `config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
+
+## In-Cluster Deployment
+
+### Helm Chart (MCP server mode)
 
 ```bash
-kimera enforce enable    # Check Cilium enforcement
-kimera enforce status    # Show enforcement status
-kimera enforce disable   # Guidance for removing Cilium
+helm install kimera deploy/helm/kimera \
+  --namespace kimera-system --create-namespace \
+  --set targetNamespace=my-app \
+  --set mode=server
 ```
+
+The MCP server runs as a Deployment, accessible via ClusterIP Service on port 8000.
+
+### Helm Chart (Job mode — CI/CD)
+
+```bash
+helm install kimera-scan deploy/helm/kimera \
+  --namespace kimera-system --create-namespace \
+  --set targetNamespace=my-app \
+  --set mode=job \
+  --set job.args="{assess,--json}"
+```
+
+One-shot scan. Results in pod logs. Job auto-deletes after 5 minutes.
+
+### Docker
+
+```bash
+docker build -t kimera .
+docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
+```
+
+## CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `assess [--json]` | Scan namespace against CIS checks |
+| `validate-control --type all\|admission\|network-policy\|rbac` | Test defense controls |
+| `exploit <type>` | Demonstrate a specific exploit |
+| `vuln-service <svc> <type>` | Introduce a vulnerability for testing |
+| `generate --type <type> [--apply]` | Generate remediations via LLM |
+| `generate --enrich dynatrace` | Enrich LLM context with Dynatrace data |
+| `revert [type]` | Undo all kimera changes |
+| `verify` | Confirm security posture |
 
 ## Configuration
 
-Kimera uses a layered config system: `default.yaml` → profile → environment variables → CLI flags.
+Layered config: `config/default.yaml` → profile → environment variables → CLI flags.
+
+Assessment checks are defined in `config/checks/workload.yaml` — 15 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
+
+Environment variable overrides are defined in `config/env_mappings.yaml`.
+
+## Observability Enrichment
+
+Kimera supports pluggable enrichment from observability platforms via the `EnrichmentProvider` protocol. Dynatrace is the built-in provider:
 
 ```bash
-# Auto-detect profile from namespace name
-kimera -n unguard assess
-
-# Explicit profile
-kimera -p unguard assess
-
-# Any namespace (auto-discovers services)
-kimera -n my-namespace assess
-
-# Flags
-kimera --verbose --debug --dry-run assess
+# Enrich remediation context with Dynatrace KSPM + Smartscape data
+kimera generate --type network-policies --enrich dynatrace
+kimera generate --type network-policies --enrich dynatrace --enrich-strategy llm-query
 ```
 
-Profiles live in `config/profiles/` and define target-specific services and exploit mappings.
+Adding a new provider: implement `EnrichmentProvider` in `kimera/container/integrations/<provider>/`.
 
-## Safety Features
+## Safety
 
-- **Namespace isolation** — Operations target specific namespaces only
-- **Confirmation prompts** — Requires confirmation for destructive actions
-- **Revert support** — Undo all changes via operation journal
-- **Dry run mode** — Preview changes without applying them
-- **Rollback** — Restore individual deployments to previous revisions
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+- All destructive MCP operations default to `dry_run=True`
+- Admission testing uses server-side dry-run (zero persistence)
+- Probe pods have `activeDeadlineSeconds` TTLs
+- Operation journal tracks all changes for reliable `revert`
+- The in-cluster SA's RBAC permissions are deliberately part of the test
 
 ## References
 
-- [Kubernetes Security Documentation](https://kubernetes.io/docs/concepts/security/)
+- [MITRE ATT&CK for Containers](https://attack.mitre.org/matrices/enterprise/containers/)
 - [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes)
-- [NIST Container Security Guide](https://csrc.nist.gov/publications/detail/sp/800-190/final)
-- [OWASP Kubernetes Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Kubernetes_Security_Cheat_Sheet.html)
+- [Microsoft Kubernetes Threat Matrix](https://microsoft.github.io/Threat-Matrix-for-Kubernetes/)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
 
 ## License
 
-This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file for details.
-
-## Maintainers
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 Maintained by [Dynatrace OSS](https://github.com/dynatrace-oss).
-
-## Legal Notice
-
-This software is provided for research and testing purposes. Users must ensure they have proper authorization before testing any systems. The maintainers assume no liability for misuse.

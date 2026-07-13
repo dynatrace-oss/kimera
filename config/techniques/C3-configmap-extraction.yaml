@@ -1,0 +1,47 @@
+# Technique: ConfigMap credential extraction
+# ID: C3
+# Tactic: Credential Access
+
+id: C3
+name: ConfigMap credential extraction
+enabled: true
+
+mitre:
+  technique_id: T1552
+  technique_name: "Unsecured Credentials"
+  tactic: credential-access
+  data_sources: [Container, User Account]
+
+cis_controls:
+  - "5.4.1"
+
+severity: high
+
+description: |
+  Lists ConfigMaps in the target namespace and scans their data keys for
+  credential patterns (password, token, key, secret, connection string).
+  Developers frequently store credentials in ConfigMaps instead of Secrets,
+  bypassing RBAC restrictions on secret access.
+
+  Uses the K8s API directly — tests the same permissions an attacker with
+  stolen kubeconfig or SA token would have.
+
+execution:
+  mode: api
+
+  api_calls:
+    - resource: configmaps
+      verb: list
+
+success_indicators:
+  - "credential_patterns_found"
+
+impact:
+  - "Credentials stored in ConfigMaps are not encrypted at rest"
+  - "ConfigMaps are often readable by all SAs in the namespace"
+  - "Connection strings may contain database passwords"
+
+remediation: |
+  Move credentials from ConfigMaps to Secrets. Use external secret
+  managers (Vault, AWS Secrets Manager) for production credentials.
+  Restrict ConfigMap list permissions via RBAC.

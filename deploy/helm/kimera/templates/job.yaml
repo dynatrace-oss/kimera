@@ -1,0 +1,45 @@
+{{- if eq .Values.mode "job" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kimera-scan-{{ now | date "20060102-150405" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kimera
+    app.kubernetes.io/component: scanner
+spec:
+  ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kimera
+        app.kubernetes.io/component: scanner
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kimera
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["kimera"]
+          args:
+            - "-n"
+            - {{ .Values.targetNamespace | quote }}
+            {{- range .Values.job.args }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+{{- end }}

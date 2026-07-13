@@ -1,0 +1,72 @@
+id: R10
+name: Detect CNI and runtime security
+enabled: true
+
+mitre:
+  technique_id: T1613
+  technique_name: "Container and Resource Discovery"
+  tactic: reconnaissance
+  data_sources: [Cluster]
+
+cis_controls: []
+
+severity: low
+
+description: |
+  Identifies the CNI plugin (Cilium, Calico, Flannel) and runtime
+  security tooling (Falco, Tetragon) by checking DaemonSets and CRDs
+  in kube-system. This informs which network policy format is enforced
+  and which exec-mode techniques will be detected.
+
+  Key insight for attack planning:
+  - Cilium: CiliumNetworkPolicy CRDs, cilium DaemonSet
+  - Calico: NetworkPolicy enforcement + CRDs
+  - Falco: falco DaemonSet → syscall monitoring (detects exec-mode)
+  - Tetragon: tetragon DaemonSet → eBPF enforcement (detects + blocks)
+  - If neither Falco nor Tetragon: exec-mode techniques are undetected
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: daemonsets
+      verb: list
+      scope: namespace
+      namespace: kube-system
+      description: "Check for Cilium/Calico/Falco/Tetragon DaemonSets"
+    - resource: customresourcedefinitions
+      verb: list
+      scope: cluster
+      description: "Check for CiliumNetworkPolicy and TracingPolicy CRDs"
+
+  evidence_markers:
+    - marker: "CILIUM_CNI"
+      evidence: "Cilium CNI detected — CiliumNetworkPolicy enforcement"
+    - marker: "CALICO_CNI"
+      evidence: "Calico CNI detected — standard NetworkPolicy enforcement"
+    - marker: "FLANNEL_CNI"
+      evidence: "Flannel CNI detected — NO NetworkPolicy enforcement"
+      impact: "NetworkPolicies exist but are not enforced"
+    - marker: "FALCO_RUNTIME"
+      evidence: "Falco runtime security — syscall and k8s_audit monitoring"
+    - marker: "TETRAGON_RUNTIME"
+      evidence: "Tetragon runtime security — eBPF enforcement"
+    - marker: "NO_RUNTIME_SECURITY"
+      evidence: "No runtime security tooling detected"
+      impact: "Exec-mode techniques (token theft, SSRF, escape) are unmonitored"
+
+success_indicators:
+  - "CILIUM_CNI"
+  - "CALICO_CNI"
+  - "FLANNEL_CNI"
+  - "NO_RUNTIME_SECURITY"
+
+impact:
+  - "Determines which stealth techniques to use"
+  - "Flannel = NetworkPolicies are decoration only"
+  - "No runtime security = exec-mode techniques are invisible"
+
+remediation: |
+  Ensure CNI supports NetworkPolicy enforcement (Cilium, Calico, Antrea).
+  Deploy runtime security (Falco or Tetragon) for container behavior monitoring.

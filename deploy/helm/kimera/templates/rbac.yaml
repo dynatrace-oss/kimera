@@ -1,0 +1,83 @@
+{{- if .Values.rbac.create }}
+---
+# Cluster-wide read access for reconnaissance (R1-R7)
+{{- if .Values.rbac.clusterReadAccess }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kimera-reader
+  labels:
+    app.kubernetes.io/name: kimera
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, pods, services, endpoints, serviceaccounts, secrets, configmaps]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, daemonsets, replicasets, statefulsets]
+    verbs: [get, list]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+    verbs: [get, list]
+  - apiGroups: [authorization.k8s.io]
+    resources: [selfsubjectaccessreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kimera-reader
+  labels:
+    app.kubernetes.io/name: kimera
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kimera-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+---
+# Namespace-scoped write access for exploit techniques
+{{- if .Values.rbac.namespaceWriteAccess }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kimera-pentest
+  namespace: {{ .Values.targetNamespace }}
+  labels:
+    app.kubernetes.io/name: kimera
+rules:
+  # Admission validation via dry-run
+  - apiGroups: ["", apps]
+    resources: [pods, deployments]
+    verbs: [create]
+  # Ephemeral probe pods for NetworkPolicy testing
+  - apiGroups: [""]
+    resources: [pods, pods/exec]
+    verbs: [create, delete, get]
+  # Network policy validation
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kimera-pentest
+  namespace: {{ .Values.targetNamespace }}
+  labels:
+    app.kubernetes.io/name: kimera
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kimera-pentest
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

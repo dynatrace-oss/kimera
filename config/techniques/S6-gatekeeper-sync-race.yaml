@@ -1,0 +1,78 @@
+id: S6
+name: OPA Gatekeeper sync race (CVE-2021-43979)
+enabled: true
+
+mitre:
+  technique_id: T1562.001
+  technique_name: "Impair Defenses: Disable or Modify Tools"
+  tactic: defense-evasion
+  data_sources: [Container, Kubernetes API]
+
+cis_controls: []
+
+severity: medium
+
+description: |
+  Detects whether OPA Gatekeeper is installed and checks its version against
+  CVE-2021-43979, a data replication race condition where policy evaluation may
+  use stale cluster state.
+
+  Gatekeeper caches external cluster data (namespace labels, existing resources)
+  into OPA's in-memory store via a sync mechanism. During the period between a
+  resource change and its replication into OPA's cache, policy rules that depend
+  on that data evaluate against stale state. Rapid resource creation — for example,
+  creating a namespace and immediately deploying a pod — may allow the pod to bypass
+  policies that check namespace labels, because the label update has not yet propagated.
+
+  Additionally, Gatekeeper's ValidatingAdmissionPolicy (VAP) exempt namespace
+  matching (issue #4501) does not require the admission.gatekeeper.sh/ignore label
+  for namespaces matching exempt patterns, allowing policy bypass without the expected
+  label — an open issue as of Gatekeeper 3.17.
+
+  Kimera checks whether Gatekeeper is installed and reports its version.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - verb: detect_tool_version
+      tool: gatekeeper
+      namespace: gatekeeper-system
+      resource_kind: deployment
+      name_prefix: gatekeeper-controller-manager
+      fixed_version: "3.6.0"
+      cve: "CVE-2021-43979"
+      description: "Check Gatekeeper deployment version for sync race vulnerability"
+
+  evidence_markers:
+    - marker: "TOOL_NOT_FOUND"
+      evidence: "OPA Gatekeeper not detected in gatekeeper-system"
+      impact: "Cluster does not use Gatekeeper for policy enforcement"
+    - marker: "TOOL_FOUND"
+      evidence: "OPA Gatekeeper deployment detected in gatekeeper-system"
+      impact: "Cluster uses Gatekeeper for admission policy enforcement"
+    - marker: "TOOL_VULNERABLE"
+      evidence: "Gatekeeper version is vulnerable to CVE-2021-43979 (sync race)"
+      impact: "Policy evaluation may use stale state — rapid resource creation can bypass policies"
+    - marker: "TOOL_PATCHED"
+      evidence: "Gatekeeper version includes the CVE-2021-43979 fix"
+      impact: "Sync race is mitigated — validate audit mode vs enforce mode separately"
+    - marker: "VERSION_UNKNOWN"
+      evidence: "Gatekeeper version could not be determined from container image tag"
+      impact: "Manual version verification required"
+
+success_indicators:
+  - "TOOL_FOUND"
+
+impact:
+  - "CVE-2021-43979: policies that depend on namespace labels may evaluate stale state"
+  - "Rapid resource creation may bypass context-dependent admission policies"
+  - "VAP exempt namespace bypass (issue #4501) allows policy bypass without expected label"
+
+remediation: |
+  Upgrade OPA Gatekeeper to 3.6.0 or later where the sync race is mitigated.
+  Avoid policies that depend solely on namespace labels for admission decisions.
+  Use auditInterval tuning and syncOnly constraints to reduce stale-state windows.
+  Restrict namespace creation permissions via RBAC to limit the attack surface.
+  Monitor constraint violations in Gatekeeper audit logs for bypass attempts.

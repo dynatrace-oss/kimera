@@ -13,9 +13,11 @@
 # limitations under the License.
 
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -31,6 +33,7 @@ class ExploitEntry:
     name: str
     cls: type[Any]
     revert_strategy: str
+    config_key: str = ""
 
 
 def _import_class(dotted_path: str) -> type[Any]:
@@ -74,6 +77,7 @@ class ExploitRegistry:
                 name=name,
                 cls=cls,
                 revert_strategy=entry.get("revert_strategy", "rollback"),
+                config_key=entry.get("config_key", ""),
             )
 
     def get(self, name: str) -> ExploitEntry | None:
@@ -86,9 +90,26 @@ class ExploitRegistry:
         return list(self._entries.keys())
 
     @property
-    def classes(self) -> dict[str, type[Any]]:
-        """Return a mapping of type name to exploit class."""
-        return {name: entry.cls for name, entry in self._entries.items()}
+    def classes(self) -> dict[str, Callable[..., Any]]:
+        """Return a mapping of type name to exploit class factory.
+
+        For DeploymentPatchExploit entries (with config_key), returns a
+        partial that pre-fills config_key. For other entries, returns
+        the class directly.
+        """
+        result: dict[str, Callable[..., Any]] = {}
+        for name, entry in self._entries.items():
+            if entry.config_key:
+                callable_cls = cast(Callable[..., Any], entry.cls)
+                result[name] = partial(callable_cls, config_key=entry.config_key)
+            else:
+                result[name] = entry.cls
+        return result
+
+    @property
+    def entries(self) -> dict[str, ExploitEntry]:
+        """Return all registry entries by name."""
+        return dict(self._entries)
 
     def __contains__(self, name: str) -> bool:  # noqa: D105
         return name in self._entries

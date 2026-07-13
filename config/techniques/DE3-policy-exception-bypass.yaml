@@ -1,0 +1,58 @@
+id: DE3
+name: Kyverno PolicyException bypass
+enabled: true
+
+mitre:
+  technique_id: T1562
+  technique_name: "Impair Defenses"
+  tactic: defense-evasion
+  data_sources: [Command, Process]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Creates a Kyverno PolicyException in the target namespace that exempts
+  pods from a ClusterPolicy (e.g., disallow-privileged-containers).
+
+  CVE-2024-48921: PolicyExceptions are consumed from any namespace by
+  design. A user with create permissions in any namespace can override
+  cluster-wide security policies. Fixed in Kyverno 1.13.0 by requiring
+  explicit namespace allowlisting, but many clusters run older versions
+  or have not restricted PolicyException creation via RBAC.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - resource: policyexceptions
+      verb: create
+      scope: namespace
+      api_group: kyverno.io/v2
+      description: "Create PolicyException exempting target from ClusterPolicy"
+
+  evidence_markers:
+    - marker: "EXCEPTION_CREATED"
+      evidence: "PolicyException created — ClusterPolicy bypassed"
+      impact: "Security policy no longer applies to matching pods"
+    - marker: "EXCEPTION_DENIED"
+      evidence: "RBAC denied PolicyException creation or CRD not found"
+      impact: "PolicyException creation is restricted"
+    - marker: "KYVERNO_NOT_INSTALLED"
+      evidence: "Kyverno CRDs not found in cluster"
+
+success_indicators:
+  - "EXCEPTION_CREATED"
+
+impact:
+  - "ClusterPolicy protections disabled for matching workloads"
+  - "Privileged containers, host namespaces, or dangerous capabilities now admitted"
+  - "CVE-2024-48921: any namespace can create exceptions in Kyverno < 1.13.0"
+
+remediation: |
+  Upgrade Kyverno to 1.13.0+ where PolicyException namespace is restricted.
+  Restrict PolicyException creation via RBAC to security administrators only.
+  Set spec.exceptions.namespace in Kyverno ConfigMap to limit where
+  exceptions can be created.

@@ -1,0 +1,111 @@
+# Technique: RBAC privilege escalation
+# ID: E8
+# Tactic: Privilege Escalation
+
+id: E8
+name: RBAC privilege escalation
+enabled: true
+
+mitre:
+  technique_id: T1078.004
+  technique_name: "Valid Accounts: Cloud Accounts"
+  tactic: privilege-escalation
+  data_sources: [Kubernetes API, Audit Logs]
+
+cis_controls:
+  - "5.1.1"
+  - "5.1.2"
+  - "5.1.3"
+
+severity: high
+
+description: |
+  Leverages overly permissive RBAC bindings to escalate privileges.
+  Checks if the current service account can create roles, bindings,
+  or modify pods in ways that grant additional access. Identifies
+  escalation paths from namespace-scoped to cluster-scoped access.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  probes:
+    - type: command
+      run: |
+        echo "[*] Checking RBAC escalation paths..."
+        TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null)
+        APISERVER="https://kubernetes.default.svc"
+        NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null)
+
+        if [ -z "$TOKEN" ]; then
+            echo "NO_SA_TOKEN"
+            exit 0
+        fi
+
+        # Check if we can create roles
+        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
+            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"roles","group":"rbac.authorization.k8s.io"}}}')
+
+        if [ "$STATUS" = "201" ]; then
+            BODY=$(curl -sk \
+                -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"roles","group":"rbac.authorization.k8s.io"}}}')
+            if echo "$BODY" | grep -q '"allowed":true'; then
+                echo "CAN_CREATE_ROLES"
+            fi
+        fi
+
+        # Check if we can create rolebindings
+        BODY=$(curl -sk \
+            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"rolebindings","group":"rbac.authorization.k8s.io"}}}')
+        if echo "$BODY" | grep -q '"allowed":true'; then
+            echo "CAN_CREATE_ROLEBINDINGS"
+        fi
+
+        # Check cluster-admin binding
+        BODY=$(curl -sk \
+            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"*","resource":"*"}}}')
+        if echo "$BODY" | grep -q '"allowed":true'; then
+            echo "CLUSTER_ADMIN_ACCESS"
+        fi
+
+  evidence_markers:
+    - marker: "CAN_CREATE_ROLES"
+      evidence: "SA can create Roles — can grant itself new permissions"
+      impact: "Privilege escalation via self-granted RBAC"
+    - marker: "CAN_CREATE_ROLEBINDINGS"
+      evidence: "SA can create RoleBindings — can bind itself to existing Roles"
+      impact: "Privilege escalation by binding to cluster-admin"
+    - marker: "CLUSTER_ADMIN_ACCESS"
+      evidence: "SA has cluster-admin equivalent access"
+      impact: "Full cluster compromise already achieved"
+    - marker: "NO_SA_TOKEN"
+      evidence: "No service account token mounted"
+
+success_indicators:
+  - "CAN_CREATE_ROLES"
+  - "CAN_CREATE_ROLEBINDINGS"
+  - "CLUSTER_ADMIN_ACCESS"
+
+impact:
+  - "Self-grant permissions to access secrets, modify workloads"
+  - "Bind to cluster-admin for full cluster compromise"
+  - "Create backdoor roles that survive pod deletion"
+
+remediation: |
+  Never grant create/update on roles or rolebindings to workload SAs.
+  Use Kubernetes audit logging to detect RBAC modifications. Apply the
+  principle of least privilege — most pods need only read access to
+  specific resources. Use admission controllers to prevent wildcard
+  RBAC rules.
