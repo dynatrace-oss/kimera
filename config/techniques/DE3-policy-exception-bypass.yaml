@@ -15,7 +15,7 @@ severity: critical
 description: |
   Creates a Kyverno PolicyException in the target namespace that exempts
   pods from a ClusterPolicy (e.g., disallow-privileged-containers).
-  
+
   CVE-2024-48921: PolicyExceptions are consumed from any namespace by
   design. A user with create permissions in any namespace can override
   cluster-wide security policies. Fixed in Kyverno 1.13.0 by requiring

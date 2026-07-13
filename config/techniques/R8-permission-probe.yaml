@@ -94,7 +94,7 @@ impact:
 remediation: |
   SelfSubjectAccessReview cannot be restricted — it is how kubectl auth
   can-i works and is required for normal operation.
-  
+
   Detection: Add a custom Falco rule:
     - rule: Excessive Permission Probing
       condition: >
@@ -102,5 +102,5 @@ remediation: |
         and ka.verb=create
       output: Permission probing detected (user=%ka.user.name)
       priority: NOTICE
-  
+
   Monitor for high-frequency SelfSubjectAccessReview from non-system accounts.

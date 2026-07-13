@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# API-mode technique execution: list, delete, patch, create, permission probe.
+# API-mode technique execution: list, delete, patch, create, permission probe,
+# and defense tool version detection.
 # Exec-mode execution stays in technique_engine.py.
 
 import logging
+import re
 from typing import Any
 
 from kubernetes.client.rest import ApiException
@@ -46,6 +48,8 @@ def execute_api_technique(
                 _handle_patch(k8s, resource_type, api_call, result)
             elif verb == "create":
                 _handle_create(k8s, resource_type, api_call, result)
+            elif verb == "detect_tool_version":
+                _handle_detect_tool_version(k8s, api_call, result)
             else:
                 result.evidence.append(f"Unsupported verb: {verb}")
         except ApiException as exc:
@@ -198,6 +202,109 @@ def _handle_permission_probe(
         result.impact.append(f"Identity has {len(allowed)} dangerous permissions")
     else:
         result.evidence.append("No dangerous permissions found")
+
+
+def _handle_detect_tool_version(
+    k8s: K8sClient,
+    api_call: dict[str, Any],
+    result: TechniqueResult,
+) -> None:
+    """Check if a defense tool is installed and whether its version is vulnerable.
+
+    Fetches the tool's DaemonSet or Deployment, extracts the container image tag,
+    and compares it against the fixed version for a specific CVE.
+    """
+    tool = api_call.get("tool", "")
+    namespace = api_call.get("namespace", "kube-system")
+    resource_kind = api_call.get("resource_kind", "daemonset")
+    name_prefix = api_call.get("name_prefix", tool)
+    fixed_version = api_call.get("fixed_version", "")
+    cve = api_call.get("cve", "")
+
+    try:
+        if resource_kind == "daemonset":
+            items = k8s.apps_v1.list_namespaced_daemon_set(namespace).items
+        else:
+            items = k8s.apps_v1.list_namespaced_deployment(namespace).items
+    except ApiException as exc:
+        result.evidence.append(
+            f"ACCESS_DENIED: cannot list {resource_kind}s in {namespace}: {exc.reason}"
+        )
+        return
+
+    matching = [i for i in items if name_prefix.lower() in (i.metadata.name or "").lower()]
+
+    if not matching:
+        result.evidence.append(f"TOOL_NOT_FOUND: {tool} not detected in {namespace}")
+        return
+
+    item = matching[0]
+    result.evidence.append(
+        f"TOOL_FOUND: {tool} {resource_kind} '{item.metadata.name}' in {namespace}"
+    )
+    result.success = True
+
+    containers = item.spec.template.spec.containers or []
+    version = _parse_image_version(containers, tool)
+
+    if not version:
+        result.evidence.append("VERSION_UNKNOWN: could not parse version from container image")
+        return
+
+    result.evidence.append(f"VERSION_DETECTED: {tool} {version}")
+
+    if fixed_version and _version_is_vulnerable(version, fixed_version):
+        result.evidence.append(
+            f"TOOL_VULNERABLE: {tool} {version} is older than fixed version "
+            f"{fixed_version} ({cve})"
+        )
+        result.impact.append(
+            f"{tool} {version} may be vulnerable to {cve} — upgrade to {fixed_version}+"
+        )
+    else:
+        result.evidence.append(f"TOOL_PATCHED: {tool} {version} >= {fixed_version} ({cve})")
+
+
+def _parse_image_version(containers: list[Any], tool: str) -> str:
+    """Extract a semver version string from a container image tag.
+
+    Looks for a container whose image contains the tool name, then extracts
+    the tag part (after ``:``) and strips any leading ``v``.
+    """
+    for container in containers:
+        image = getattr(container, "image", "") or ""
+        if tool.lower() in image.lower():
+            tag_match = re.search(r":([vV]?\d+\.\d+[\.\d]*)", image)
+            if tag_match:
+                return tag_match.group(1).lstrip("vV")
+
+    # Fallback: first container tag regardless of name
+    for container in containers:
+        image = getattr(container, "image", "") or ""
+        tag_match = re.search(r":([vV]?\d+\.\d+[\.\d]*)", image)
+        if tag_match:
+            return tag_match.group(1).lstrip("vV")
+
+    return ""
+
+
+def _version_is_vulnerable(current: str, fixed: str) -> bool:
+    """Return True if current semver < fixed semver."""
+
+    def to_tuple(v: str) -> tuple[int, ...]:
+        v = v.lstrip("vV")
+        parts = v.split(".")
+        result = []
+        for p in parts[:3]:
+            try:
+                result.append(int(p))
+            except ValueError:
+                result.append(0)
+        while len(result) < 3:
+            result.append(0)
+        return tuple(result)
+
+    return to_tuple(current) < to_tuple(fixed)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────

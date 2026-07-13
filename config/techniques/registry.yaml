@@ -252,3 +252,21 @@ techniques:
     file: V3-rbac-validation.yaml
     phase: defense-validation
     noise: very-low
+
+  S5:
+    name: Cilium startup window (CVE-2023-27595)
+    file: S5-cilium-startup-window.yaml
+    phase: defense-validation
+    noise: very-low
+
+  S6:
+    name: OPA Gatekeeper sync race (CVE-2021-43979)
+    file: S6-gatekeeper-sync-race.yaml
+    phase: defense-validation
+    noise: very-low
+
+  S7:
+    name: Kyverno SSRF and policy bypass (CVE-2024-48921)
+    file: S7-kyverno-ssrf.yaml
+    phase: defense-validation
+    noise: very-low

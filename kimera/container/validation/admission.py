@@ -153,10 +153,7 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
 
     # Check for Kyverno CRDs
     try:
-        from kubernetes.client import ApiextensionsV1Api  # noqa: PLC0415
-
-        api_ext = ApiextensionsV1Api()
-        crds = api_ext.list_custom_resource_definition()
+        crds = k8s.apiextensions_v1.list_custom_resource_definition()
         for crd in crds.items:
             if "kyverno.io" in (crd.metadata.name or ""):
                 controllers.append(
@@ -166,15 +163,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
                     }
                 )
                 break
-    except (ApiException, ImportError):
+    except ApiException:
         pass
 
     # Check for Gatekeeper CRDs
     try:
-        from kubernetes.client import ApiextensionsV1Api  # noqa: PLC0415
-
-        api_ext = ApiextensionsV1Api()
-        crds = api_ext.list_custom_resource_definition()
+        crds = k8s.apiextensions_v1.list_custom_resource_definition()
         for crd in crds.items:
             if "gatekeeper.sh" in (crd.metadata.name or ""):
                 controllers.append(
@@ -184,15 +178,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
                     }
                 )
                 break
-    except (ApiException, ImportError):
+    except ApiException:
         pass
 
     # Check ValidatingWebhookConfigurations
     try:
-        from kubernetes.client import AdmissionregistrationV1Api  # noqa: PLC0415
-
-        admission_api = AdmissionregistrationV1Api()
-        webhooks = admission_api.list_validating_webhook_configuration()
+        webhooks = k8s.admissionregistration_v1.list_validating_webhook_configuration()
         for wh in webhooks.items:
             name = wh.metadata.name or ""
             # Skip kube-system internal webhooks
@@ -204,7 +195,7 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
                     "name": name,
                 }
             )
-    except (ApiException, ImportError):
+    except ApiException:
         pass
 
     return controllers
