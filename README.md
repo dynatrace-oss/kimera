@@ -21,22 +21,22 @@ This toolkit is for **authorized security testing only**. Use only on clusters y
 ## Architecture
 
 ```
-┌─────────────────┐     MCP (stdio/HTTP)     ┌──────────────┐
+┌─────────────────┐     MCP (stdio/HTTP)      ┌──────────────┐
 │   AI Agent      │◄───────────────────────►  │ kimera-mcp   │
 │  (Claude, etc.) │                           │  7 tools     │
 └─────────────────┘                           └──────┬───────┘
                                                      │
                                               ┌──────▼───────┐
-                                              │ Service Layer │
-                                              │  assessor     │
-                                              │  technique    │
-                                              │  engine       │
-                                              │  enumerator   │
+                                              │  Svc Layer   │
+                                              │  assessor    │
+                                              │  technique   │
+                                              │  engine      │
+                                              │  enumerator  │
                                               └──────┬───────┘
                                                      │ K8s API
                                               ┌──────▼───────┐
-                                              │  Target       │
-                                              │  Cluster      │
+                                              │  Target      │
+                                              │  Cluster     │
                                               └──────────────┘
 ```
 
