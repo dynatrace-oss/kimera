@@ -199,11 +199,13 @@ def _discover_namespace_services(
         for svc in svc_list.items:
             if svc.spec.ports:
                 for port_spec in svc.spec.ports:
-                    services.append({
-                        "name": svc.metadata.name,
-                        "port": port_spec.port,
-                        "protocol": port_spec.protocol or "TCP",
-                    })
+                    services.append(
+                        {
+                            "name": svc.metadata.name,
+                            "port": port_spec.port,
+                            "protocol": port_spec.protocol or "TCP",
+                        }
+                    )
     except ApiException:
         pass
     return services
@@ -244,9 +246,7 @@ def _check_default_deny(k8s: K8sClient, namespace: str) -> ValidationResult | No
         policy_types = policy.spec.policy_types or []
         is_empty_selector = not pod_sel or not pod_sel.match_labels
         has_both = "Ingress" in policy_types and "Egress" in policy_types
-        has_no_rules = (
-            not policy.spec.ingress and not policy.spec.egress
-        )
+        has_no_rules = not policy.spec.ingress and not policy.spec.egress
 
         if is_empty_selector and has_both and has_no_rules:
             return ValidationResult(
@@ -327,59 +327,59 @@ def validate_network_policies(
         # Test cloud metadata endpoint (SSRF vector)
         for target in METADATA_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(
-                k8s, namespace, target["host"], target["port"]
-            )
+            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
 
             if target["should_block"]:
-                report.results.append(ValidationResult(
-                    control_type=ControlType.NETWORK_POLICY,
-                    control_name="cloud-metadata-block",
-                    test_description=f"{target['label']} should be blocked",
-                    expected="BLOCK",
-                    actual="ALLOWED" if reachable else "BLOCKED",
-                    verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                    evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
-                    remediation_hint=target.get("remediation", ""),
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.NETWORK_POLICY,
+                        control_name="cloud-metadata-block",
+                        test_description=f"{target['label']} should be blocked",
+                        expected="BLOCK",
+                        actual="ALLOWED" if reachable else "BLOCKED",
+                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
+                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        remediation_hint=target.get("remediation", ""),
+                    )
+                )
 
         # Test infrastructure targets
         for target in INFRASTRUCTURE_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(
-                k8s, namespace, target["host"], target["port"]
-            )
+            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
 
             if target["should_block"]:
-                report.results.append(ValidationResult(
-                    control_type=ControlType.NETWORK_POLICY,
-                    control_name="infrastructure-isolation",
-                    test_description=f"{target['label']} should be blocked from app pods",
-                    expected="BLOCK",
-                    actual="ALLOWED" if reachable else "BLOCKED",
-                    verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                    evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
-                    remediation_hint=target.get("remediation", ""),
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.NETWORK_POLICY,
+                        control_name="infrastructure-isolation",
+                        test_description=f"{target['label']} should be blocked from app pods",
+                        expected="BLOCK",
+                        actual="ALLOWED" if reachable else "BLOCKED",
+                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
+                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        remediation_hint=target.get("remediation", ""),
+                    )
+                )
 
         # Test cross-namespace connectivity
         for target in CROSS_NAMESPACE_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(
-                k8s, namespace, target["host"], target["port"]
-            )
+            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
 
             if target["should_block"]:
-                report.results.append(ValidationResult(
-                    control_type=ControlType.NETWORK_POLICY,
-                    control_name="cross-namespace-isolation",
-                    test_description=f"{target['label']} should be blocked",
-                    expected="BLOCK",
-                    actual="ALLOWED" if reachable else "BLOCKED",
-                    verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                    evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
-                    remediation_hint=target.get("remediation", ""),
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.NETWORK_POLICY,
+                        control_name="cross-namespace-isolation",
+                        test_description=f"{target['label']} should be blocked",
+                        expected="BLOCK",
+                        actual="ALLOWED" if reachable else "BLOCKED",
+                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
+                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        remediation_hint=target.get("remediation", ""),
+                    )
+                )
 
         # Test intra-namespace connectivity (services that should be unreachable
         # from a pod with no matching labels)
@@ -393,21 +393,25 @@ def validate_network_policies(
                 svc_port = svc["port"]
                 reachable = _test_connectivity(k8s, namespace, svc_name, svc_port)
 
-                report.results.append(ValidationResult(
-                    control_type=ControlType.NETWORK_POLICY,
-                    control_name="intra-namespace-isolation",
-                    test_description=(
-                        f"Unlabeled probe pod should not reach {svc_name}:{svc_port}"
-                    ),
-                    expected="BLOCK",
-                    actual="ALLOWED" if reachable else "BLOCKED",
-                    verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                    evidence=f"nc -z {svc_name} {svc_port}: {'OPEN' if reachable else 'CLOSED'}",
-                    remediation_hint=(
-                        f"Ensure NetworkPolicy for {svc_name} uses specific podSelector "
-                        "labels in ingress rules, not an empty selector."
-                    ) if reachable else "",
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.NETWORK_POLICY,
+                        control_name="intra-namespace-isolation",
+                        test_description=(
+                            f"Unlabeled probe pod should not reach {svc_name}:{svc_port}"
+                        ),
+                        expected="BLOCK",
+                        actual="ALLOWED" if reachable else "BLOCKED",
+                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
+                        evidence=f"nc -z {svc_name} {svc_port}: {'OPEN' if reachable else 'CLOSED'}",
+                        remediation_hint=(
+                            f"Ensure NetworkPolicy for {svc_name} uses specific podSelector "
+                            "labels in ingress rules, not an empty selector."
+                        )
+                        if reachable
+                        else "",
+                    )
+                )
 
     finally:
         sec_logger.info("Cleaning up probe pod...")

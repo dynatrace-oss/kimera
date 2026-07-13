@@ -377,6 +377,7 @@ def reload_techniques() -> dict[str, Any]:
 
 # ── Entry point ───────────────────────────────────────────────────────
 
+
 def main() -> None:
     """Run the MCP server."""
     import sys

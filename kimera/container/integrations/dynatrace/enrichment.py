@@ -48,8 +48,7 @@ class DynatraceEnrichmentProvider:
 
         if not dt_env or not dt_token:
             logger.warning(
-                "DT MCP requires DT_ENVIRONMENT and DT_PLATFORM_TOKEN. "
-                "Skipping DT enrichment."
+                "DT MCP requires DT_ENVIRONMENT and DT_PLATFORM_TOKEN. " "Skipping DT enrichment."
             )
             return None
 

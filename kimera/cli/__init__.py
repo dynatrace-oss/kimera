@@ -96,6 +96,7 @@ def cli(
 
     if ctx.invoked_subcommand in ["assess", "exploit", "secure", "verify"]:
         from ..banner import show_banner
+
         show_banner(config.namespace)
 
 

@@ -108,7 +108,9 @@ class TestTechniqueRegistry:
         assert registry.technique_count == 1
 
         technique2 = {
-            "id": "T2", "name": "New technique", "enabled": True,
+            "id": "T2",
+            "name": "New technique",
+            "enabled": True,
             "mitre": {"technique_id": "T1046", "tactic": "discovery"},
             "execution": {"mode": "api"},
         }
@@ -169,10 +171,13 @@ class TestExecuteTechnique:
         assert result.success is False
         assert any("Exec failed" in e for e in result.evidence)
 
-    @pytest.mark.parametrize("technique_id,target_pod,expected_evidence_fragment", [
-        ("T1", None, "No target pod"),        # exec technique without pod
-        ("NONEXISTENT", "pod", "not found"),  # unknown technique ID
-    ])
+    @pytest.mark.parametrize(
+        "technique_id,target_pod,expected_evidence_fragment",
+        [
+            ("T1", None, "No target pod"),  # exec technique without pod
+            ("NONEXISTENT", "pod", "not found"),  # unknown technique ID
+        ],
+    )
     def test_error_paths_return_structured_failure(
         self,
         technique_dir: Path,
@@ -191,13 +196,25 @@ class TestExecuteTechnique:
 
 
 class TestResolveProbeParams:
-    @pytest.mark.parametrize("template,params,namespace,expected_fragment", [
-        ("nc -z {{ host }} {{ port }}", {"host": "redis", "port": "6379"}, "demo", "nc -z redis 6379"),
-        ("echo {{ namespace }}", {}, "production", "echo production"),
-        ("echo {{ unknown_param }}", {}, "demo", "{{ unknown_param }}"),  # unresolved stays
-    ])
+    @pytest.mark.parametrize(
+        "template,params,namespace,expected_fragment",
+        [
+            (
+                "nc -z {{ host }} {{ port }}",
+                {"host": "redis", "port": "6379"},
+                "demo",
+                "nc -z redis 6379",
+            ),
+            ("echo {{ namespace }}", {}, "production", "echo production"),
+            ("echo {{ unknown_param }}", {}, "demo", "{{ unknown_param }}"),  # unresolved stays
+        ],
+    )
     def test_template_substitution(
-        self, template: str, params: dict, namespace: str, expected_fragment: str,
+        self,
+        template: str,
+        params: dict,
+        namespace: str,
+        expected_fragment: str,
     ) -> None:
         probe = {"type": "command", "run": template}
         resolved = _resolve_probe_params(probe, params, namespace)

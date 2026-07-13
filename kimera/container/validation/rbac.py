@@ -191,12 +191,14 @@ def _check_sa_bindings(
                     and subject.name == sa_name
                     and (subject.namespace or namespace) == namespace
                 ):
-                    bindings.append({
-                        "binding": rb.metadata.name,
-                        "scope": "namespace",
-                        "role_kind": rb.role_ref.kind,
-                        "role_name": rb.role_ref.name,
-                    })
+                    bindings.append(
+                        {
+                            "binding": rb.metadata.name,
+                            "scope": "namespace",
+                            "role_kind": rb.role_ref.kind,
+                            "role_name": rb.role_ref.name,
+                        }
+                    )
     except ApiException:
         pass
 
@@ -210,12 +212,14 @@ def _check_sa_bindings(
                     and subject.name == sa_name
                     and (subject.namespace or namespace) == namespace
                 ):
-                    bindings.append({
-                        "binding": crb.metadata.name,
-                        "scope": "cluster",
-                        "role_kind": crb.role_ref.kind,
-                        "role_name": crb.role_ref.name,
-                    })
+                    bindings.append(
+                        {
+                            "binding": crb.metadata.name,
+                            "scope": "cluster",
+                            "role_kind": crb.role_ref.kind,
+                            "role_name": crb.role_ref.name,
+                        }
+                    )
     except ApiException:
         pass
 
@@ -268,22 +272,24 @@ def validate_rbac(
         # Check for cluster-admin binding (critical finding)
         for binding in bindings:
             if binding["role_name"] == "cluster-admin":
-                report.results.append(ValidationResult(
-                    control_type=ControlType.RBAC,
-                    control_name=f"sa/{sa_name}",
-                    test_description=f"SA '{sa_name}' should not have cluster-admin",
-                    expected="DENY",
-                    actual="ALLOWED (cluster-admin bound)",
-                    verdict=ValidationVerdict.FAIL,
-                    evidence=(
-                        f"Binding '{binding['binding']}' grants cluster-admin "
-                        f"to SA {sa_ns}/{sa_name}"
-                    ),
-                    remediation_hint=(
-                        "Remove the cluster-admin ClusterRoleBinding. "
-                        "Create a least-privilege Role scoped to the required resources."
-                    ),
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.RBAC,
+                        control_name=f"sa/{sa_name}",
+                        test_description=f"SA '{sa_name}' should not have cluster-admin",
+                        expected="DENY",
+                        actual="ALLOWED (cluster-admin bound)",
+                        verdict=ValidationVerdict.FAIL,
+                        evidence=(
+                            f"Binding '{binding['binding']}' grants cluster-admin "
+                            f"to SA {sa_ns}/{sa_name}"
+                        ),
+                        remediation_hint=(
+                            "Remove the cluster-admin ClusterRoleBinding. "
+                            "Create a least-privilege Role scoped to the required resources."
+                        ),
+                    )
+                )
 
         # Check dangerous namespace-scoped permissions
         # NOTE: SelfSubjectAccessReview checks the *current* user's permissions,
@@ -309,21 +315,23 @@ def validate_rbac(
 
                 # Check for wildcard permissions
                 if "*" in verbs and "*" in resources:
-                    report.results.append(ValidationResult(
-                        control_type=ControlType.RBAC,
-                        control_name=f"sa/{sa_name}",
-                        test_description=(
-                            f"SA '{sa_name}' has wildcard permissions via {role_kind}/{role_name}"
-                        ),
-                        expected="DENY",
-                        actual="ALLOWED (* on *)",
-                        verdict=ValidationVerdict.FAIL,
-                        evidence=f"Rule: verbs={verbs}, resources={resources}, apiGroups={api_groups}",
-                        remediation_hint=(
-                            f"Replace wildcard permissions in {role_kind}/{role_name} "
-                            "with specific verbs and resources."
-                        ),
-                    ))
+                    report.results.append(
+                        ValidationResult(
+                            control_type=ControlType.RBAC,
+                            control_name=f"sa/{sa_name}",
+                            test_description=(
+                                f"SA '{sa_name}' has wildcard permissions via {role_kind}/{role_name}"
+                            ),
+                            expected="DENY",
+                            actual="ALLOWED (* on *)",
+                            verdict=ValidationVerdict.FAIL,
+                            evidence=f"Rule: verbs={verbs}, resources={resources}, apiGroups={api_groups}",
+                            remediation_hint=(
+                                f"Replace wildcard permissions in {role_kind}/{role_name} "
+                                "with specific verbs and resources."
+                            ),
+                        )
+                    )
 
                 # Check for specific dangerous permissions
                 for verb, resource, group, desc, remediation in DANGEROUS_PERMISSIONS:
@@ -332,32 +340,36 @@ def validate_rbac(
                         and (resource in resources or "*" in resources)
                         and (group in api_groups or "*" in api_groups)
                     ):
-                        report.results.append(ValidationResult(
-                            control_type=ControlType.RBAC,
-                            control_name=f"sa/{sa_name}",
-                            test_description=f"SA '{sa_name}' should not be able to: {desc}",
-                            expected="DENY",
-                            actual="ALLOWED",
-                            verdict=ValidationVerdict.FAIL,
-                            evidence=(
-                                f"Granted via {role_kind}/{role_name} "
-                                f"(binding: {binding['binding']}). "
-                                f"Rule: verbs={verbs}, resources={resources}"
-                            ),
-                            remediation_hint=remediation,
-                        ))
+                        report.results.append(
+                            ValidationResult(
+                                control_type=ControlType.RBAC,
+                                control_name=f"sa/{sa_name}",
+                                test_description=f"SA '{sa_name}' should not be able to: {desc}",
+                                expected="DENY",
+                                actual="ALLOWED",
+                                verdict=ValidationVerdict.FAIL,
+                                evidence=(
+                                    f"Granted via {role_kind}/{role_name} "
+                                    f"(binding: {binding['binding']}). "
+                                    f"Rule: verbs={verbs}, resources={resources}"
+                                ),
+                                remediation_hint=remediation,
+                            )
+                        )
 
         # If SA has no bindings at all, it inherits only discovery permissions
         if not bindings and sa_name != "default":
-            report.results.append(ValidationResult(
-                control_type=ControlType.RBAC,
-                control_name=f"sa/{sa_name}",
-                test_description=f"SA '{sa_name}' has minimal permissions (no bindings)",
-                expected="DENY",
-                actual="DENIED (no bindings)",
-                verdict=ValidationVerdict.PASS,
-                evidence="No RoleBindings or ClusterRoleBindings reference this SA.",
-            ))
+            report.results.append(
+                ValidationResult(
+                    control_type=ControlType.RBAC,
+                    control_name=f"sa/{sa_name}",
+                    test_description=f"SA '{sa_name}' has minimal permissions (no bindings)",
+                    expected="DENY",
+                    actual="DENIED (no bindings)",
+                    verdict=ValidationVerdict.PASS,
+                    evidence="No RoleBindings or ClusterRoleBindings reference this SA.",
+                )
+            )
 
     passed = report.passed
     failed = report.failed

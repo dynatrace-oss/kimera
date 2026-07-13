@@ -145,9 +145,12 @@ class TestValidateRbac:
         mock_k8s.rbac_v1.list_cluster_role_binding.return_value = crb_list
 
         # The cluster-admin role has wildcard rules
-        role = _make_role("cluster-admin", [
-            {"verbs": ["*"], "resources": ["*"], "apiGroups": ["*"]},
-        ])
+        role = _make_role(
+            "cluster-admin",
+            [
+                {"verbs": ["*"], "resources": ["*"], "apiGroups": ["*"]},
+            ],
+        )
         mock_k8s.rbac_v1.read_cluster_role.return_value = role
 
         report = validate_rbac(mock_k8s, sec_logger)
@@ -194,9 +197,12 @@ class TestValidateRbac:
         crb_list.items = []
         mock_k8s.rbac_v1.list_cluster_role_binding.return_value = crb_list
 
-        role = _make_role("secrets-role", [
-            {"verbs": ["get", "list"], "resources": ["secrets"], "apiGroups": [""]},
-        ])
+        role = _make_role(
+            "secrets-role",
+            [
+                {"verbs": ["get", "list"], "resources": ["secrets"], "apiGroups": [""]},
+            ],
+        )
         mock_k8s.rbac_v1.read_namespaced_role.return_value = role
 
         report = validate_rbac(mock_k8s, sec_logger)

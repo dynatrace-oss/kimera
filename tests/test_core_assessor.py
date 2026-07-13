@@ -115,28 +115,32 @@ def _make_deployment(
 
 # -- Condition evaluator: core logic, wrong result = wrong finding severity --
 
-@pytest.mark.parametrize("value,condition,match_values,expected", [
-    # equals_true
-    (True, "equals_true", None, True),
-    (False, "equals_true", None, False),
-    (None, "equals_true", None, False),   # null must not fire
-    # not_false (used for allowPrivilegeEscalation)
-    (None, "not_false", None, True),      # unset should fire
-    (True, "not_false", None, True),
-    (False, "not_false", None, False),
-    # missing
-    (None, "missing", None, True),
-    ("value", "missing", None, False),
-    # contains_any (capability matching)
-    (["SYS_ADMIN", "CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], True),
-    (["CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], False),
-    (None, "contains_any", ["SYS_ADMIN"], False),   # null list
-    ([], "contains_any", ["SYS_ADMIN"], False),      # empty list
-    # count_zero (namespace-level checks)
-    (0, "count_zero", None, True),
-    (None, "count_zero", None, True),
-    (5, "count_zero", None, False),
-])
+
+@pytest.mark.parametrize(
+    "value,condition,match_values,expected",
+    [
+        # equals_true
+        (True, "equals_true", None, True),
+        (False, "equals_true", None, False),
+        (None, "equals_true", None, False),  # null must not fire
+        # not_false (used for allowPrivilegeEscalation)
+        (None, "not_false", None, True),  # unset should fire
+        (True, "not_false", None, True),
+        (False, "not_false", None, False),
+        # missing
+        (None, "missing", None, True),
+        ("value", "missing", None, False),
+        # contains_any (capability matching)
+        (["SYS_ADMIN", "CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], True),
+        (["CHOWN"], "contains_any", ["SYS_ADMIN", "NET_ADMIN"], False),
+        (None, "contains_any", ["SYS_ADMIN"], False),  # null list
+        ([], "contains_any", ["SYS_ADMIN"], False),  # empty list
+        # count_zero (namespace-level checks)
+        (0, "count_zero", None, True),
+        (None, "count_zero", None, True),
+        (5, "count_zero", None, False),
+    ],
+)
 def test_evaluate_condition(
     value: object,
     condition: str,
@@ -150,6 +154,7 @@ def test_evaluate_condition(
 
 
 # -- Config loading: error paths and real config integration --
+
 
 def test_missing_config_file_returns_empty(tmp_path: Path) -> None:
     """Missing config must not crash — returns empty list."""
@@ -170,6 +175,7 @@ def test_real_workload_config_loads() -> None:
 
 
 # -- Deployment assessment: one test per check TYPE (each hits different code path) --
+
 
 class TestAssessDeployment:
     def test_container_field_check_fires_and_maps_mitre(self, sample_checks: Path) -> None:

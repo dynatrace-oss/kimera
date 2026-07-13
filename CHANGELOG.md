@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- S5, S6, S7 defense-tool version detection techniques (defense-validation phase)
+  - S5: Cilium startup window — checks for CVE-2023-27595 (no enforcement during eBPF reload)
+  - S6: OPA Gatekeeper sync race — checks for CVE-2021-43979 (stale state during policy evaluation)
+  - S7: Kyverno SSRF and bypass — checks for CVE-2024-48921 (PolicyException namespace bypass)
+- `detect_tool_version` verb in `api_executor` for reading defense tool versions from DaemonSet/Deployment image tags
+
+### Fixed
+
+- Admission validation test isolation: `_detect_admission_controllers` now uses the passed `K8sClient`'s pre-initialized API handles instead of constructing raw `ApiextensionsV1Api()` and `AdmissionregistrationV1Api()` instances that attempt live cluster connections
+
 ## [2.0.0] - 2025-03-23
 
 ### Added

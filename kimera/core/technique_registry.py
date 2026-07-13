@@ -94,34 +94,38 @@ class TechniqueRegistry:
                 "noise": meta.get("noise", "medium"),
             }
 
-    def get(self, technique_id: str) -> TechniqueDefinition | None: # noqa: D102
+    def get(self, technique_id: str) -> TechniqueDefinition | None:  # noqa: D102
         return self._techniques.get(technique_id)
 
-    def list_techniques(self) -> list[dict[str, str]]: # noqa: D102
+    def list_techniques(self) -> list[dict[str, str]]:  # noqa: D102
         result = []
         for tech_id, meta in self._registry_data.items():
             tech = self._techniques.get(tech_id)
             if tech and tech.enabled:
-                result.append({
-                    "id": tech_id,
-                    "name": meta["name"],
-                    "phase": meta["phase"],
-                    "noise": meta["noise"],
-                    "mitre_id": tech.mitre_id,
-                    "tactic": tech.tactic,
-                    "mode": tech.mode,
-                })
+                result.append(
+                    {
+                        "id": tech_id,
+                        "name": meta["name"],
+                        "phase": meta["phase"],
+                        "noise": meta["noise"],
+                        "mitre_id": tech.mitre_id,
+                        "tactic": tech.tactic,
+                        "mode": tech.mode,
+                    }
+                )
         return result
 
-    def list_by_phase(self, phase: str) -> list[str]: # noqa: D102
+    def list_by_phase(self, phase: str) -> list[str]:  # noqa: D102
         return [
-            tech_id for tech_id, meta in self._registry_data.items()
-            if meta["phase"] == phase and self._techniques.get(tech_id, TechniqueDefinition(tech_id, {})).enabled
+            tech_id
+            for tech_id, meta in self._registry_data.items()
+            if meta["phase"] == phase
+            and self._techniques.get(tech_id, TechniqueDefinition(tech_id, {})).enabled
         ]
 
     @property
-    def technique_count(self) -> int: # noqa: D102
+    def technique_count(self) -> int:  # noqa: D102
         return sum(1 for t in self._techniques.values() if t.enabled)
 
-    def __contains__(self, technique_id: str) -> bool: # noqa: D105
+    def __contains__(self, technique_id: str) -> bool:  # noqa: D105
         return technique_id in self._techniques

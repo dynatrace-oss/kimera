@@ -22,24 +22,39 @@ from . import REGISTRY
 
 @click.command("generate")
 @click.option(
-    "--mode", default="remediate", show_default=True,
+    "--mode",
+    default="remediate",
+    show_default=True,
     type=click.Choice(["remediate", "exploit"]),
     help="Generation mode.",
 )
 @click.option(
-    "--type", "exploit_type", default="missing-network-policies", show_default=True,
+    "--type",
+    "exploit_type",
+    default="missing-network-policies",
+    show_default=True,
     type=click.Choice(["all"] + REGISTRY.types),
     help="Type of remediation or exploit to generate.",
 )
 @click.option("--service", default=None, help="Target service for exploit mode.")
 @click.option("--output", "-o", default=None, help="Output file path.")
 @click.option("--model", default="claude-sonnet-4-6", show_default=True, help="Anthropic model.")
-@click.option("--apply", "apply_generated", is_flag=True, default=False, help="Apply after generation.")
-@click.option("--enrich", default=None, type=click.Choice(["dynatrace"]),
-              help="Enrich LLM context with observability data.")
-@click.option("--enrich-strategy", default="targeted", show_default=True,
-              type=click.Choice(["targeted", "llm-query", "davis"]),
-              help="Enrichment data fetching strategy.")
+@click.option(
+    "--apply", "apply_generated", is_flag=True, default=False, help="Apply after generation."
+)
+@click.option(
+    "--enrich",
+    default=None,
+    type=click.Choice(["dynatrace"]),
+    help="Enrich LLM context with observability data.",
+)
+@click.option(
+    "--enrich-strategy",
+    default="targeted",
+    show_default=True,
+    type=click.Choice(["targeted", "llm-query", "davis"]),
+    help="Enrichment data fetching strategy.",
+)
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 @click.pass_context
 def generate(
@@ -82,19 +97,25 @@ def generate(
                 topology_context = enrichment.topology_context
 
     generator = LLMRemediationGenerator(
-        k8s=k8s, logger=logger, network_topology=config.network_topology, model=model,
+        k8s=k8s,
+        logger=logger,
+        network_topology=config.network_topology,
+        model=model,
     )
 
     try:
         if mode == "exploit":
             yaml_output = generator.generate_exploit(
-                exploit_type=exploit_type, service=service,
-                kspm_context=compliance_context, smartscape_context=topology_context,
+                exploit_type=exploit_type,
+                service=service,
+                kspm_context=compliance_context,
+                smartscape_context=topology_context,
             )
         else:
             yaml_output = generator.generate(
                 exploit_type=exploit_type,
-                kspm_context=compliance_context, smartscape_context=topology_context,
+                kspm_context=compliance_context,
+                smartscape_context=topology_context,
             )
     except ImportError as e:
         logger.error(str(e))
@@ -104,6 +125,7 @@ def generate(
         return
 
     from pathlib import Path
+
     Path(output).write_text(yaml_output)
     label = "exploit patches" if mode == "exploit" else "remediations"
     logger.success(f"Generated {label} written to {output}")
@@ -145,6 +167,7 @@ def _create_enrichment_provider(
     """
     if name == "dynatrace":
         from ..container.integrations.dynatrace.enrichment import DynatraceEnrichmentProvider
+
         kwargs: dict[str, str] = {}
         if model:
             kwargs["model"] = model

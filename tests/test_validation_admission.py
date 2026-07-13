@@ -135,9 +135,7 @@ class TestValidateAdmission:
         ns_obj.metadata.labels = {"pod-security.kubernetes.io/enforce": "restricted"}
         mock_k8s.v1.read_namespace.return_value = ns_obj
 
-        mock_k8s.v1.create_namespaced_pod.side_effect = ApiException(
-            status=422, reason="Forbidden"
-        )
+        mock_k8s.v1.create_namespaced_pod.side_effect = ApiException(status=422, reason="Forbidden")
 
         report = validate_admission(mock_k8s, sec_logger)
         assert report.total == len(ADMISSION_TEST_CASES)

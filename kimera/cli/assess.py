@@ -52,13 +52,17 @@ def _render_report(report: AssessmentReport) -> None:
             finding.target,
             finding.title + (f"\n{finding.detail}" if finding.detail else ""),
             finding.technique.mitre_id,
-            finding.remediation[:80] + "..." if len(finding.remediation) > 80 else finding.remediation,
+            finding.remediation[:80] + "..."
+            if len(finding.remediation) > 80
+            else finding.remediation,
         )
 
     console.print(table)
 
-    console.print(f"\n  {report.critical_count} critical, {report.high_count} high, "
-                  f"{len(report.findings)} total findings\n")
+    console.print(
+        f"\n  {report.critical_count} critical, {report.high_count} high, "
+        f"{len(report.findings)} total findings\n"
+    )
 
 
 @click.command()
@@ -77,6 +81,7 @@ def assess(ctx: click.Context, service: str | None, output_json: bool) -> None:
 
     if output_json:
         import json
+
         data = report.model_dump()
         data["summary"] = report.to_summary()
         console.print_json(json.dumps(data, indent=2))

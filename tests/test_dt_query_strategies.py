@@ -269,7 +269,9 @@ class TestLlmQueryStrategy:
         result = LlmQueryStrategy._parse_query_response(raw)
         assert result == []
 
-    @patch("kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries")
+    @patch(
+        "kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries"
+    )
     def test_fetch_pipeline(self, mock_generate: MagicMock) -> None:
         mock_generate.return_value = [
             {"purpose": "kspm", "query": "fetch security.events, from:-24h"},
@@ -282,7 +284,9 @@ class TestLlmQueryStrategy:
         assert ctx.strategy_name == "llm-query"
         assert len(ctx.queries_executed) == 1
 
-    @patch("kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries")
+    @patch(
+        "kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries"
+    )
     def test_fetch_skips_invalid_queries(self, mock_generate: MagicMock) -> None:
         mock_generate.return_value = [
             {"purpose": "bad", "query": "SELECT * FROM foo"},
@@ -293,7 +297,9 @@ class TestLlmQueryStrategy:
         ctx = _run(strategy.fetch(client, "all", "unguard", ""))
         assert len(ctx.queries_executed) == 1  # Only valid query executed
 
-    @patch("kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries")
+    @patch(
+        "kimera.container.integrations.dynatrace.query_strategies.LlmQueryStrategy._generate_queries"
+    )
     def test_fetch_handles_no_queries(self, mock_generate: MagicMock) -> None:
         mock_generate.return_value = []
         client = _mock_mcp_client()

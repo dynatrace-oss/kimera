@@ -102,7 +102,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="❌ VULNERABLE: Can write to /sys")  # type: ignore[method-assign]
 
-        exploit = DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -128,7 +130,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="✅ Protected: All good")  # type: ignore[method-assign]
 
-        exploit = DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -151,7 +155,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(side_effect=Exception("Connection refused"))  # type: ignore[method-assign]
 
-        exploit = DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -177,7 +183,9 @@ class TestRunTests:
             ]
         )
 
-        exploit = DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(
@@ -209,7 +217,9 @@ class TestRunTests:
         k8s, logger = _create_mock_k8s_client()
         k8s.exec_in_pod = MagicMock(return_value="Found WARNING here")  # type: ignore[method-assign]
 
-        exploit = DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
 
         tests = [
             SecurityTest(

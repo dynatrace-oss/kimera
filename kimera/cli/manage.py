@@ -160,7 +160,10 @@ def apply_resources(ctx: click.Context, file: str) -> None:
 
 
 def _revert_applied_resources(
-    k8s: K8sClient, logger: SecurityLogger, namespace: str, dry_run: bool,
+    k8s: K8sClient,
+    logger: SecurityLogger,
+    namespace: str,
+    dry_run: bool,
 ) -> None:
     from ..container.resource_applier import TOOLKIT_LABEL, TOOLKIT_LABEL_VALUE
 

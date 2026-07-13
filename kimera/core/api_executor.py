@@ -50,7 +50,9 @@ def execute_api_technique(
                 result.evidence.append(f"Unsupported verb: {verb}")
         except ApiException as exc:
             marker = _denied_marker(technique)
-            result.evidence.append(marker or f"API call failed ({verb} {resource_type}): {exc.reason}")
+            result.evidence.append(
+                marker or f"API call failed ({verb} {resource_type}): {exc.reason}"
+            )
 
     _match_evidence_markers(technique, result)
 
@@ -156,11 +158,16 @@ def _handle_permission_probe(
     auth_api = AuthorizationV1Api(api_client=k8s.v1.api_client)
 
     checks = [
-        ("secrets", "list"), ("secrets", "get"),
-        ("pods", "create"), ("pods/exec", "create"),
-        ("rolebindings", "create"), ("clusterrolebindings", "create"),
-        ("events", "delete"), ("namespaces", "patch"),
-        ("cronjobs", "create"), ("serviceaccounts", "create"),
+        ("secrets", "list"),
+        ("secrets", "get"),
+        ("pods", "create"),
+        ("pods/exec", "create"),
+        ("rolebindings", "create"),
+        ("clusterrolebindings", "create"),
+        ("events", "delete"),
+        ("namespaces", "patch"),
+        ("cronjobs", "create"),
+        ("serviceaccounts", "create"),
         ("daemonsets", "create"),
     ]
 
@@ -175,9 +182,7 @@ def _handle_permission_probe(
             resource=parts[0],
             subresource=parts[1] if len(parts) > 1 else "",
         )
-        review = V1SelfSubjectAccessReview(
-            spec={"resourceAttributes": attrs}
-        )
+        review = V1SelfSubjectAccessReview(spec={"resourceAttributes": attrs})
         resp = auth_api.create_self_subject_access_review(review)
         perm_str = f"{verb} {resource}"
         if resp.status.allowed:
@@ -235,58 +240,69 @@ def list_resource(k8s: K8sClient, namespace: str, resource_type: str) -> list[di
     list_dispatch: dict[str, Any] = {
         "deployments": lambda: [
             {"name": i.metadata.name, "type": "deployment"}
-            for i in k8s.apps_v1.list_namespaced_deployment(namespace).items],
+            for i in k8s.apps_v1.list_namespaced_deployment(namespace).items
+        ],
         "services": lambda: [
             {"name": i.metadata.name, "type": "service"}
-            for i in k8s.v1.list_namespaced_service(namespace).items],
+            for i in k8s.v1.list_namespaced_service(namespace).items
+        ],
         "serviceaccounts": lambda: [
             {"name": i.metadata.name, "type": "serviceaccount"}
-            for i in k8s.v1.list_namespaced_service_account(namespace).items],
+            for i in k8s.v1.list_namespaced_service_account(namespace).items
+        ],
         "secrets": lambda: [
             {"name": i.metadata.name, "type": f"secret/{i.type}"}
-            for i in k8s.v1.list_namespaced_secret(namespace).items],
+            for i in k8s.v1.list_namespaced_secret(namespace).items
+        ],
         "configmaps": lambda: [
-            {"name": i.metadata.name, "type": "configmap",
-             "keys": list((i.data or {}).keys())}
-            for i in k8s.v1.list_namespaced_config_map(namespace).items],
+            {"name": i.metadata.name, "type": "configmap", "keys": list((i.data or {}).keys())}
+            for i in k8s.v1.list_namespaced_config_map(namespace).items
+        ],
         "namespaces": lambda: [
-            {"name": i.metadata.name, "type": "namespace"}
-            for i in k8s.v1.list_namespace().items],
+            {"name": i.metadata.name, "type": "namespace"} for i in k8s.v1.list_namespace().items
+        ],
         "networkpolicies": lambda: [
             {"name": i.metadata.name, "type": "networkpolicy"}
-            for i in k8s.list_network_policies(namespace)],
+            for i in k8s.list_network_policies(namespace)
+        ],
         "rolebindings": lambda: [
             {"name": i.metadata.name, "type": "rolebinding", "role": i.role_ref.name}
-            for i in k8s.rbac_v1.list_namespaced_role_binding(namespace).items],
+            for i in k8s.rbac_v1.list_namespaced_role_binding(namespace).items
+        ],
         "clusterrolebindings": lambda: [
             {"name": i.metadata.name, "type": "clusterrolebinding", "role": i.role_ref.name}
-            for i in k8s.rbac_v1.list_cluster_role_binding().items],
+            for i in k8s.rbac_v1.list_cluster_role_binding().items
+        ],
         "endpoints": lambda: [
             {"name": i.metadata.name, "type": "endpoints"}
-            for i in k8s.v1.list_namespaced_endpoints(namespace).items],
+            for i in k8s.v1.list_namespaced_endpoints(namespace).items
+        ],
         "events": lambda: [
             {"name": i.metadata.name, "type": "event", "reason": getattr(i, "reason", "")}
-            for i in k8s.v1.list_namespaced_event(namespace).items],
+            for i in k8s.v1.list_namespaced_event(namespace).items
+        ],
         "daemonsets": lambda: [
-            {"name": i.metadata.name, "type": "daemonset",
-             "namespace": i.metadata.namespace}
+            {"name": i.metadata.name, "type": "daemonset", "namespace": i.metadata.namespace}
             for i in k8s.apps_v1.list_namespaced_daemon_set(
-                namespace if namespace != "_all" else "kube-system").items],
+                namespace if namespace != "_all" else "kube-system"
+            ).items
+        ],
         "validatingwebhookconfigurations": lambda: [
             {"name": i.metadata.name, "type": "validatingwebhookconfiguration"}
-            for i in k8s.admissionregistration_v1
-                .list_validating_webhook_configuration().items],
+            for i in k8s.admissionregistration_v1.list_validating_webhook_configuration().items
+        ],
         "mutatingwebhookconfigurations": lambda: [
             {"name": i.metadata.name, "type": "mutatingwebhookconfiguration"}
-            for i in k8s.admissionregistration_v1
-                .list_mutating_webhook_configuration().items],
+            for i in k8s.admissionregistration_v1.list_mutating_webhook_configuration().items
+        ],
         "customresourcedefinitions": lambda: [
             {"name": i.metadata.name, "type": "crd"}
-            for i in k8s.apiextensions_v1
-                .list_custom_resource_definition().items],
+            for i in k8s.apiextensions_v1.list_custom_resource_definition().items
+        ],
         "cronjobs": lambda: [
             {"name": i.metadata.name, "type": "cronjob"}
-            for i in k8s.batch_v1.list_namespaced_cron_job(namespace).items],
+            for i in k8s.batch_v1.list_namespaced_cron_job(namespace).items
+        ],
         "validate_controls": lambda: [],
     }
 

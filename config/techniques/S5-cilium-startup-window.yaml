@@ -1,0 +1,76 @@
+id: S5
+name: Cilium startup window detection (CVE-2023-27595)
+enabled: true
+
+mitre:
+  technique_id: T1562.001
+  technique_name: "Impair Defenses: Disable or Modify Tools"
+  tactic: defense-evasion
+  data_sources: [Container, Network]
+
+cis_controls: []
+
+severity: critical
+
+description: |
+  Detects whether the running Cilium version is vulnerable to CVE-2023-27595,
+  a critical flaw where no network policies are enforced during the window
+  between Cilium agent restart and eBPF program reattachment.
+
+  During a Cilium agent restart (DaemonSet rollout, node reboot, or agent crash),
+  eBPF programs are detached from network interfaces. In versions < 1.13.1,
+  there is a window — typically 5–30 seconds — where all traffic flows without
+  policy enforcement. An attacker who can trigger or time an agent restart
+  (e.g., by exploiting node access or causing an OOM kill) can exfiltrate data
+  or move laterally during this window.
+
+  Fixed in Cilium 1.13.1 by keeping eBPF programs attached during agent restart
+  via a "graceful restart" mechanism. CVSS 9.8 CRITICAL. CWE-755.
+
+  Kimera checks the Cilium DaemonSet image version and reports whether the
+  cluster is running a vulnerable release.
+
+execution:
+  mode: api
+  requires_target_pod: false
+
+  api_calls:
+    - verb: detect_tool_version
+      tool: cilium
+      namespace: kube-system
+      resource_kind: daemonset
+      name_prefix: cilium
+      fixed_version: "1.13.1"
+      cve: "CVE-2023-27595"
+      description: "Check Cilium DaemonSet version for startup window vulnerability"
+
+  evidence_markers:
+    - marker: "TOOL_NOT_FOUND"
+      evidence: "Cilium not detected — cluster may use a different CNI"
+      impact: "Cannot assess CVE-2023-27595 — verify CNI provider"
+    - marker: "TOOL_FOUND"
+      evidence: "Cilium DaemonSet detected in kube-system"
+      impact: "Cluster uses Cilium for network policy enforcement"
+    - marker: "TOOL_VULNERABLE"
+      evidence: "Cilium version is vulnerable to CVE-2023-27595 (startup window)"
+      impact: "No network policies enforced during agent restart window (5–30s)"
+    - marker: "TOOL_PATCHED"
+      evidence: "Cilium version includes the CVE-2023-27595 fix"
+      impact: "Graceful restart keeps eBPF programs attached during agent restart"
+    - marker: "VERSION_UNKNOWN"
+      evidence: "Cilium version could not be determined from container image tag"
+      impact: "Manual version verification required"
+
+success_indicators:
+  - "TOOL_FOUND"
+
+impact:
+  - "CVE-2023-27595: all Cilium network policies unenforced during agent restart window"
+  - "Lateral movement and data exfiltration possible during 5–30 second enforcement gap"
+  - "Attacker can trigger the window via node pressure, OOM, or privileged pod restart"
+
+remediation: |
+  Upgrade Cilium to 1.13.1 or later where graceful restart prevents the enforcement gap.
+  Monitor Cilium DaemonSet pod restarts — unexpected restarts may indicate exploitation.
+  Use PodDisruptionBudgets and node cordoning to minimize restart frequency.
+  Consider Tetragon for kernel-level detection that is unaffected by Cilium restarts.

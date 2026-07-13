@@ -57,8 +57,7 @@ ADMISSION_TEST_CASES: list[dict[str, Any]] = [
         },
         "expected_rejection": True,
         "remediation": (
-            "Configure PSA 'restricted' or 'baseline' profile, "
-            "or add a policy to block hostPID."
+            "Configure PSA 'restricted' or 'baseline' profile, " "or add a policy to block hostPID."
         ),
     },
     {
@@ -81,8 +80,7 @@ ADMISSION_TEST_CASES: list[dict[str, Any]] = [
         },
         "expected_rejection": True,
         "remediation": (
-            "Configure PSA 'restricted' profile or add a policy requiring "
-            "runAsNonRoot: true."
+            "Configure PSA 'restricted' profile or add a policy requiring " "runAsNonRoot: true."
         ),
     },
     {
@@ -143,11 +141,13 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
         labels = ns.metadata.labels or {}
         psa_enforce = labels.get("pod-security.kubernetes.io/enforce", "")
         if psa_enforce:
-            controllers.append({
-                "type": "PSA",
-                "name": f"pod-security.kubernetes.io/enforce={psa_enforce}",
-                "level": psa_enforce,
-            })
+            controllers.append(
+                {
+                    "type": "PSA",
+                    "name": f"pod-security.kubernetes.io/enforce={psa_enforce}",
+                    "level": psa_enforce,
+                }
+            )
     except ApiException:
         pass
 
@@ -159,10 +159,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
         crds = api_ext.list_custom_resource_definition()
         for crd in crds.items:
             if "kyverno.io" in (crd.metadata.name or ""):
-                controllers.append({
-                    "type": "Kyverno",
-                    "name": crd.metadata.name,
-                })
+                controllers.append(
+                    {
+                        "type": "Kyverno",
+                        "name": crd.metadata.name,
+                    }
+                )
                 break
     except (ApiException, ImportError):
         pass
@@ -175,10 +177,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
         crds = api_ext.list_custom_resource_definition()
         for crd in crds.items:
             if "gatekeeper.sh" in (crd.metadata.name or ""):
-                controllers.append({
-                    "type": "OPA/Gatekeeper",
-                    "name": crd.metadata.name,
-                })
+                controllers.append(
+                    {
+                        "type": "OPA/Gatekeeper",
+                        "name": crd.metadata.name,
+                    }
+                )
                 break
     except (ApiException, ImportError):
         pass
@@ -194,10 +198,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
             # Skip kube-system internal webhooks
             if "kube-system" in name or "cert-manager" in name:
                 continue
-            controllers.append({
-                "type": "ValidatingWebhook",
-                "name": name,
-            })
+            controllers.append(
+                {
+                    "type": "ValidatingWebhook",
+                    "name": name,
+                }
+            )
     except (ApiException, ImportError):
         pass
 
@@ -306,25 +312,29 @@ def validate_admission(
             )
             # If we get here, the pod was admitted (no rejection)
             if expected_rejection:
-                report.results.append(ValidationResult(
-                    control_type=ControlType.ADMISSION,
-                    control_name=test_id,
-                    test_description=description,
-                    expected="REJECT",
-                    actual="ADMITTED",
-                    verdict=ValidationVerdict.FAIL,
-                    evidence="Pod was admitted by API server (dry-run=server)",
-                    remediation_hint=test_case.get("remediation", ""),
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.ADMISSION,
+                        control_name=test_id,
+                        test_description=description,
+                        expected="REJECT",
+                        actual="ADMITTED",
+                        verdict=ValidationVerdict.FAIL,
+                        evidence="Pod was admitted by API server (dry-run=server)",
+                        remediation_hint=test_case.get("remediation", ""),
+                    )
+                )
             else:
-                report.results.append(ValidationResult(
-                    control_type=ControlType.ADMISSION,
-                    control_name=test_id,
-                    test_description=description,
-                    expected="ADMIT",
-                    actual="ADMITTED",
-                    verdict=ValidationVerdict.PASS,
-                ))
+                report.results.append(
+                    ValidationResult(
+                        control_type=ControlType.ADMISSION,
+                        control_name=test_id,
+                        test_description=description,
+                        expected="ADMIT",
+                        actual="ADMITTED",
+                        verdict=ValidationVerdict.PASS,
+                    )
+                )
 
         except ApiException as e:
             # Rejection by admission controller (403 or 422 typically)
@@ -333,46 +343,54 @@ def validate_admission(
                 body_str = str(e.body or "")[:500]
 
                 if expected_rejection:
-                    report.results.append(ValidationResult(
-                        control_type=ControlType.ADMISSION,
-                        control_name=test_id,
-                        test_description=description,
-                        expected="REJECT",
-                        actual="REJECTED",
-                        verdict=ValidationVerdict.PASS,
-                        evidence=f"HTTP {e.status}: {reason}. {body_str}",
-                    ))
+                    report.results.append(
+                        ValidationResult(
+                            control_type=ControlType.ADMISSION,
+                            control_name=test_id,
+                            test_description=description,
+                            expected="REJECT",
+                            actual="REJECTED",
+                            verdict=ValidationVerdict.PASS,
+                            evidence=f"HTTP {e.status}: {reason}. {body_str}",
+                        )
+                    )
                 else:
-                    report.results.append(ValidationResult(
+                    report.results.append(
+                        ValidationResult(
+                            control_type=ControlType.ADMISSION,
+                            control_name=test_id,
+                            test_description=description,
+                            expected="ADMIT",
+                            actual="REJECTED",
+                            verdict=ValidationVerdict.FAIL,
+                            evidence=f"HTTP {e.status}: {reason}. {body_str}",
+                        )
+                    )
+            else:
+                report.results.append(
+                    ValidationResult(
                         control_type=ControlType.ADMISSION,
                         control_name=test_id,
                         test_description=description,
-                        expected="ADMIT",
-                        actual="REJECTED",
-                        verdict=ValidationVerdict.FAIL,
-                        evidence=f"HTTP {e.status}: {reason}. {body_str}",
-                    ))
-            else:
-                report.results.append(ValidationResult(
+                        expected="REJECT" if expected_rejection else "ADMIT",
+                        actual=f"ERROR (HTTP {e.status})",
+                        verdict=ValidationVerdict.ERROR,
+                        evidence=str(e)[:500],
+                    )
+                )
+
+        except Exception as e:
+            report.results.append(
+                ValidationResult(
                     control_type=ControlType.ADMISSION,
                     control_name=test_id,
                     test_description=description,
                     expected="REJECT" if expected_rejection else "ADMIT",
-                    actual=f"ERROR (HTTP {e.status})",
+                    actual=f"ERROR: {type(e).__name__}",
                     verdict=ValidationVerdict.ERROR,
                     evidence=str(e)[:500],
-                ))
-
-        except Exception as e:
-            report.results.append(ValidationResult(
-                control_type=ControlType.ADMISSION,
-                control_name=test_id,
-                test_description=description,
-                expected="REJECT" if expected_rejection else "ADMIT",
-                actual=f"ERROR: {type(e).__name__}",
-                verdict=ValidationVerdict.ERROR,
-                evidence=str(e)[:500],
-            ))
+                )
+            )
 
     passed = report.passed
     failed = report.failed

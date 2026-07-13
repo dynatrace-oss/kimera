@@ -158,8 +158,10 @@ class RBACExploit(BaseExploit):
         }
 
         if dry_run:
-            self.logger.info(f"DRY RUN: Would create SA {_SA_NAME}, Role {_ROLE_NAME}, "
-                             f"RoleBinding {_BINDING_NAME}")
+            self.logger.info(
+                f"DRY RUN: Would create SA {_SA_NAME}, Role {_ROLE_NAME}, "
+                f"RoleBinding {_BINDING_NAME}"
+            )
             return True
 
         # Create resources
@@ -175,9 +177,7 @@ class RBACExploit(BaseExploit):
             self.logger.error(f"Failed to create Role: {e}")
 
         try:
-            self.k8s.rbac_v1.create_namespaced_role_binding(
-                namespace=namespace, body=binding_body
-            )
+            self.k8s.rbac_v1.create_namespaced_role_binding(namespace=namespace, body=binding_body)
             self.logger.success(f"Created RoleBinding {_BINDING_NAME}")
             self._created_resources.append(f"rolebinding/{_BINDING_NAME}")
         except Exception as e:
@@ -186,12 +186,8 @@ class RBACExploit(BaseExploit):
         # Patch deployment to use the overpermissive SA
         patches = self.get_vulnerable_patch()
         if self.k8s.patch_deployment(self.service, patches, dry_run=False):
-            self.logger.success(
-                f"Patched {self.service} to use SA {_SA_NAME}"
-            )
-            record_operation(
-                "make_vulnerable", self.vulnerability_type, self.service, namespace
-            )
+            self.logger.success(f"Patched {self.service} to use SA {_SA_NAME}")
+            record_operation("make_vulnerable", self.vulnerability_type, self.service, namespace)
             return True
 
         return False
@@ -212,10 +208,7 @@ class RBACExploit(BaseExploit):
                 bindings = self.k8s.rbac_v1.list_namespaced_role_binding(namespace)
                 for rb in bindings.items:
                     for subject in rb.subjects or []:
-                        if (
-                            subject.kind == "ServiceAccount"
-                            and subject.name == sa_name
-                        ):
+                        if subject.kind == "ServiceAccount" and subject.name == sa_name:
                             role_name = rb.role_ref.name
                             try:
                                 if rb.role_ref.kind == "ClusterRole":

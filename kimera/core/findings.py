@@ -106,7 +106,9 @@ class TechniqueResult(BaseModel):
         """One-line summary for LLM consumption."""
         status = "SUCCESS" if self.success else "BLOCKED"
         defense = f" (caught by: {self.defense_detail})" if self.defense_caught else ""
-        return f"[{self.technique_id}] {self.technique_name}: {status} against {self.target}{defense}"
+        return (
+            f"[{self.technique_id}] {self.technique_name}: {status} against {self.target}{defense}"
+        )
 
 
 class PentestReport(BaseModel):

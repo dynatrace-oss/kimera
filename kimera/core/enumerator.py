@@ -57,23 +57,28 @@ def _enumerate_deployments(k8s: K8sClient, namespace: str, inventory: dict) -> N
             containers = []
             for c in pod_spec.containers:
                 ctx = c.security_context
-                containers.append({
-                    "name": c.name,
-                    "image": c.image,
-                    "privileged": bool(ctx and ctx.privileged),
-                    "capabilities_add": list(ctx.capabilities.add or [])
-                    if ctx and ctx.capabilities and ctx.capabilities.add else [],
-                    "has_limits": bool(c.resources and c.resources.limits),
-                })
-            inventory["deployments"].append({
-                "name": dep.metadata.name,
-                "replicas": dep.spec.replicas,
-                "service_account": pod_spec.service_account_name or "default",
-                "host_pid": bool(pod_spec.host_pid),
-                "host_network": bool(pod_spec.host_network),
-                "automount_token": pod_spec.automount_service_account_token is not False,
-                "containers": containers,
-            })
+                containers.append(
+                    {
+                        "name": c.name,
+                        "image": c.image,
+                        "privileged": bool(ctx and ctx.privileged),
+                        "capabilities_add": list(ctx.capabilities.add or [])
+                        if ctx and ctx.capabilities and ctx.capabilities.add
+                        else [],
+                        "has_limits": bool(c.resources and c.resources.limits),
+                    }
+                )
+            inventory["deployments"].append(
+                {
+                    "name": dep.metadata.name,
+                    "replicas": dep.spec.replicas,
+                    "service_account": pod_spec.service_account_name or "default",
+                    "host_pid": bool(pod_spec.host_pid),
+                    "host_network": bool(pod_spec.host_network),
+                    "automount_token": pod_spec.automount_service_account_token is not False,
+                    "containers": containers,
+                }
+            )
     except ApiException as exc:
         logger.warning("Failed to list deployments: %s", exc.reason)
 
@@ -83,15 +88,16 @@ def _enumerate_services(k8s: K8sClient, namespace: str, inventory: dict) -> None
         svcs = k8s.v1.list_namespaced_service(namespace)
         for svc in svcs.items:
             ports = [
-                {"port": p.port, "protocol": p.protocol or "TCP"}
-                for p in (svc.spec.ports or [])
+                {"port": p.port, "protocol": p.protocol or "TCP"} for p in (svc.spec.ports or [])
             ]
-            inventory["services"].append({
-                "name": svc.metadata.name,
-                "type": svc.spec.type,
-                "ports": ports,
-                "selector": dict(svc.spec.selector) if svc.spec.selector else {},
-            })
+            inventory["services"].append(
+                {
+                    "name": svc.metadata.name,
+                    "type": svc.spec.type,
+                    "ports": ports,
+                    "selector": dict(svc.spec.selector) if svc.spec.selector else {},
+                }
+            )
     except ApiException as exc:
         logger.warning("Failed to list services: %s", exc.reason)
 
@@ -116,8 +122,7 @@ def _enumerate_secrets(k8s: K8sClient, namespace: str, inventory: dict) -> None:
     try:
         secrets = k8s.v1.list_namespaced_secret(namespace)
         inventory["secrets_metadata"] = [
-            {"name": s.metadata.name, "type": s.type}
-            for s in secrets.items
+            {"name": s.metadata.name, "type": s.type} for s in secrets.items
         ]
     except ApiException as exc:
         logger.warning("Failed to list secrets: %s", exc.reason)
@@ -127,15 +132,14 @@ def _enumerate_role_bindings(k8s: K8sClient, namespace: str, inventory: dict) ->
     try:
         bindings = k8s.rbac_v1.list_namespaced_role_binding(namespace)
         for rb in bindings.items:
-            subjects = [
-                {"kind": s.kind, "name": s.name}
-                for s in (rb.subjects or [])
-            ]
-            inventory["role_bindings"].append({
-                "name": rb.metadata.name,
-                "role": rb.role_ref.name,
-                "role_kind": rb.role_ref.kind,
-                "subjects": subjects,
-            })
+            subjects = [{"kind": s.kind, "name": s.name} for s in (rb.subjects or [])]
+            inventory["role_bindings"].append(
+                {
+                    "name": rb.metadata.name,
+                    "role": rb.role_ref.name,
+                    "role_kind": rb.role_ref.kind,
+                    "subjects": subjects,
+                }
+            )
     except ApiException as exc:
         logger.warning("Failed to list role bindings: %s", exc.reason)

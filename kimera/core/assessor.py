@@ -255,14 +255,16 @@ def assess_namespace(
                 count = 0
 
             if _evaluate_condition(count, check["condition"], check):
-                report.findings.append(Finding(
-                    target=namespace,
-                    check_id=check["id"],
-                    severity=Severity(check["severity"]),
-                    title=check["title"],
-                    detail=check.get("detail", ""),
-                    remediation=check.get("remediation", ""),
-                    technique=_build_technique_ref(check),
-                ))
+                report.findings.append(
+                    Finding(
+                        target=namespace,
+                        check_id=check["id"],
+                        severity=Severity(check["severity"]),
+                        title=check["title"],
+                        detail=check.get("detail", ""),
+                        remediation=check.get("remediation", ""),
+                        technique=_build_technique_ref(check),
+                    )
+                )
 
     return report

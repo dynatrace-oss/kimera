@@ -81,10 +81,7 @@ def _execute_exec_technique(
         result.evidence = ["No probes defined for technique"]
         return
 
-    resolved_probes = [
-        _resolve_probe_params(probe, params, k8s.namespace)
-        for probe in probes
-    ]
+    resolved_probes = [_resolve_probe_params(probe, params, k8s.namespace) for probe in probes]
 
     try:
         script = _probe_runner.build_script(resolved_probes)

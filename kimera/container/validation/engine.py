@@ -167,7 +167,8 @@ def _render_summary(reports: list[ValidationReport], logger: SecurityLogger) -> 
         f"[bold]{total_passed}[/bold]",
         f"[bold]{total_failed}[/bold]",
         f"[bold]{total_errors}[/bold]",
-        "[bold green]✓ SECURE[/bold green]" if total_failed == 0 and total_errors == 0
+        "[bold green]✓ SECURE[/bold green]"
+        if total_failed == 0 and total_errors == 0
         else "[bold red]✗ GAPS FOUND[/bold red]",
     )
 

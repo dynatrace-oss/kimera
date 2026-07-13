@@ -33,10 +33,7 @@ class TestListTechniques:
         all_result = list_techniques()
         cred_result = list_techniques(phase="credential-access")
         assert len(cred_result["techniques"]) < len(all_result["techniques"])
-        assert all(
-            t["phase"] == "credential-access"
-            for t in cred_result["techniques"]
-        )
+        assert all(t["phase"] == "credential-access" for t in cred_result["techniques"])
 
     def test_empty_phase_returns_zero_not_crash(self) -> None:
         result = list_techniques(phase="nonexistent-phase")

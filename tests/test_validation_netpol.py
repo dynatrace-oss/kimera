@@ -123,9 +123,7 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     @patch("kimera.container.validation.network_policy._cleanup_probe_pod")
     @patch("kimera.container.validation.network_policy._test_connectivity")
-    def test_no_policies_all_open(
-        self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger
-    ):
+    def test_no_policies_all_open(self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger):
         mock_k8s.list_network_policies.return_value = []
         mock_deploy.return_value = True
         mock_conn.return_value = True  # Everything is reachable
@@ -141,9 +139,7 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     @patch("kimera.container.validation.network_policy._cleanup_probe_pod")
     @patch("kimera.container.validation.network_policy._test_connectivity")
-    def test_all_blocked(
-        self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger
-    ):
+    def test_all_blocked(self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger):
         # Default deny exists
         policy = _make_netpol(
             "default-deny",
@@ -185,8 +181,6 @@ class TestValidateNetworkPolicies:
         mock_conn.side_effect = conn_side_effect
 
         report = validate_network_policies(mock_k8s, sec_logger)
-        metadata_results = [
-            r for r in report.results if r.control_name == "cloud-metadata-block"
-        ]
+        metadata_results = [r for r in report.results if r.control_name == "cloud-metadata-block"]
         assert len(metadata_results) == 1
         assert metadata_results[0].verdict == ValidationVerdict.PASS
