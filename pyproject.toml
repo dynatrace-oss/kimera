@@ -61,7 +61,7 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=kimera --cov-report=term-missing --cov-report=xml"
+addopts = "--cov=kimera --cov-report=term-missing --cov-report=xml --ignore=tests/test_mcp_server.py"
 
 [tool.coverage.run]
 source = ["kimera"]

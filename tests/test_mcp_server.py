@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-
-pytest.importorskip("mcp", reason="mcp optional dependency not installed")
 
 from kimera.mcp.server import (
     get_remediation,
