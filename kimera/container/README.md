@@ -109,5 +109,6 @@ manager.enable()   # Check Cilium status / print guidance
 - **Impact**: Node instability, service degradation
 
 ### Missing Network Policies
+
 - **Risk**: Unrestricted pod-to-pod communication across namespaces
 - **Impact**: Lateral movement, data store access, infrastructure reachability
