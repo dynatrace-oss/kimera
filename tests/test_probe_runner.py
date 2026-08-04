@@ -14,9 +14,45 @@
 
 """Tests for ProbeRunner — structured probe to shell script generation."""
 
+import http.server
+import os
+import shutil
+import socket
+import subprocess
+import tempfile
+import threading
+from pathlib import Path
+from typing import ClassVar
+
 import pytest
 
-from kimera.container.make_vulnerable.probe_runner import ProbeRunner
+from kimera.container.make_vulnerable.base import _marker_matches
+from kimera.container.make_vulnerable.probe_runner import (
+    PROBE_PRELUDE,
+    UNKNOWN_STATE,
+    ProbeRunner,
+)
+
+
+class _SilentHandler(http.server.BaseHTTPRequestHandler):
+    """Echoes request headers and body so header/body propagation is observable."""
+
+    def _respond(self, payload: bytes) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        self._respond(self.headers.get("X-Kimera", "ok").encode())
+
+    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        length = int(self.headers.get("Content-Length", 0))
+        self._respond(self.rfile.read(length) or b"ok")
+
+    def log_message(self, *args: object) -> None:
+        return
 
 
 @pytest.fixture
@@ -99,19 +135,17 @@ class TestCapabilityCheckProbe:
 class TestPortOpenProbe:
     """Tests for the port_open probe type."""
 
-    def test_generates_nc_command(self, runner: ProbeRunner) -> None:
-        """Test port probe generates nc command."""
+    def test_delegates_to_shared_helper_with_default_timeout(self, runner: ProbeRunner) -> None:
+        """Port probe calls the shared helper rather than emitting a tool inline."""
         script = runner.build_script([{"type": "port_open", "host": "k8s.default", "port": 443}])
-        assert "nc -z -w 2 k8s.default 443" in script
-        assert "OPEN" in script
-        assert "CLOSED" in script
+        assert "kimera_port_open k8s.default 443 2" in script
 
     def test_custom_timeout(self, runner: ProbeRunner) -> None:
         """Test port probe with custom timeout."""
         script = runner.build_script(
             [{"type": "port_open", "host": "db", "port": 3306, "timeout": 5}]
         )
-        assert "nc -z -w 5 db 3306" in script
+        assert "kimera_port_open db 3306 5" in script
 
     def test_custom_label(self, runner: ProbeRunner) -> None:
         """Test port probe with custom label."""
@@ -184,12 +218,13 @@ class TestCommandProbe:
         """Test command probe returns raw script verbatim."""
         raw = 'echo "hello world"\nls -la'
         script = runner.build_script([{"type": "command", "run": raw}])
-        assert script == raw
+        assert script.endswith(raw)
+        assert script.startswith(PROBE_PRELUDE)
 
     def test_strips_trailing_newline(self, runner: ProbeRunner) -> None:
         """Test that trailing newlines are stripped."""
         script = runner.build_script([{"type": "command", "run": "echo hi\n\n"}])
-        assert script == "echo hi"
+        assert script.endswith("echo hi")
 
 
 class TestBuildScript:
@@ -212,3 +247,229 @@ class TestBuildScript:
         assert "/dev/mem" in script
         # Should be two separate blocks joined by newline
         assert script.count("VULNERABLE") >= 2
+
+
+class _PreludeSandbox:
+    """PATH sandbox shared by the prelude behaviour tests. Not collected."""
+
+    _sandbox_cache: ClassVar[dict[tuple[str, ...], str]] = {}
+
+    @classmethod
+    def _sandbox(cls, tools: tuple[str, ...]) -> dict[str, str]:
+        # Built once per tool-set: on macOS each freshly created symlink to a
+        # Homebrew binary costs a multi-second Gatekeeper scan on first exec.
+        if tools in cls._sandbox_cache:
+            return {**os.environ, "PATH": cls._sandbox_cache[tools]}
+        bin_dir = Path(tempfile.mkdtemp()) / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        for tool in tools:
+            target = bin_dir / tool
+            if tool == "timeout" and shutil.which("timeout") is None:
+                target.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+                target.chmod(0o755)
+            else:
+                # Prefer the system bash: a Homebrew binary reached through a new
+                # symlink costs a multi-second Gatekeeper scan on every exec.
+                source = "/bin/bash" if tool == "bash" and Path("/bin/bash").exists() else None
+                source = source or shutil.which(tool)
+                if source:
+                    target.symlink_to(source)
+        for helper in ("awk", "tail", "head"):
+            path = shutil.which(helper)
+            if path and not (bin_dir / helper).exists():
+                (bin_dir / helper).symlink_to(path)
+        cls._sandbox_cache[tools] = str(bin_dir)
+        return {**os.environ, "PATH": str(bin_dir)}
+
+    @pytest.fixture
+    def closed_port(self):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        return port
+
+
+class TestProbePreludeBehaviour(_PreludeSandbox):
+    """Execute the emitted prelude under /bin/sh with tool availability controlled via PATH.
+
+    These assert behaviour, not text: a wrong fallback chain still looks plausible
+    in the emitted string but reports the wrong state when it runs.
+    """
+
+    def _probe(self, tools: tuple[str, ...], host: str, port: int) -> str:
+        result: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603 - fixed argv, test-controlled host/port
+            ["/bin/sh", "-c", f"{PROBE_PRELUDE}\nkimera_port_open {host} {port} 2"],
+            capture_output=True,
+            text=True,
+            env=self._sandbox(tools),
+        )
+        return result.stdout.strip()
+
+    @pytest.fixture
+    def open_port(self):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(5)
+        yield sock.getsockname()[1]
+        sock.close()
+
+    @pytest.mark.parametrize(
+        "tools,expected",
+        [
+            (("nc", "bash", "timeout"), "OPEN"),
+            (("bash", "timeout"), "OPEN"),
+            (("nc",), "OPEN"),
+            (("bash",), UNKNOWN_STATE),
+            ((), UNKNOWN_STATE),
+        ],
+    )
+    def test_reachable_port_by_available_tooling(self, tools, expected, open_port):
+        assert self._probe(tools, "127.0.0.1", open_port) == expected
+
+    @pytest.mark.parametrize(
+        "tools,expected",
+        [
+            (("nc", "bash", "timeout"), "CLOSED"),
+            (("bash", "timeout"), "CLOSED"),
+            (("bash",), UNKNOWN_STATE),
+            ((), UNKNOWN_STATE),
+        ],
+    )
+    def test_unreachable_port_never_reports_closed_without_a_tool(
+        self, tools, expected, closed_port
+    ):
+        assert self._probe(tools, "127.0.0.1", closed_port) == expected
+
+
+class TestHttpPreludeBehaviour(_PreludeSandbox):
+    """A missing HTTP client must never be reported as an unreachable endpoint.
+
+    Inherits the PATH sandbox: `unguard-ad-service` ships wget but no curl, and
+    `unguard-like-service` the reverse, so both single-client rows are real images.
+    """
+
+    @pytest.fixture
+    def http_server(self):
+        server = http.server.HTTPServer(("127.0.0.1", 0), _SilentHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        yield server.server_address[1]
+        server.shutdown()
+        server.server_close()
+
+    def _http(self, tools: tuple[str, ...], url: str) -> str:
+        result: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603 - fixed argv, test-controlled url
+            ["/bin/sh", "-c", f"{PROBE_PRELUDE}\nkimera_http_reachable {url} 2"],
+            capture_output=True,
+            text=True,
+            env=self._sandbox(tools),
+        )
+        return result.stdout.strip()
+
+    @pytest.mark.parametrize(
+        "tools,expected",
+        [
+            (("curl", "wget"), "REACHABLE (HTTP 200)"),
+            (("curl",), "REACHABLE (HTTP 200)"),
+            (("wget",), "REACHABLE (HTTP 200)"),
+            ((), UNKNOWN_STATE),
+        ],
+    )
+    def test_reachable_endpoint_by_available_client(self, tools, expected, http_server):
+        assert self._http(tools, f"http://127.0.0.1:{http_server}/") == expected
+
+    @pytest.mark.parametrize(
+        "tools,expected",
+        [
+            (("curl", "wget"), "UNREACHABLE"),
+            (("curl",), "UNREACHABLE"),
+            (("wget",), "UNREACHABLE"),
+            ((), UNKNOWN_STATE),
+        ],
+    )
+    def test_blocked_endpoint_never_unreachable_without_a_client(
+        self, tools, expected, closed_port
+    ):
+        assert self._http(tools, f"http://127.0.0.1:{closed_port}/") == expected
+
+    def test_get_signals_missing_client_by_exit_status(self, http_server):
+        script = (
+            f"{PROBE_PRELUDE}\n"
+            f'body=$(kimera_http_get http://127.0.0.1:{http_server}/ 2); echo "exit=$?"'
+        )
+        for tools, expected in ((("curl",), "exit=0"), ((), "exit=2")):
+            result = subprocess.run(  # noqa: S603 - fixed argv, test-controlled url
+                ["/bin/sh", "-c", script],
+                capture_output=True,
+                text=True,
+                env=self._sandbox(tools),
+            )
+            assert expected in result.stdout
+
+    @pytest.mark.parametrize("tools", [("curl",), ("wget",)])
+    def test_get_sends_request_headers(self, tools, http_server):
+        script = (
+            f"{PROBE_PRELUDE}\n"
+            f'kimera_http_get http://127.0.0.1:{http_server}/hdr 2 "X-Kimera: probe"'
+        )
+        result = subprocess.run(  # noqa: S603 - fixed argv, test-controlled url
+            ["/bin/sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=self._sandbox(tools),
+        )
+        assert "probe" in result.stdout
+
+    @pytest.mark.parametrize("tools", [("curl",), ("wget",)])
+    def test_post_sends_request_body(self, tools, http_server):
+        script = (
+            f"{PROBE_PRELUDE}\n"
+            f"kimera_http_post http://127.0.0.1:{http_server}/echo 2 '{{\"allowed\":true}}'"
+        )
+        result = subprocess.run(  # noqa: S603 - fixed argv, test-controlled url
+            ["/bin/sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=self._sandbox(tools),
+        )
+        assert '"allowed":true' in result.stdout
+
+
+class TestEvidenceMarkerMatching:
+    """A success marker must not fire on its own negation."""
+
+    @pytest.mark.parametrize(
+        "marker,output,matches",
+        [
+            ("REACHABLE", "  svc -> UNREACHABLE", False),
+            ("REACHABLE", "  svc -> REACHABLE (HTTP 200)", True),
+            ("OPEN", f"  redis -> {UNKNOWN_STATE}", False),
+            ("OPEN", "  redis -> OPEN", True),
+            ("OPEN", "  redis -> CLOSED", False),
+            ("Can list secrets", "❌ VULNERABLE: Can list secrets — found 4", True),
+        ],
+    )
+    def test_marker_matches_whole_tokens_only(self, marker, output, matches):
+        assert _marker_matches(marker, output) is matches
+
+
+class TestNoInlineProbeCommands:
+    """The prelude is the only place a probe tool may be named."""
+
+    def test_no_raw_probe_shell_outside_prelude(self):
+        root = Path(__file__).resolve().parent.parent
+        offenders = []
+        for path in list((root / "kimera").rglob("*.py")) + list((root / "config").rglob("*.yaml")):
+            if path.name == "probe_runner.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            raw = [
+                tool
+                for tool in ("nc -z", "nslookup", "curl ", "wget ")
+                if tool in text and f"kimera_http_{tool.strip()}" not in text
+            ]
+            if raw:
+                offenders.append(f"{path.relative_to(root)}: {raw}")
+        assert offenders == [], f"inline probe commands found in: {offenders}"

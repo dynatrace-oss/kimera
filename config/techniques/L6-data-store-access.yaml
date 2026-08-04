@@ -35,10 +35,11 @@ execution:
             port=$(echo "$target" | cut -d: -f2)
             label=$(echo "$target" | cut -d: -f3)
             echo -n "  ${label} (${host}:${port}) -> "
-            if nc -z -w 3 "$host" "$port" 2>/dev/null; then
+            state=$(kimera_port_open "$host" "$port" 3)
+            if [ "$state" = "OPEN" ]; then
                 echo "DATASTORE_OPEN:${label}:${host}:${port}"
             else
-                echo "CLOSED"
+                echo "$state"
             fi
         done
 

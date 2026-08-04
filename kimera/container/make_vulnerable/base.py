@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import Any
@@ -22,6 +23,17 @@ from ...domain.models import ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console, setup_logger
+from .probe_runner import PROBE_PRELUDE
+
+
+def _marker_matches(marker: str, output: str) -> bool:
+    r"""Check whether a marker appears as a whole token in probe output.
+
+    Substring matching would let a success marker fire on its own negation —
+    ``REACHABLE`` is contained in ``UNREACHABLE``. Lookarounds are used rather
+    than ``\b`` because a marker may start or end with a non-word character.
+    """
+    return re.search(rf"(?<![A-Za-z0-9_]){re.escape(marker)}(?![A-Za-z0-9_])", output) is not None
 
 
 class BaseExploit(ABC):
@@ -161,11 +173,11 @@ class BaseExploit(ABC):
         for test in tests:
             self.logger.exploit(f"Test: {test.name}")
             try:
-                output = self.k8s.exec_in_pod(pod_name, test.script)
+                output = self.k8s.exec_in_pod(pod_name, PROBE_PRELUDE + "\n" + test.script)
                 console.print(output, highlight=False)
 
                 for marker in test.evidence_markers:
-                    if marker.marker in output:
+                    if _marker_matches(marker.marker, output):
                         evidence.append(marker.evidence)
                         if marker.impact:
                             impact.append(marker.impact)

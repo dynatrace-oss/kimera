@@ -33,10 +33,11 @@ execution:
             TOKEN=$(cat "$SA_DIR/token")
             APISERVER="https://kubernetes.default.svc"
             # Attempt to list pods in the namespace
-            PODS=$(wget -qO- --header="Authorization: Bearer $TOKEN" \
-              --no-check-certificate \
-              "$APISERVER/api/v1/namespaces/{{ namespace }}/pods" 2>/dev/null)
-            if echo "$PODS" | grep -q '"name"'; then
+            PODS=$(kimera_http_get "$APISERVER/api/v1/namespaces/{{ namespace }}/pods" 5 \
+              "Authorization: Bearer $TOKEN")
+            if [ $? -eq 2 ]; then
+                echo "UNKNOWN_NO_PROBE_TOOL"
+            elif echo "$PODS" | grep -q '"name"'; then
                 POD_COUNT=$(echo "$PODS" | grep -c '"name"')
                 echo "LATERAL_TARGETS:${POD_COUNT}"
             else
