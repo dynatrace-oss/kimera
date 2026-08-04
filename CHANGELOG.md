@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Cilium install guidance printed by `kimera enforce enable` omitted the EKS case: the plain `ipam.mode=kubernetes` install does not work alongside the AWS VPC CNI. Guidance now includes the `cni.chainingMode=aws-cni` variant and the pod-restart caveat, and targets Cilium 1.20.0.
+- `kimera apply` reported `[SUCCESS] Applied 0/N resources` when every resource failed; partial and total failures now report at warning and error severity.
+- HTTP probe false negatives and false "secure" verdicts: `curl`/`wget` absent from a target image made reachability probes report `UNREACHABLE` and made capability probes report `Protected: Cannot list secrets` — an affirmative secure result produced by a probe that never ran. HTTP probes now fall back `curl` → `wget` and report `UNKNOWN (no probe tool)` otherwise, via the shared `kimera_http_reachable` / `kimera_http_get` / `kimera_http_post` prelude helpers. All 15 HTTP probe sites migrated.
+- Evidence markers matched by substring, so the success marker `REACHABLE` fired on the failure text `UNREACHABLE` — a demonstration reported lateral movement as proven while every probe had failed. Markers now match whole tokens only.
+- Probe false negatives: `nc`/`nslookup` absent from a target image made port and DNS probes report `CLOSED` / `0 services discovered`, indistinguishable from a genuinely blocked port. Probes now fall back to `bash /dev/tcp` and `getent hosts`, and report `UNKNOWN (no probe tool)` when no method exists — never `CLOSED`. `validate-control` reports `ERROR` for an untestable check instead of `PASS`. All probe shell is emitted from a single prelude in `probe_runner.py`; no module or config file constructs probe commands inline.
+
 ### Added
 
 - 5 exploit types: privileged containers, dangerous capabilities, host namespace sharing, missing resource limits, RBAC abuse
@@ -25,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP server (`kimera-mcp`) exposing 7 pentest tools via the Model Context Protocol
 - Operation journal (`.kimera-state.json`) and unified `kimera revert` command
 - Unguard profile (`config/profiles/unguard.yaml`) with auto-detection via `-n unguard`
-- Cilium-based NetworkPolicy enforcement (`kimera enforce enable/disable/status`)
+- NetworkPolicy enforcement detection (`kimera enforce enable/disable/status`) for Cilium
 - `.env` auto-loading via `python-dotenv`
 - Exploit registry (`config/exploits/registry.yaml`) with centralized MITRE ATT&CK mappings
 - Helm chart and Dockerfile for cluster deployment (`deploy/`)
