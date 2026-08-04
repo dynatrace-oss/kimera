@@ -57,7 +57,7 @@ ADMISSION_TEST_CASES: list[dict[str, Any]] = [
         },
         "expected_rejection": True,
         "remediation": (
-            "Configure PSA 'restricted' or 'baseline' profile, " "or add a policy to block hostPID."
+            "Configure PSA 'restricted' or 'baseline' profile, or add a policy to block hostPID."
         ),
     },
     {
@@ -80,7 +80,7 @@ ADMISSION_TEST_CASES: list[dict[str, Any]] = [
         },
         "expected_rejection": True,
         "remediation": (
-            "Configure PSA 'restricted' profile or add a policy requiring " "runAsNonRoot: true."
+            "Configure PSA 'restricted' profile or add a policy requiring runAsNonRoot: true."
         ),
     },
     {
