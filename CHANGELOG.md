@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Multi-provider LLM support for `kimera generate`. A single entry point (`kimera/core/llm.py`) replaces three duplicated Anthropic SDK call sites and selects a backend in a documented order: `KIMERA_LLM_PROVIDER` override, a `provider/model` prefix routed through litellm (`openai/`, `bedrock/`, `gemini/`, `ollama/`), `ANTHROPIC_API_KEY` via the Anthropic SDK, then the `claude` CLI using an existing Claude subscription with no API key. An override that cannot be honoured is an error rather than a silent fallback to a different model, so a run is always attributable to the model that was asked for. New `litellm` extra; `all` now composes the other extras instead of re-listing them.
+
 ### Fixed
+
+- `kimera generate` exited with a raw traceback when no LLM backend was configured or when `ANTHROPIC_API_KEY` was rejected. Both now report actionable guidance, and a rejected key names the override needed to reach a Claude subscription instead.
+- The subscription backend removes `ANTHROPIC_API_KEY` from the CLI subprocess environment. The `claude` CLI treats that variable as taking precedence over the signed-in session and refuses to use the subscription while it is set, so a stale key anywhere in the environment made the backend unusable.
+- `kimera generate --enrich dynatrace` raised `TypeError: TargetedQueryStrategy() takes no arguments`. The `--model` flag has a non-empty default, so `model=` was forwarded to every strategy while only `llm-query` accepts it; `create_strategy` now drops arguments the chosen strategy does not take.
+- Docstrings and error messages told users to install a `kimera[dt-mcp]` extra that does not exist. The extra is `kimera[mcp-server]`.
+- The default model was hardcoded in three separate files and is now defined once.
 
 - Cilium install guidance printed by `kimera enforce enable` omitted the EKS case: the plain `ipam.mode=kubernetes` install does not work alongside the AWS VPC CNI. Guidance now includes the `cni.chainingMode=aws-cni` variant and the pod-restart caveat, and targets Cilium 1.20.0.
 - `kimera apply` reported `[SUCCESS] Applied 0/N resources` when every resource failed; partial and total failures now report at warning and error severity.

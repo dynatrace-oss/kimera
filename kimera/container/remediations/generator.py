@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 
 from ...application.config.schemas import NetworkTopologyEntry
+from ...core.llm import DEFAULT_MODEL, complete, strip_code_fence
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 
@@ -86,7 +87,7 @@ class LLMRemediationGenerator:
         k8s: K8sClient,
         logger: SecurityLogger,
         network_topology: dict[str, NetworkTopologyEntry] | None = None,
-        model: str = "claude-sonnet-4-6",
+        model: str = DEFAULT_MODEL,
     ) -> None:
         """Initialise the generator.
 
@@ -122,6 +123,8 @@ class LLMRemediationGenerator:
 
         Raises:
             ImportError: If the ``llm`` extra is not installed.
+            ProviderNotConfiguredError: If no LLM backend is available.
+            ProviderError: If the selected backend fails.
             ValueError: If the LLM returns malformed output or exploit type is invalid.
         """
         if exploit_type not in SUPPORTED_TYPES:
@@ -129,14 +132,6 @@ class LLMRemediationGenerator:
                 f"Unsupported exploit type: {exploit_type}. "
                 f"Choose from: {', '.join(sorted(SUPPORTED_TYPES))}"
             )
-
-        try:
-            import anthropic  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "Anthropic SDK is required for remediation generation. "
-                "Install with: uv pip install 'kimera[llm]'"
-            ) from exc
 
         namespace = self.k8s.namespace
         context = self._get_cluster_context(exploit_type)
@@ -157,16 +152,8 @@ class LLMRemediationGenerator:
 
         self.logger.info(f"Calling {self.model} to generate {exploit_type} remediations...")
 
-        client = anthropic.Anthropic()
-        message = client.messages.create(
-            model=self.model,
-            max_tokens=8192,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        raw = getattr(message.content[0], "text", "") if message.content else ""
-        yaml_output = self._clean_yaml_output(raw)
+        raw = complete(system=system_prompt, user=user_prompt, model=self.model, max_tokens=8192)
+        yaml_output = strip_code_fence(raw)
         self._validate_yaml(yaml_output)
         return yaml_output
 
@@ -193,6 +180,8 @@ class LLMRemediationGenerator:
 
         Raises:
             ImportError: If the ``llm`` extra is not installed.
+            ProviderNotConfiguredError: If no LLM backend is available.
+            ProviderError: If the selected backend fails.
             ValueError: If the LLM returns malformed output or exploit type is invalid.
         """
         if exploit_type not in SUPPORTED_TYPES:
@@ -200,14 +189,6 @@ class LLMRemediationGenerator:
                 f"Unsupported exploit type: {exploit_type}. "
                 f"Choose from: {', '.join(sorted(SUPPORTED_TYPES))}"
             )
-
-        try:
-            import anthropic  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "Anthropic SDK is required for exploit generation. "
-                "Install with: uv pip install 'kimera[llm]'"
-            ) from exc
 
         namespace = self.k8s.namespace
         context = self._get_cluster_context(exploit_type)
@@ -227,16 +208,8 @@ class LLMRemediationGenerator:
 
         self.logger.info(f"Calling {self.model} to generate {exploit_type} exploit patches...")
 
-        client = anthropic.Anthropic()
-        message = client.messages.create(
-            model=self.model,
-            max_tokens=8192,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        raw = getattr(message.content[0], "text", "") if message.content else ""
-        yaml_output = self._clean_yaml_output(raw)
+        raw = complete(system=system_prompt, user=user_prompt, model=self.model, max_tokens=8192)
+        yaml_output = strip_code_fence(raw)
         self._validate_exploit_yaml(yaml_output)
         return yaml_output
 
@@ -389,21 +362,6 @@ class LLMRemediationGenerator:
         return result
 
     # -- Output handling -----------------------------------------------------------
-
-    @staticmethod
-    def _clean_yaml_output(raw: str) -> str:
-        """Strip markdown fences if the LLM wrapped its output."""
-        text = raw.strip()
-        if text.startswith("```"):
-            text = text.split("```", 2)[1]
-            # Strip language identifier (yaml, json, yml, etc.)
-            first_line_end = text.find("\n")
-            if first_line_end != -1:
-                lang = text[:first_line_end].strip()
-                if lang.isalpha():
-                    text = text[first_line_end:]
-            text = text.rsplit("```", 1)[0].strip()
-        return text
 
     def _validate_yaml(self, yaml_text: str) -> None:
         """Parse and validate the generated YAML structure."""

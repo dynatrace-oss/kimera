@@ -202,7 +202,7 @@ class DynatraceConfig(BaseModel):
     """Dynatrace integration configuration.
 
     Attributes:
-        default_strategy: Default DT data strategy for ``--use-dt-mcp``.
+        default_strategy: Default DT data strategy for ``--enrich dynatrace``.
     """
 
     default_strategy: str = Field(

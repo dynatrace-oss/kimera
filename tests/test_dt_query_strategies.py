@@ -394,6 +394,17 @@ class TestCreateStrategy:
         with pytest.raises(ValueError, match="Unknown DT strategy"):
             create_strategy("nonexistent")
 
+    @pytest.mark.parametrize("name", ["targeted", "davis"])
+    def test_model_kwarg_is_dropped_for_strategies_that_ignore_it(self, name: str) -> None:
+        # The CLI --model flag has a non-empty default, so `model=` reaches every strategy.
+        # Strategies without an __init__ used to raise TypeError: takes no arguments.
+        assert create_strategy(name, model="claude-sonnet-4-6") is not None
+
+    def test_model_kwarg_still_reaches_llm_query(self) -> None:
+        s = create_strategy("llm-query", model="claude-haiku-4-5-20251001")
+        assert isinstance(s, LlmQueryStrategy)
+        assert s._model == "claude-haiku-4-5-20251001"
+
 
 # ===========================================================================
 # Exploit-type mapping coverage
