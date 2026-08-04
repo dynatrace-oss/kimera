@@ -71,9 +71,19 @@ class ResourceApplier:
                 applied += 1
 
         if not dry_run:
-            self.logger.success(f"Applied {applied}/{len(resources)} resources from {path}")
+            self._report(applied, len(resources), "resources", path)
 
         return applied, len(resources)
+
+    def _report(self, applied: int, total: int, noun: str, path: str | Path) -> None:
+        """Report an apply outcome at a severity that matches what happened."""
+        summary = f"Applied {applied}/{total} {noun} from {path}"
+        if applied == total:
+            self.logger.success(summary)
+        elif applied == 0:
+            self.logger.error(summary)
+        else:
+            self.logger.warning(summary)
 
     def _parse_yaml(self, path: str | Path) -> list[dict[str, Any]]:
         """Parse a multi-document YAML file into a list of resource dicts."""
@@ -194,7 +204,7 @@ class ResourceApplier:
                     self.logger.success(f"Applied {exploit_type} exploit to {deployment}")
 
         if not dry_run:
-            self.logger.success(f"Applied {applied}/{len(docs)} exploit patches from {path}")
+            self._report(applied, len(docs), "exploit patches", path)
 
         return applied, len(docs)
 
