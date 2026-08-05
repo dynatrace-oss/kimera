@@ -248,6 +248,8 @@ class LLMRemediationGenerator:
 
         if exploit_type in ("missing-network-policies", "all"):
             context["statefulsets"] = self._get_statefulset_info(namespace)
+            # A default-deny policy selects every pod, so a workload missing here loses all traffic.
+            context["cronjobs"] = self._get_cronjob_info(namespace)
             context["services"] = self._get_service_info(namespace)
 
         if exploit_type in (
@@ -287,6 +289,22 @@ class LLMRemediationGenerator:
                 result[name] = {"labels": dict(labels), "ports": ports}
         except Exception as e:
             self.logger.error(f"Failed to list statefulsets: {e}")
+        return result
+
+    def _get_cronjob_info(self, namespace: str) -> dict[str, dict[str, Any]]:
+        """Return cronjob name to pod labels and ports mapping."""
+        result: dict[str, dict[str, Any]] = {}
+        try:
+            cjs = self.k8s.batch_v1.list_namespaced_cron_job(namespace)
+            for cj in cjs.items:
+                job_template = cj.spec.job_template
+                labels = job_template.spec.template.metadata.labels or {}
+                result[cj.metadata.name] = {
+                    "labels": dict(labels),
+                    "ports": self._extract_ports(job_template),
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to list cronjobs: {e}")
         return result
 
     def _get_service_info(self, namespace: str) -> dict[str, dict[str, Any]]:

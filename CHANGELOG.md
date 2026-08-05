@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docstrings and error messages told users to install a `kimera[dt-mcp]` extra that does not exist. The extra is `kimera[mcp-server]`.
 - The default model was hardcoded in three separate files and is now defined once.
 
+- `kimera generate --type missing-network-policies` enumerated only Deployments and StatefulSets, so CronJob-managed workloads got no policy while the generated `default-deny-all` denied them all traffic. CronJobs now enter the generation context and the prompt.
 - The Smartscape topology query requested `getNodeField(id, "k8s.workload.name")`, which is null on every node, and scoped edges by display name, keeping 15 of 128 in a measured window. It now filters on `source_type`/`target_type == "SERVICE"`; `SmartscapeEdge` drops its workload fields, and `dql_reference.yaml` records that neither `k8s.workload.name` nor `k8s.cluster.name` resolves on SERVICE nodes.
 - Cilium install guidance printed by `kimera enforce enable` omitted the EKS case: the plain `ipam.mode=kubernetes` install does not work alongside the AWS VPC CNI. Guidance now includes the `cni.chainingMode=aws-cni` variant and the pod-restart caveat, and targets Cilium 1.20.0.
 - `kimera apply` reported `[SUCCESS] Applied 0/N resources` when every resource failed; partial and total failures now report at warning and error severity.
