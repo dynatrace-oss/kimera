@@ -23,6 +23,7 @@ from ..application.config.registry import ExploitRegistry
 from ..application.config.schemas import ToolkitConfig
 from ..container.core.k8s_client import K8sClient
 from ..container.core.logger import SecurityLogger, setup_logger
+from ..resources import config_dir
 
 REGISTRY: ExploitRegistry = ExploitRegistry()
 EXPLOITS: dict[str, Callable[..., Any]] = REGISTRY.classes
@@ -43,9 +44,12 @@ def _load_config(
     if verbose:
         overrides["verbose"] = True
 
+    # A namespace with a profile file of the same name loads it. Naming a specific
+    # application here would make Kimera behave differently on one cluster, and the
+    # profile is what supplies network_topology, which remediation scoping inverts.
     effective_profile = profile
-    if not effective_profile and namespace == "unguard":
-        effective_profile = "unguard"
+    if not effective_profile and (config_dir() / "profiles" / f"{namespace}.yaml").is_file():
+        effective_profile = namespace
 
     if namespace != "default":
         overrides["kubernetes"] = {"namespace": namespace}
@@ -66,7 +70,12 @@ def _resolve_services(config: ToolkitConfig, k8s: K8sClient) -> list[str]:
 
 @click.group()
 @click.option("--namespace", "-n", default="default", help="Target namespace")
-@click.option("--profile", "-p", default=None, help="Config profile (e.g., unguard)")
+@click.option(
+    "--profile",
+    "-p",
+    default=None,
+    help="Config profile name; defaults to a profile matching --namespace",
+)
 @click.option("--debug", is_flag=True, help="Enable debug output")
 @click.option("--dry-run", is_flag=True, help="Preview changes without applying")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")

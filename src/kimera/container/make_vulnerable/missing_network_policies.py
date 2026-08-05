@@ -18,7 +18,7 @@ from ...domain.models import EvidenceMarker, ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.logger import console
 from .base import BaseExploit
-from .probe_prelude import UNKNOWN_STATE
+from .probe_runner import ProbeRunner
 from .test_loader import load_exploit_tests
 
 # Label used to identify network policies created by this toolkit
@@ -32,6 +32,16 @@ DATA_STORE_PORTS: dict[int, str] = {
     6379: "Redis",
     27017: "MongoDB",
 }
+
+REDIS_PORT = 6379
+
+# Long enough for a cross-namespace hop, short enough that a namespace of
+# unreachable services does not stall the demonstration.
+PROBE_TIMEOUT_SECONDS = 3
+
+# Probing every port of every service scales the demonstration with namespace
+# size; the first port of each service is what a lateral move would try.
+MAX_LATERAL_TARGETS = 10
 
 
 class MissingNetworkPoliciesExploit(BaseExploit):
@@ -139,40 +149,48 @@ class MissingNetworkPoliciesExploit(BaseExploit):
             return targets
         return targets
 
-    def _build_dynamic_tests(self) -> list[SecurityTest]:
-        """Build tests that depend on auto-discovered services."""
-        tests: list[SecurityTest] = []
+    def _discover_reachable_services(self) -> list[tuple[str, int]]:
+        """Find application services to probe for lateral movement.
 
-        # Test 1: DNS service enumeration
+        Data stores are excluded because they are probed by their own test, and
+        the source workload is excluded because reaching itself is not a lateral
+        move.
+        """
+        targets: list[tuple[str, int]] = []
+        try:
+            svc_list = self.k8s.v1.list_namespaced_service(self.k8s.namespace)
+        except Exception as e:
+            self.logger.warning(f"Could not list services for lateral movement test: {e}")
+            return targets
+
+        for svc in svc_list.items:
+            name = svc.metadata.name
+            if name == self.service or not svc.spec.ports:
+                continue
+            port = svc.spec.ports[0].port
+            if port in DATA_STORE_PORTS:
+                continue
+            targets.append((name, port))
+
+        return targets[:MAX_LATERAL_TARGETS]
+
+    def _build_dynamic_tests(self) -> list[SecurityTest]:
+        """Build tests that depend on auto-discovered services.
+
+        Probes are declared as data and rendered by ``ProbeRunner``, the same path
+        YAML-declared tests take. Building the shell here instead would bypass the
+        builders that record machine-readable paths, which is what a remediation
+        scoped to one workload classifies.
+        """
+        tests: list[SecurityTest] = []
+        runner = ProbeRunner()
+
         svc_names = self._discover_services()
         if svc_names:
-            svc_list_str = " ".join(svc_names)
             tests.append(
                 SecurityTest(
                     name="DNS service enumeration",
-                    script=(
-                        'echo "[*] Enumerating services via DNS..."\n'
-                        "ns=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)\n"
-                        "found=0\n"
-                        "no_tool=0\n"
-                        f"for svc in {svc_list_str}; do\n"
-                        '    fqdn="${svc}.${ns}.svc.cluster.local"\n'
-                        '    addr=$(kimera_resolve "$fqdn")\n'
-                        "    if [ $? -eq 2 ]; then\n"
-                        "        no_tool=1\n"
-                        "        break\n"
-                        "    fi\n"
-                        '    if [ -n "$addr" ]; then\n'
-                        '        echo "  FOUND: ${svc} -> ${addr}"\n'
-                        "        found=$((found + 1))\n"
-                        "    fi\n"
-                        "done\n"
-                        'if [ "$no_tool" -eq 1 ]; then\n'
-                        f'    echo "[*] DNS enumeration: {UNKNOWN_STATE}"\n'
-                        "else\n"
-                        '    echo "[*] Total services discovered: $found"\n'
-                        "fi\n"
-                    ),
+                    script=runner.build_script([{"type": "dns_resolve", "hosts": svc_names}]),
                     evidence_markers=[
                         EvidenceMarker(
                             "FOUND:",
@@ -183,32 +201,12 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                 )
             )
 
-        # Test 2: Data store connectivity
         data_stores = self._discover_data_store_services()
         if data_stores:
-            probe_cmds = []
-            for svc_name, port, label in data_stores:
-                probe_cmds.append(
-                    f'echo -n "  {label} ({svc_name}:{port}) -> "; '
-                    f"kimera_port_open {svc_name} {port} 3"
-                )
-                # For Redis: send a real DBSIZE command to produce observable traffic
-                # that Dynatrace OneAgent records as a Redis protocol interaction
-                if port == 6379:
-                    probe_cmds.append(
-                        f'key_count=$(printf "*1\\r\\n\\$6\\r\\nDBSIZE\\r\\n"'
-                        f" | kimera_tcp_send {svc_name} {port} 3"
-                        f' | tr -d "\\r" | grep -o "[0-9]*")\n'
-                        f'[ -n "$key_count" ] && echo "[*] Redis key count: $key_count"'
-                    )
             tests.append(
                 SecurityTest(
                     name="Data store accessibility",
-                    script=(
-                        'echo "[*] Testing data store connectivity..."\n'
-                        + "\n".join(probe_cmds)
-                        + "\n"
-                    ),
+                    script=runner.build_script(self._data_store_probes(data_stores)),
                     evidence_markers=[
                         EvidenceMarker(
                             "OPEN",
@@ -219,7 +217,67 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                 )
             )
 
+        lateral_targets = self._discover_reachable_services()
+        if lateral_targets:
+            tests.append(
+                SecurityTest(
+                    name="Lateral movement to application services",
+                    script=runner.build_script(
+                        [
+                            {
+                                "type": "port_open",
+                                "host": name,
+                                "port": port,
+                                "timeout": PROBE_TIMEOUT_SECONDS,
+                                "label": f"{name}:{port}",
+                            }
+                            for name, port in lateral_targets
+                        ]
+                    ),
+                    evidence_markers=[
+                        EvidenceMarker(
+                            "OPEN",
+                            "Application services reachable from an unrelated pod",
+                            "A compromised pod can reach every service in the namespace",
+                        ),
+                    ],
+                )
+            )
+
         return tests
+
+    @staticmethod
+    def _data_store_probes(
+        data_stores: list[tuple[str, int, str]],
+    ) -> list[dict[str, Any]]:
+        """Build the probe list for discovered data stores."""
+        probes: list[dict[str, Any]] = []
+        for svc_name, port, label in data_stores:
+            probes.append(
+                {
+                    "type": "port_open",
+                    "host": svc_name,
+                    "port": port,
+                    "timeout": PROBE_TIMEOUT_SECONDS,
+                    "label": f"{label} ({svc_name}:{port})",
+                }
+            )
+            if port == REDIS_PORT:
+                # A real DBSIZE exchange, so the traffic appears as a Redis protocol
+                # interaction rather than a bare connection. No typed builder writes
+                # a wire-protocol payload.
+                probes.append(
+                    {
+                        "type": "command",
+                        "run": (
+                            f'key_count=$(printf "*1\\r\\n\\$6\\r\\nDBSIZE\\r\\n"'
+                            f" | kimera_tcp_send {svc_name} {port} {PROBE_TIMEOUT_SECONDS}"
+                            f' | tr -d "\\r" | grep -o "[0-9]*")\n'
+                            f'[ -n "$key_count" ] && echo "[*] Redis key count: $key_count"'
+                        ),
+                    }
+                )
+        return probes
 
     def demonstrate(self) -> ExploitResult:
         """Demonstrate network policy absence by running connectivity tests."""

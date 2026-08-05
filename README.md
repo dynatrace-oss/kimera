@@ -173,6 +173,8 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 
 Layered config: `src/kimera/config/default.yaml` → profile → environment variables → CLI flags.
 
+`-n <namespace>` loads `profiles/<namespace>.yaml` automatically when that file exists; `-p` overrides it.
+
 Assessment checks are defined in `src/kimera/config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
 
 Environment variable overrides are defined in `src/kimera/config/env_mappings.yaml`.

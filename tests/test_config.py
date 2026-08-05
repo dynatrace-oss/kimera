@@ -27,6 +27,8 @@ from kimera.application.config.schemas import (
     NetworkTopologyEntry,
     ToolkitConfig,
 )
+from kimera.cli import _load_config
+from kimera.resources import config_dir
 
 
 class TestToolkitConfig:
@@ -244,3 +246,25 @@ class TestNetworkTopologyEntry:
                 expected = entry.get("allowed_ingress_from")
                 actual = config.network_topology[workload].allowed_ingress_from
                 assert actual == expected, f"{profile_path.name}:{workload}"
+
+
+class TestProfileAutoDetection:
+    """A namespace loads the profile named after it, if one is shipped."""
+
+    def test_namespace_with_a_profile_file_loads_it(self) -> None:
+        # Previously this was `namespace == "unguard"` hardcoded in the CLI, so the
+        # behaviour existed for exactly one application and was invisible elsewhere.
+        shipped = [p.stem for p in (config_dir() / "profiles").glob("*.yaml")]
+        assert shipped, "no profiles shipped; this guard checks nothing"
+        for name in shipped:
+            config = _load_config(name, None, False, False, False)
+            assert config.kubernetes.namespace == name
+
+    def test_namespace_without_a_profile_file_loads_defaults(self) -> None:
+        config = _load_config("no-such-namespace-here", None, False, False, False)
+        assert config.kubernetes.namespace == "no-such-namespace-here"
+
+    def test_explicit_profile_wins_over_the_namespace_name(self) -> None:
+        shipped = [p.stem for p in (config_dir() / "profiles").glob("*.yaml")]
+        config = _load_config("some-other-namespace", shipped[0], False, False, False)
+        assert config.kubernetes.namespace == "some-other-namespace"

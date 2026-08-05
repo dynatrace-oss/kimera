@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dns_resolve` probe type — resolves a list of names and reports which answer, reporting an explicit unknown state when no resolver tool exists. Emits no path record: a name resolving is not a connection.
 - `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload may reach, as a CIDR with an `except` list, ports and protocol. A post-processing pass guarantees every declared destination survives generation. Undeclared destinations stay denied.
 
 ### Fixed
@@ -24,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The package moved to a `src/` layout and its YAML configuration ships inside the package. An installed wheel previously could not find its own configuration — six modules located `config/` by counting parent directories, all resolving to the repository root. Set `KIMERA_CONFIG_DIR` to supply your own; it replaces the packaged directory wholesale.
+- `-n <namespace>` loads `profiles/<namespace>.yaml` when that file exists, replacing a hardcoded special case for one namespace name. `-p` still overrides.
+- `missing-network-policies` builds its discovered-target probes through the shared probe runner instead of hand-written shell, and probes services discovered from the API rather than a hardcoded list. Lateral movement reports port reachability rather than HTTP status — a NetworkPolicy is an L3/L4 control.
 - `R8-permission-probe` declares the permissions it probes in its own YAML rather than in Python.
 - `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry declaring only egress no longer blocks that workload's ingress. An explicit empty list still blocks all ingress.
 

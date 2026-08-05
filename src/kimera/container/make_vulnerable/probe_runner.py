@@ -15,12 +15,15 @@
 import shlex
 from typing import Any
 
-from .probe_prelude import PROBE_PRELUDE
+from .probe_prelude import PROBE_PRELUDE, UNKNOWN_STATE
 
 # Supported test operators for path_exists probes
 _VALID_CHECKS = {"-e", "-f", "-d", "-c", "-S", "-r", "-w", "-x"}
 
 DEFAULT_HTTP_TIMEOUT = 5
+
+# Cluster DNS suffix appended after the namespace segment.
+DEFAULT_DNS_SUFFIX = "svc.cluster.local"
 DEFAULT_MAX_BODY_BYTES = 512
 
 
@@ -123,6 +126,40 @@ class ProbeRunner:
         timeout = probe.get("timeout", 2)
         label = probe.get("label", f"{host}:{port}")
         return f'echo -n "  {label} -> "\nkimera_port_open {host} {port} {timeout}'
+
+    @staticmethod
+    def _build_dns_resolve(probe: dict[str, Any]) -> str:
+        """Resolve each declared name and report the ones that answer.
+
+        Emits no path record: a name resolving proves the cluster's DNS answers,
+        not that the resolver may connect to what it names.
+        """
+        hosts = probe.get("hosts", [])
+        if not hosts:
+            return ""
+        suffix = probe.get("suffix", DEFAULT_DNS_SUFFIX)
+        return (
+            'echo "[*] Enumerating services via DNS..."\n'
+            "ns=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)\n"
+            "found=0\n"
+            "no_tool=0\n"
+            f"for svc in {' '.join(str(h) for h in hosts)}; do\n"
+            f'    addr=$(kimera_resolve "${{svc}}.${{ns}}.{suffix}")\n'
+            "    if [ $? -eq 2 ]; then\n"
+            "        no_tool=1\n"
+            "        break\n"
+            "    fi\n"
+            '    if [ -n "$addr" ]; then\n'
+            '        echo "  FOUND: ${svc} -> ${addr}"\n'
+            "        found=$((found + 1))\n"
+            "    fi\n"
+            "done\n"
+            'if [ "$no_tool" -eq 1 ]; then\n'
+            f'    echo "[*] DNS enumeration: {UNKNOWN_STATE}"\n'
+            "else\n"
+            '    echo "[*] Total services discovered: $found"\n'
+            "fi"
+        )
 
     @staticmethod
     def _build_count_check(probe: dict[str, Any]) -> str:

@@ -590,3 +590,29 @@ class TestNoInlineProbeCommands:
             if raw:
                 offenders.append(f"{path.relative_to(root)}: {raw}")
         assert offenders == [], f"inline probe commands found in: {offenders}"
+
+
+class TestDnsResolveProbe:
+    """Name resolution is a typed probe, and never asserts a network path."""
+
+    def test_resolves_each_declared_host(self, runner: ProbeRunner) -> None:
+        script = runner.build_script([{"type": "dns_resolve", "hosts": ["svc-a", "svc-b"]}])
+        assert "kimera_resolve" in script
+        assert "svc-a svc-b" in script
+
+    def test_emits_no_path_marker(self, runner: ProbeRunner) -> None:
+        # A name resolving proves DNS answers, not that the resolver may connect.
+        # A path here would be classified REACHABLE and widen a generated policy on
+        # evidence that never tested the network.
+        script = runner.build_script([{"type": "dns_resolve", "hosts": ["svc-a"]}])
+        assert "KIMERA_PATH" not in script
+
+    def test_reports_unknown_when_no_resolver_exists(self, runner: ProbeRunner) -> None:
+        script = runner.build_script([{"type": "dns_resolve", "hosts": ["svc-a"]}])
+        assert UNKNOWN_STATE in script
+
+    def test_no_hosts_yields_no_probe(self, runner: ProbeRunner) -> None:
+        # The prelude always defines kimera_resolve, so absence is judged on the
+        # probe's own output, not on the helper being declared.
+        script = runner.build_script([{"type": "dns_resolve", "hosts": []}])
+        assert "Enumerating services via DNS" not in script

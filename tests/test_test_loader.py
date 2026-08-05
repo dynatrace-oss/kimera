@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from kimera.container.make_vulnerable.test_loader import load_exploit_tests
+from kimera.resources import config_dir
 
 
 class TestLoadExploitTests:
@@ -143,3 +144,27 @@ class TestLoadExploitTests:
         tests, _ = load_exploit_tests("both", config_dir=tmp_path)
         assert "/test-path" in tests[0].script
         assert "fallback" not in tests[0].script
+
+
+class TestExploitDefinitionsAreApplicationAgnostic:
+    """Kimera ships for any cluster; only config/profiles/ may name an application."""
+
+    def test_no_exploit_definition_names_an_application_service(self) -> None:
+        # The lateral-movement test previously carried four Unguard service names,
+        # which are wrong on every other cluster and duplicated the discovery the
+        # exploit already performs against the API.
+        exploits = config_dir() / "exploits"
+        assert exploits.is_dir(), "exploit config directory moved; this guard checks nothing"
+
+        offenders = []
+        for path in sorted(exploits.glob("*.yaml")):
+            text = path.read_text(encoding="utf-8")
+            for profile_name in _profile_names():
+                if profile_name in text:
+                    offenders.append(f"{path.name} names '{profile_name}'")
+        assert not offenders, offenders
+
+
+def _profile_names() -> list[str]:
+    """Application names taken from the shipped profiles, whatever they are."""
+    return [p.stem for p in (config_dir() / "profiles").glob("*.yaml")]
