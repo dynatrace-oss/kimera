@@ -101,6 +101,13 @@ class TechniqueResult(BaseModel):
     )
     defense_detail: str = Field(default="")
     dry_run: bool = Field(default=False)
+    raw_output: str = Field(
+        default="",
+        description=(
+            "Verbatim probe output. Evidence markers are a summary of it; without the "
+            "output itself a result cannot be checked against what actually happened."
+        ),
+    )
 
     def to_summary(self) -> str:
         """One-line summary for LLM consumption."""

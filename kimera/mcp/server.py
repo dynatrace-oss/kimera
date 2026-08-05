@@ -28,7 +28,7 @@
 #   }
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -384,7 +384,9 @@ def main() -> None:
     """Run the MCP server."""
     import sys
 
-    transport = "streamable-http" if "--http" in sys.argv else "stdio"
+    transport: Literal["stdio", "streamable-http"] = (
+        "streamable-http" if "--http" in sys.argv else "stdio"
+    )
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting kimera MCP server (transport=%s)", transport)
     mcp_server.run(transport=transport)

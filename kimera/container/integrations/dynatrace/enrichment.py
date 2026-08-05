@@ -14,9 +14,53 @@
 
 import asyncio
 import os
+from typing import Any
 
 from ....core.enrichment import EnrichmentContext
 from ...core.logger import SecurityLogger
+
+DT_CREDENTIAL_VARS = ("DT_ENVIRONMENT", "DT_PLATFORM_TOKEN")
+DT_EXTRA = "kimera[mcp-server]"
+
+
+class DynatraceQueryProvider:
+    """Runs DQL against the Dynatrace hosted MCP gateway."""
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "dynatrace"
+
+    @property
+    def query_language(self) -> str:  # noqa: D102
+        return "DQL"
+
+    def execute_query(self, query: str) -> list[dict[str, Any]]:
+        """Execute a DQL query and return its records.
+
+        Raises:
+            ValueError: If the Dynatrace credentials are not set.
+            ImportError: If the MCP client dependency is not installed.
+        """
+        missing = [var for var in DT_CREDENTIAL_VARS if not os.environ.get(var)]
+        if missing:
+            raise ValueError(f"{' and '.join(missing)} must be set to query Dynatrace.")
+
+        try:
+            from .mcp_client import DynatraceMCPClient
+        except ImportError as exc:
+            raise ImportError(f"{exc}. Install the {DT_EXTRA} extra.") from exc
+
+        async def _run() -> list[dict[str, Any]]:
+            client = DynatraceMCPClient(
+                os.environ["DT_ENVIRONMENT"], os.environ["DT_PLATFORM_TOKEN"]
+            )
+            await client.connect()
+            try:
+                return await client.execute_dql(query)
+            finally:
+                await client.close()
+
+        return asyncio.run(_run())
 
 
 class DynatraceEnrichmentProvider:
