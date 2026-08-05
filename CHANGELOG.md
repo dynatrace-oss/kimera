@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `kimera generate` exited with a raw traceback when no LLM backend was configured or when `ANTHROPIC_API_KEY` was rejected. Both now report actionable guidance, and a rejected key names the override needed to reach a Claude subscription instead.
 - The subscription backend removes `ANTHROPIC_API_KEY` from the CLI subprocess environment. The `claude` CLI treats that variable as taking precedence over the signed-in session and refuses to use the subscription while it is set, so a stale key anywhere in the environment made the backend unusable.
+- The `claude-cli` backend ran from the caller's working directory, so the CLI loaded that directory's project instructions and hooks and answered with them mixed in. It now runs from an empty directory.
 - `kimera generate --enrich dynatrace` raised `TypeError: TargetedQueryStrategy() takes no arguments`. The `--model` flag has a non-empty default, so `model=` was forwarded to every strategy while only `llm-query` accepts it; `create_strategy` now drops arguments the chosen strategy does not take.
 - Docstrings and error messages told users to install a `kimera[dt-mcp]` extra that does not exist. The extra is `kimera[mcp-server]`.
 - The default model was hardcoded in three separate files and is now defined once.

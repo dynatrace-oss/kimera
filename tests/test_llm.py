@@ -14,6 +14,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -183,6 +184,22 @@ class TestClaudeCliBackend:
         env = run.call_args.kwargs["env"]
         assert "ANTHROPIC_API_KEY" not in env
         assert "PATH" in env
+
+    def test_runs_outside_the_callers_working_directory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The CLI loads the working directory's project instructions and hooks. Run from the
+        # caller's repository it answered about that repository instead of the prompt, and the
+        # generated YAML was unparseable.
+        _with_cli(monkeypatch)
+        with patch.object(llm.subprocess, "run", return_value=self._run('{"result":"x"}')) as run:
+            llm.complete(system="s", user="u", model="m", max_tokens=10)
+        cwd = Path(run.call_args.kwargs["cwd"]).resolve()
+        assert cwd != Path.cwd().resolve()
+        assert Path.cwd().resolve() not in cwd.parents
+        # A temporary directory, so it is gone once the call returns and can carry no project
+        # state between calls.
+        assert not cwd.exists()
 
     def test_timeout_is_bounded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _with_cli(monkeypatch)

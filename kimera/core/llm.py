@@ -17,6 +17,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 from enum import StrEnum
 from typing import Any
 
@@ -187,6 +188,11 @@ def _complete_claude_cli(*, system: str, user: str, model: str) -> str:
     taking precedence over the signed-in session and refuses to use the subscription while it
     is set, so a stale key elsewhere in the environment would otherwise make this backend
     unusable on the machines that need it most.
+
+    The call runs from an empty directory. The CLI loads the working directory's project
+    instructions, hooks and settings, so invoking it from inside a repository answers with that
+    repository's context mixed in — measured here as a completion that discussed the caller's
+    own source tree instead of the requested policy set.
     """
     argv = [
         CLAUDE_CLI_BINARY,
@@ -201,13 +207,15 @@ def _complete_claude_cli(*, system: str, user: str, model: str) -> str:
     ]
     env = {k: v for k, v in os.environ.items() if k != ANTHROPIC_KEY_ENV_VAR}
     try:
-        result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-            env=env,
-        )
+        with tempfile.TemporaryDirectory() as neutral_cwd:
+            result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                env=env,
+                cwd=neutral_cwd,
+            )
     except subprocess.TimeoutExpired as exc:
         raise ProviderError(
             f"{Backend.CLAUDE_CLI.value}: no response within {REQUEST_TIMEOUT_SECONDS}s"
