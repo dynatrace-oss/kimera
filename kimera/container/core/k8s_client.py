@@ -26,7 +26,7 @@ from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 
 from kimera.container.core.command import run_command
-from kimera.container.core.exceptions import K8sError
+from kimera.container.core.exceptions import K8sError, PermissionDeniedError
 
 from .logger import SecurityLogger, setup_logger
 
@@ -395,13 +395,19 @@ class K8sClient:
     # --- DaemonSet operations ---
 
     def get_daemonset(self, name: str, namespace: str | None = None) -> V1DaemonSet | None:
-        """Get a DaemonSet by name."""
+        """Get a DaemonSet by name.
+
+        Returns ``None`` only when the DaemonSet genuinely does not exist. A 403
+        raises instead, so a denial is never read as absence.
+        """
         ns = namespace or self.namespace
         try:
             return self.apps_v1.read_namespaced_daemon_set(name, ns)
         except ApiException as e:
             if e.status == 404:
                 return None
+            if e.status == 403:
+                raise PermissionDeniedError(f"Forbidden: read daemonset {name} in {ns}") from e
             raise K8sError(f"Failed to get DaemonSet {name}: {e}") from e
 
     def create_daemonset(

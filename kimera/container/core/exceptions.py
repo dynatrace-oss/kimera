@@ -25,6 +25,14 @@ class K8sError(K8sSecurityError):
     pass
 
 
+class PermissionDeniedError(K8sError):
+    """The API server returned 403 for a read the caller needed.
+
+    Distinct from a 404: a denial says nothing about whether the resource exists,
+    and reporting it as absence produces a confident wrong answer.
+    """
+
+
 class PodNotFoundError(K8sError):
     """Raised when a pod cannot be found."""
 

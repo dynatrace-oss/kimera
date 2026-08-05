@@ -87,3 +87,19 @@ network_topology:
   unguard-redis:
     allowed_ingress_from:
       - {app.kubernetes.io/name: microblog-service}
+  # The traffic generator is test scaffolding, not part of the application under
+  # test. Its headless browser loads avatars from an external host; without this
+  # declaration a default-deny set hangs it on that request until Puppeteer's
+  # navigation timeout, and it crash-loops instead of generating traffic. The
+  # except list keeps every in-cluster address and the cloud metadata endpoint
+  # denied, so the segmentation being demonstrated is unaffected.
+  unguard-user-simulator:
+    allowed_egress_to:
+      - cidr: 0.0.0.0/0
+        except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+          - 169.254.169.254/32
+        ports: [80, 443]
+        protocol: TCP

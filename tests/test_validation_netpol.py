@@ -125,7 +125,7 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._test_connectivity")
     def test_no_policies_all_open(self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
         mock_conn.return_value = True  # Everything is reachable
 
         report = validate_network_policies(mock_k8s, sec_logger)
@@ -147,7 +147,7 @@ class TestValidateNetworkPolicies:
             policy_types=["Ingress", "Egress"],
         )
         mock_k8s.list_network_policies.return_value = [policy]
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
         mock_conn.return_value = False  # Everything is blocked
 
         report = validate_network_policies(mock_k8s, sec_logger)
@@ -157,12 +157,16 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     def test_probe_deploy_fails(self, mock_deploy, mock_k8s, sec_logger):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = False
+        mock_deploy.return_value = "rejected by admission control: HTTP 403 Forbidden"
 
         report = validate_network_policies(mock_k8s, sec_logger)
-        # Should still have the default-deny check
-        assert report.total >= 1
-        assert "probe pod deployment failed" in report.summary
+
+        skipped = [r for r in report.results if r.control_name == "active-connectivity-tests"]
+        assert len(skipped) == 1
+        assert skipped[0].verdict == ValidationVerdict.ERROR
+        assert "HTTP 403" in skipped[0].evidence
+        assert report.all_passed is False
+        assert "NOT executed" in report.summary
 
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     @patch("kimera.container.validation.network_policy._cleanup_probe_pod")
@@ -171,7 +175,7 @@ class TestValidateNetworkPolicies:
         self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger
     ):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
 
         def conn_side_effect(k8s, ns, host, port, **kwargs):
             if host == "169.254.169.254":

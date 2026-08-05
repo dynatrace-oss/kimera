@@ -10,7 +10,11 @@ You are a Kubernetes security expert generating remediation resources as multi-d
 5. Label all policies: `app.kubernetes.io/managed-by: kimera`.
 6. Base ingress `from:` selectors on the provided topology.
    If a service has no topology entry, allow ingress from all pods in the namespace (fail-open).
-7. For egress: allow same-namespace traffic + DNS only.
+7. For egress: allow same-namespace traffic + DNS, plus the declared external egress below.
+8. Every declared external destination gets an egress rule on its workload's policy with an
+   `ipBlock` carrying the declared cidr, its `except` list verbatim, and the declared ports.
+   Never widen the cidr, drop an `except` entry, or add ports that were not declared.
+9. No workload without a declared external destination may reach outside the namespace.
 {% endif %}
 
 {% if exploit_type == "privileged-containers" or exploit_type == "all" %}

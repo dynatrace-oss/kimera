@@ -19,9 +19,14 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from kimera.application.config.loader import ConfigLoader
-from kimera.application.config.schemas import ToolkitConfig
+from kimera.application.config.schemas import (
+    ExternalEgressDestination,
+    NetworkTopologyEntry,
+    ToolkitConfig,
+)
 
 
 class TestToolkitConfig:
@@ -174,3 +179,68 @@ class TestConfigLoaderFromFile:
         """Test that a nonexistent config directory raises."""
         with pytest.raises(FileNotFoundError, match="Config directory not found"):
             ConfigLoader(config_dir=Path("/nonexistent/path"))
+
+
+class TestNetworkTopologyEntry:
+    """Ingress/egress declarations in network_topology."""
+
+    def test_external_egress_destination_loads_with_except_alias(self):
+        """The YAML key `except` populates except_, which is a reserved word in Python."""
+        entry = NetworkTopologyEntry.model_validate(
+            {
+                "allowed_egress_to": [
+                    {
+                        "cidr": "0.0.0.0/0",
+                        "except": ["10.0.0.0/8", "169.254.169.254/32"],
+                        "ports": [443],
+                        "protocol": "TCP",
+                    }
+                ]
+            }
+        )
+
+        dest = entry.allowed_egress_to[0]
+        assert str(dest.cidr) == "0.0.0.0/0"
+        assert [str(n) for n in dest.except_] == ["10.0.0.0/8", "169.254.169.254/32"]
+        assert dest.ports == [443]
+        assert dest.protocol == "TCP"
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("cidr", "not-a-cidr"),
+            ("except", ["not-a-cidr"]),
+            ("ports", []),
+            ("ports", [70000]),
+            ("ports", [0]),
+            ("protocol", "ICMP"),
+        ],
+    )
+    def test_malformed_destination_rejected(self, field, value):
+        """A malformed destination fails validation naming the offending field."""
+        payload = {"cidr": "0.0.0.0/0", "ports": [443], "protocol": "TCP"}
+        payload[field] = value
+
+        with pytest.raises(ValidationError) as exc:
+            ExternalEgressDestination.model_validate(payload)
+
+        assert field in str(exc.value)
+
+    def test_undeclared_ingress_is_none_not_empty_list(self):
+        """None (undeclared) and [] (block all ingress) must stay distinguishable."""
+        undeclared = NetworkTopologyEntry.model_validate({"allowed_egress_to": []})
+        blocked = NetworkTopologyEntry.model_validate({"allowed_ingress_from": []})
+
+        assert undeclared.allowed_ingress_from is None
+        assert blocked.allowed_ingress_from == []
+
+    def test_shipped_profiles_load_with_unchanged_ingress(self):
+        """Changing the ingress default to None must not alter any shipped profile."""
+        for profile_path in sorted((Path("config/profiles")).glob("*.yaml")):
+            raw = yaml.safe_load(profile_path.read_text())
+            config = ConfigLoader().load(profile=profile_path.stem)
+
+            for workload, entry in (raw.get("network_topology") or {}).items():
+                expected = entry.get("allowed_ingress_from")
+                actual = config.network_topology[workload].allowed_ingress_from
+                assert actual == expected, f"{profile_path.name}:{workload}"

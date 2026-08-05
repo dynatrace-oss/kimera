@@ -22,6 +22,7 @@ from ...application.config.schemas import NetworkTopologyEntry
 from ...core.llm import DEFAULT_MODEL, complete, strip_code_fence
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
+from ..validation.external_egress import close_external_gaps, unmatched_declarations
 from ..validation.reachability import Workload, close_gaps
 
 _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
@@ -95,8 +96,9 @@ class LLMRemediationGenerator:
         Args:
             k8s: Kubernetes client.
             logger: Security logger.
-            network_topology: Per-service ingress topology from profile config.
-                Used to populate the ``from:`` selectors in generated policies.
+            network_topology: Per-workload ingress topology and declared external
+                egress from profile config. Populates the ``from:`` selectors in
+                generated policies and guarantees the declared ``ipBlock`` rules.
             model: Anthropic model identifier.
         """
         self.k8s = k8s
@@ -136,10 +138,7 @@ class LLMRemediationGenerator:
 
         namespace = self.k8s.namespace
         context = self._get_cluster_context(exploit_type)
-        topology = {
-            svc: [dict(c) for c in entry.allowed_ingress_from]
-            for svc, entry in self._topology.items()
-        }
+        topology = self._render_topology()
 
         system_prompt = _load_template("generate_system.j2").render(exploit_type=exploit_type)
         user_prompt = _load_template("generate_user.j2").render(
@@ -157,15 +156,44 @@ class LLMRemediationGenerator:
         yaml_output = strip_code_fence(raw)
         self._validate_yaml(yaml_output)
         if exploit_type in ("missing-network-policies", "all"):
-            yaml_output = self._close_policy_gaps(yaml_output, context)
+            yaml_output = self._close_gaps(yaml_output, context)
         return yaml_output
 
-    def _close_policy_gaps(self, yaml_text: str, context: dict[str, Any]) -> str:
-        """Add egress rules for flows the generated ingress rules declare but deny.
+    def _render_topology(self) -> dict[str, dict[str, Any]]:
+        """Flatten the profile topology for the prompt template.
 
-        A NetworkPolicy permits a flow only when both sides agree. An LLM writing
-        ingress and egress independently can allow a source in one and omit it in
-        the other, severing the flow the policy set claims to permit.
+        ``ingress`` stays ``None`` when undeclared so the template can tell that apart
+        from an explicit empty list, which means block all ingress.
+        """
+        return {
+            svc: {
+                "ingress": (
+                    None
+                    if entry.allowed_ingress_from is None
+                    else [dict(c) for c in entry.allowed_ingress_from]
+                ),
+                "egress": [
+                    {
+                        "cidr": str(dest.cidr),
+                        "excluded": [str(net) for net in dest.except_],
+                        "ports": list(dest.ports),
+                        "protocol": dest.protocol,
+                    }
+                    for dest in entry.allowed_egress_to
+                ],
+            }
+            for svc, entry in self._topology.items()
+        }
+
+    def _close_gaps(self, yaml_text: str, context: dict[str, Any]) -> str:
+        """Add egress rules for flows the policy set declares but denies.
+
+        Two classes are closed. A NetworkPolicy permits a pod-to-pod flow only when
+        both sides agree, and an LLM writing ingress and egress independently can
+        allow a source in one and omit it in the other. Separately, a declared
+        external destination is only permitted if some rule carries a matching
+        ``ipBlock`` — a set that omits it severs the workload's dependency while
+        every app-to-app flow still passes.
         """
         workloads = [
             Workload(name=name, labels=dict(info.get("labels") or {}))
@@ -175,15 +203,29 @@ class LLMRemediationGenerator:
         if not workloads:
             return yaml_text
 
+        for key in unmatched_declarations(workloads, self._topology):
+            self.logger.warning(
+                f"Topology key '{key}' declares external egress but matches no workload "
+                f"in {self.k8s.namespace} — no rule added for it"
+            )
+
         docs = [d for d in yaml.safe_load_all(yaml_text) if d]
         policies = [d for d in docs if d.get("kind") == "NetworkPolicy"]
         closed = close_gaps(policies, workloads)
-        if not closed:
+        closed_external = close_external_gaps(docs, workloads, self._topology, self.k8s.namespace)
+        if not closed and not closed_external:
             return yaml_text
 
         for gap in closed:
             self.logger.warning(f"Closed egress gap: {gap.describe()}")
-        self.logger.info(f"Added {len(closed)} egress rule(s) to match declared ingress")
+        for external_gap in closed_external:
+            self.logger.warning(f"Closed external egress gap: {external_gap.describe()}")
+        if closed:
+            self.logger.info(f"Added {len(closed)} egress rule(s) to match declared ingress")
+        if closed_external:
+            self.logger.info(
+                f"Added egress rule(s) for {len(closed_external)} declared external destination(s)"
+            )
         return yaml.safe_dump_all(docs, default_flow_style=False, sort_keys=False)
 
     def generate_exploit(

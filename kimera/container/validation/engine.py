@@ -19,9 +19,11 @@ validator(s) based on the requested control type.
 """
 
 import json
+from collections.abc import Callable
 
 from rich.table import Table
 
+from ...application.config.schemas import NetworkTopologyEntry
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console
 from .admission import validate_admission
@@ -39,6 +41,7 @@ def validate_controls(
     logger: SecurityLogger,
     control_type: str = "all",
     output_json: bool = False,
+    network_topology: dict[str, NetworkTopologyEntry] | None = None,
 ) -> list[ValidationReport]:
     """Run security control validation for the given type(s).
 
@@ -47,16 +50,20 @@ def validate_controls(
         logger: Security logger for console output.
         control_type: One of ``network-policy``, ``admission``, ``rbac``, ``all``.
         output_json: If True, print JSON output instead of Rich tables.
+        network_topology: Profile topology, so declared external egress is checked
+            alongside the pod-to-pod flows.
 
     Returns:
         List of ValidationReport objects.
     """
     reports: list[ValidationReport] = []
 
-    validators = {
-        ControlType.NETWORK_POLICY: validate_network_policies,
-        ControlType.ADMISSION: validate_admission,
-        ControlType.RBAC: validate_rbac,
+    validators: dict[ControlType, Callable[[], ValidationReport]] = {
+        ControlType.NETWORK_POLICY: lambda: validate_network_policies(
+            k8s, logger, network_topology
+        ),
+        ControlType.ADMISSION: lambda: validate_admission(k8s, logger),
+        ControlType.RBAC: lambda: validate_rbac(k8s, logger),
     }
 
     if control_type == "all":
@@ -73,8 +80,7 @@ def validate_controls(
 
     for ct in types_to_run:
         console.print(f"\n[bold]═══ Validating: {ct.value} ═══[/bold]\n")
-        validator = validators[ct]
-        report = validator(k8s, logger)
+        report = validators[ct]()
         reports.append(report)
 
         if output_json:

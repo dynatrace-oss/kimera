@@ -25,9 +25,11 @@ from typing import Any
 
 from kubernetes.client import ApiException
 
+from ...application.config.schemas import NetworkTopologyEntry
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 from ..make_vulnerable.probe_prelude import PROBE_PRELUDE, UNKNOWN_STATE
+from .external_egress import find_external_gaps, unmatched_declarations
 from .models import (
     ControlType,
     ValidationReport,
@@ -94,8 +96,14 @@ METADATA_TARGETS: list[dict[str, Any]] = [
 ]
 
 
-def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> bool:
-    """Deploy an ephemeral busybox probe pod for network testing."""
+def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> str | None:
+    """Deploy an ephemeral busybox probe pod for network testing.
+
+    Returns:
+        ``None`` on success, otherwise the reason the pod could not be run. The
+        reason is reported as evidence: a probe rejected by admission control and
+        a probe that never became ready are different facts about the namespace.
+    """
     pod_body: dict[str, Any] = {
         "apiVersion": "v1",
         "kind": "Pod",
@@ -136,8 +144,8 @@ def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> bool:
                 k8s.v1.delete_namespaced_pod(PROBE_POD_NAME, namespace)
                 time.sleep(5)
                 k8s.v1.create_namespaced_pod(namespace=namespace, body=pod_body)
-            except ApiException:
-                return False
+            except ApiException as retry_error:
+                return f"recreate failed: HTTP {retry_error.status} {retry_error.reason}"
         elif e.status in (403, 422):
             # Admission rejected — that's actually useful info
             logger.warning(
@@ -145,21 +153,21 @@ def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> bool:
                 "This may indicate strict policies that also block the probe itself.",
                 e.reason,
             )
-            return False
+            return f"rejected by admission control: HTTP {e.status} {e.reason}"
         else:
-            return False
+            return f"create failed: HTTP {e.status} {e.reason}"
 
     # Wait for pod to be running
     for _ in range(30):
         try:
             pod = k8s.v1.read_namespaced_pod(PROBE_POD_NAME, namespace)
             if pod.status.phase == "Running":
-                return True
+                return None
         except ApiException:
             pass
         time.sleep(2)
 
-    return False
+    return "probe pod never reached Running within 60s"
 
 
 def _cleanup_probe_pod(k8s: K8sClient, namespace: str) -> None:
@@ -306,12 +314,17 @@ def _check_default_deny(k8s: K8sClient, namespace: str) -> ValidationResult | No
     )
 
 
-def _check_policy_reachability(k8s: K8sClient, namespace: str) -> list[ValidationResult]:
-    """Report flows an ingress rule permits that the source's egress rules deny.
+def _check_policy_reachability(
+    k8s: K8sClient,
+    namespace: str,
+    network_topology: dict[str, NetworkTopologyEntry] | None = None,
+) -> list[ValidationResult]:
+    """Report flows the policy set declares but denies.
 
     The probe-pod tests below only ever measure an unlabeled pod, so a policy set
     that severs a real workload-to-workload path still passes them. This check
-    reads the flows the policy set declares and confirms both sides agree.
+    reads the flows the policy set declares — pod-to-pod, and the external
+    destinations the profile declares — and confirms both sides agree.
     """
     try:
         policies_raw = k8s.list_network_policies(namespace)
@@ -329,22 +342,7 @@ def _check_policy_reachability(k8s: K8sClient, namespace: str) -> list[Validatio
         Workload(name=p.metadata.name, labels=dict(p.metadata.labels or {})) for p in pods_raw.items
     ]
 
-    gaps = find_gaps(policies, workloads)
-    if not gaps:
-        return [
-            ValidationResult(
-                control_type=ControlType.NETWORK_POLICY,
-                control_name="policy-reachability",
-                test_description="Every flow declared by an ingress rule is permitted end to end",
-                expected="REACHABLE",
-                actual="REACHABLE",
-                verdict=ValidationVerdict.PASS,
-                evidence="All ingress-declared flows have matching egress rules",
-                remediation_hint="",
-            )
-        ]
-
-    return [
+    results = [
         ValidationResult(
             control_type=ControlType.NETWORK_POLICY,
             control_name="policy-reachability",
@@ -360,13 +358,55 @@ def _check_policy_reachability(k8s: K8sClient, namespace: str) -> list[Validatio
                 "both permit it."
             ),
         )
-        for gap in gaps
+        for gap in find_gaps(policies, workloads)
+    ]
+
+    for name in unmatched_declarations(workloads, network_topology or {}):
+        logger.warning(
+            "Topology key '%s' declares external egress but matches no pod in %s", name, namespace
+        )
+
+    results.extend(
+        ValidationResult(
+            control_type=ControlType.NETWORK_POLICY,
+            control_name="external-egress-reachability",
+            test_description=(
+                f"{gap.workload} -> {gap.cidr}:{gap.port} is declared and should be permitted"
+            ),
+            expected="REACHABLE",
+            actual="EGRESS_DENIED",
+            verdict=ValidationVerdict.ERROR,
+            evidence=gap.describe(),
+            remediation_hint=(
+                f"Add an egress rule on {gap.workload} with an ipBlock for {gap.cidr} "
+                f"on port {gap.port}. A workload whose external dependency is severed "
+                "keeps passing every app-to-app check while failing to start."
+            ),
+        )
+        for gap in find_external_gaps(policies, workloads, network_topology or {})
+    )
+
+    if results:
+        return results
+
+    return [
+        ValidationResult(
+            control_type=ControlType.NETWORK_POLICY,
+            control_name="policy-reachability",
+            test_description="Every flow the policy set declares is permitted end to end",
+            expected="REACHABLE",
+            actual="REACHABLE",
+            verdict=ValidationVerdict.PASS,
+            evidence="All declared flows, pod-to-pod and external, have matching egress rules",
+            remediation_hint="",
+        )
     ]
 
 
 def validate_network_policies(
     k8s: K8sClient,
     sec_logger: SecurityLogger,
+    network_topology: dict[str, NetworkTopologyEntry] | None = None,
 ) -> ValidationReport:
     """Validate that NetworkPolicies actually block unauthorized traffic.
 
@@ -377,6 +417,8 @@ def validate_network_policies(
     Args:
         k8s: Kubernetes client.
         sec_logger: Security logger for console output.
+        network_topology: Profile topology, so declared external egress is checked
+            alongside the pod-to-pod flows.
 
     Returns:
         ValidationReport with results for each connectivity test.
@@ -389,7 +431,7 @@ def validate_network_policies(
     if default_deny_result:
         report.results.append(default_deny_result)
 
-    reachability_results = _check_policy_reachability(k8s, namespace)
+    reachability_results = _check_policy_reachability(k8s, namespace, network_topology)
     report.results.extend(reachability_results)
     broken = [r for r in reachability_results if r.verdict == ValidationVerdict.ERROR]
     if broken:
@@ -409,16 +451,37 @@ def validate_network_policies(
 
     # Deploy probe pod
     sec_logger.info("Deploying network probe pod...")
-    probe_deployed = _deploy_probe_pod(k8s, namespace)
+    probe_failure = _deploy_probe_pod(k8s, namespace)
 
-    if not probe_deployed:
+    if probe_failure is not None:
         sec_logger.warning(
-            "Could not deploy probe pod. Admission controllers may be blocking it. "
-            "Skipping active connectivity tests."
+            f"Could not deploy probe pod ({probe_failure}). "
+            "Active connectivity tests were NOT executed — no control below was verified."
+        )
+        # Recorded as ERROR, not omitted: a ratio computed over only the static checks
+        # reads as a pass for controls nothing measured.
+        report.results.append(
+            ValidationResult(
+                control_type=ControlType.NETWORK_POLICY,
+                control_name="active-connectivity-tests",
+                test_description=(
+                    "Probe pod reaches blocked targets (metadata, API server, cross-namespace, "
+                    "intra-namespace) to prove the policies hold"
+                ),
+                expected="EXECUTED",
+                actual="NOT_EXECUTED",
+                verdict=ValidationVerdict.ERROR,
+                evidence=f"probe pod could not be run: {probe_failure}",
+                remediation_hint=(
+                    "Grant the probe pod the security context the namespace's Pod Security "
+                    "Admission level requires, or run validation from a namespace that permits "
+                    "it. Until it runs, these controls are unverified, not passing."
+                ),
+            )
         )
         report.summary = (
-            f"NetworkPolicy validation: {report.passed}/{report.total} passed "
-            f"(probe pod deployment failed — active tests skipped)."
+            f"NetworkPolicy validation: {report.passed}/{report.total} static checks passed; "
+            f"active connectivity tests NOT executed ({probe_failure})."
         )
         return report
 

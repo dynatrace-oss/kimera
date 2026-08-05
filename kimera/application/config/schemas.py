@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyNetwork, field_validator
 
 
 class ResourceLimits(BaseModel):
@@ -186,15 +186,55 @@ class LoggingConfig(BaseModel):
     console: bool = Field(default=True, description="Enable console logging")
 
 
-class NetworkTopologyEntry(BaseModel):
-    """Network topology entry for a single service.
+class ExternalEgressDestination(BaseModel):
+    """A destination outside the namespace that a workload legitimately reaches.
 
     Attributes:
-        allowed_ingress_from: Pod label selectors permitted to send ingress traffic
+        cidr: Destination network in CIDR notation
+        except_: Networks carved out of ``cidr``, written in YAML as ``except``
+        ports: Destination ports
+        protocol: TCP or UDP
     """
 
-    allowed_ingress_from: list[dict[str, str]] = Field(
-        default_factory=list, description="Pod label selectors allowed to send ingress"
+    model_config = ConfigDict(populate_by_name=True)
+
+    cidr: IPvAnyNetwork = Field(..., description="Destination network in CIDR notation")
+    except_: list[IPvAnyNetwork] = Field(
+        default_factory=list,
+        alias="except",
+        description="Networks excluded from cidr (e.g. in-cluster and metadata ranges)",
+    )
+    ports: list[int] = Field(..., min_length=1, description="Destination ports")
+    protocol: str = Field(default="TCP", pattern="^(TCP|UDP)$", description="TCP or UDP")
+
+    @field_validator("ports")
+    @classmethod
+    def validate_ports(cls, v: list[int]) -> list[int]:
+        """Reject port numbers outside the valid TCP/UDP range."""
+        for port in v:
+            if not 1 <= port <= 65535:
+                raise ValueError(f"Port out of range 1-65535: {port}")
+        return v
+
+
+class NetworkTopologyEntry(BaseModel):
+    """Network topology entry for a single workload.
+
+    The map key names the workload the entry applies to: for ``allowed_ingress_from``
+    it is the traffic's destination, for ``allowed_egress_to`` its source.
+
+    Attributes:
+        allowed_ingress_from: Pod label selectors permitted to send ingress traffic.
+            ``None`` means undeclared, leaving ingress to the fail-open rule; an empty
+            list means block all ingress.
+        allowed_egress_to: External destinations this workload legitimately reaches
+    """
+
+    allowed_ingress_from: list[dict[str, str]] | None = Field(
+        default=None, description="Pod label selectors allowed to send ingress"
+    )
+    allowed_egress_to: list[ExternalEgressDestination] = Field(
+        default_factory=list, description="External destinations this workload may reach"
     )
 
 
@@ -219,7 +259,7 @@ class ToolkitConfig(BaseModel):
         kubernetes: Kubernetes settings
         services: Service names to target
         exploit_mappings: Map of exploit types to services
-        network_topology: Least-privilege ingress topology per service
+        network_topology: Least-privilege ingress and declared external egress per workload
         exploits: Exploit configurations
         timeouts: Timeout settings
         logging: Logging configuration
@@ -237,7 +277,8 @@ class ToolkitConfig(BaseModel):
         default_factory=dict, description="Exploit to service mappings"
     )
     network_topology: dict[str, NetworkTopologyEntry] = Field(
-        default_factory=dict, description="Least-privilege ingress topology per service"
+        default_factory=dict,
+        description="Least-privilege ingress and declared external egress per workload",
     )
     exploits: dict[str, ExploitConfig] = Field(
         default_factory=dict, description="Exploit configurations"

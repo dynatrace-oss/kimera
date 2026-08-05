@@ -14,11 +14,23 @@
 
 from typing import Any
 
+from kimera.container.core.exceptions import PermissionDeniedError
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger, console, setup_logger
 
 CILIUM_NAMESPACE = "kube-system"
 CILIUM_DAEMONSET = "cilium"
+
+
+def enforcement_denial_message() -> str:
+    """Return the guidance printed when the enforcement read is denied."""
+    return (
+        f"Cannot determine NetworkPolicy enforcement status: reading "
+        f"daemonset/{CILIUM_DAEMONSET} in namespace {CILIUM_NAMESPACE} was denied. "
+        "This is not evidence that enforcement is absent — grant read access to that "
+        "namespace, or ask a cluster admin to confirm."
+    )
+
 
 _CILIUM_INSTALL_GUIDANCE = """\
 [bold]Cilium is not running in this cluster.[/bold]
@@ -107,7 +119,11 @@ class PolicyEnforcementManager:
             self.logger.info("DRY RUN: Would check for Cilium enforcement")
             return True
 
-        if self.is_enabled():
+        enabled = self.is_enabled()
+        if enabled is None:
+            self.logger.warning(enforcement_denial_message())
+            return False
+        if enabled:
             self.logger.success("Cilium is running — NetworkPolicy enforcement is active")
             return True
 
@@ -129,13 +145,19 @@ class PolicyEnforcementManager:
 
         console.print(_CILIUM_UNINSTALL_GUIDANCE)
 
-    def is_enabled(self) -> bool:
+    def is_enabled(self) -> bool | None:
         """Check if the Cilium DaemonSet is running with all pods ready.
 
         Returns:
-            True if Cilium is installed and all desired pods are ready.
+            True if Cilium is installed and all desired pods are ready, False if it
+            is absent or unready, and ``None`` if the read was denied. Callers must
+            test ``is None`` before truthiness: treating a denial as False asserts
+            an absence nothing measured.
         """
-        ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
+        try:
+            ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
+        except PermissionDeniedError:
+            return None
         if not ds or not ds.status:
             return False
         desired = ds.status.desired_number_scheduled or 0
@@ -146,10 +168,17 @@ class PolicyEnforcementManager:
         """Return detailed Cilium enforcement status.
 
         Returns:
-            Dict with ``installed`` bool and, when installed, pod counts
-            and the DaemonSet image.
+            Dict whose ``installed`` key is True, False, or ``None`` when the read
+            was denied. On a denial the ``denied`` key names the resource.
         """
-        ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
+        try:
+            ds = self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
+        except PermissionDeniedError as e:
+            return {
+                "installed": None,
+                "denied": f"daemonset/{CILIUM_DAEMONSET} in namespace {CILIUM_NAMESPACE}",
+                "reason": str(e),
+            }
         if not ds or not ds.status:
             return {"installed": False}
 

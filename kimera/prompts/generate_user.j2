@@ -31,18 +31,33 @@ Services:
 
 Allowed ingress topology (service -> callers):
 {% if topology %}
-{% for svc, callers in topology.items() %}
+{% for svc, entry in topology.items() %}
+{% if entry.ingress is not none %}
   {{ svc }}:
-{% if callers %}
-{% for caller in callers %}
+{% if entry.ingress %}
+{% for caller in entry.ingress %}
     - {{ caller | tojson }}
 {% endfor %}
 {% else %}
     [] (no callers — block all ingress)
 {% endif %}
+{% endif %}
 {% endfor %}
 {% else %}
   (none configured — apply fail-open ingress for all services)
+{% endif %}
+
+Declared external egress (workload -> destinations outside the namespace):
+{% set declared = [] %}
+{% for svc, entry in topology.items() if entry.egress %}
+{% set _ = declared.append(svc) %}
+  {{ svc }}:
+{% for dest in entry.egress %}
+    - cidr={{ dest.cidr }}{% if dest.excluded %}, except={{ dest.excluded | tojson }}{% endif %}, ports={{ dest.ports | tojson }}, protocol={{ dest.protocol }}
+{% endfor %}
+{% endfor %}
+{% if not declared %}
+  (none declared — no workload may reach outside the namespace)
 {% endif %}
 
 Generate NetworkPolicies for ALL workloads listed above — Deployments, StatefulSets and CronJobs.

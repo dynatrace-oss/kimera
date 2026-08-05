@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload legitimately reaches, as a CIDR with an `except` list, ports and protocol. Generated policy sets carry every declared destination whether or not the model emitted it: a post-processing pass adds what is missing, attaching it to the workload's own policy or creating one scoped to its labels, never widening the namespace-wide default-deny. Nothing is inferred — an undeclared destination stays denied. Without this, a default-deny set severs a workload's external dependency and it fails to start while every app-to-app flow still passes, which reads as a segmentation failure it is not.
+
+### Fixed
+
+- `kimera validate-control --type network-policy` now reports declared external egress that the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
+- `kimera validate-control --type network-policy` no longer reports a pass ratio for active connectivity tests it did not run. When the probe pod cannot be deployed — Pod Security Admission rejecting it, for one — the skipped tests are recorded as an ERROR result naming the reason, so the report is not `all_passed`. It previously printed "2/2 passed" having verified nothing.
+- `kimera enforce status` and `enforce disable` no longer treat an authorization denial as absence. A 403 reading the enforcement DaemonSet raises `PermissionDeniedError`, and both commands report that the status is unknown and name the denied resource; `status` previously raised a traceback and `disable` reported "no enforcement to disable". A 404 still means not installed.
+
+### Changed
+
+- `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry that declares only egress no longer blocks that workload's ingress as a side effect. An explicit empty list still means block all ingress. Shipped profiles are unaffected.
+
 ### Security
 
 - Upgraded `cryptography` to 50.0.0, resolving GHSA-g6cj-pr64-35w5 (high).

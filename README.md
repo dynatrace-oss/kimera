@@ -177,6 +177,25 @@ Assessment checks are defined in `config/checks/workload.yaml` — 14 checks cov
 
 Environment variable overrides are defined in `config/env_mappings.yaml`.
 
+### Network topology
+
+`network_topology` in a profile drives NetworkPolicy generation. The map key names the workload an entry applies to.
+
+```yaml
+network_topology:
+  unguard-mariadb:
+    allowed_ingress_from:                      # omit the key to leave ingress undeclared;
+      - {app.kubernetes.io/name: like-service} # an empty list means block all ingress
+  unguard-user-simulator:
+    allowed_egress_to:                         # destinations outside the namespace
+      - cidr: 0.0.0.0/0
+        except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32]
+        ports: [80, 443]
+        protocol: TCP
+```
+
+A workload with an external dependency needs `allowed_egress_to`, or a default-deny set severs it — the workload then fails to start while every app-to-app flow still passes, which is easy to misread as a segmentation failure. Declared destinations are added to the generated set deterministically, not left to the model, and are checked by `kimera validate-control --type network-policy`. Nothing is inferred: a destination that is not declared is not permitted.
+
 ## Observability Enrichment
 
 Kimera supports pluggable enrichment from observability platforms via the `EnrichmentProvider` protocol. Dynatrace is the built-in provider:

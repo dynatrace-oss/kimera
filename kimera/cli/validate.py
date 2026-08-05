@@ -49,5 +49,12 @@ def validate_control(ctx: click.Context, control_type: str, output_json: bool) -
     """
     logger = ctx.obj["logger"]
     k8s = ctx.obj["k8s"]
+    config = ctx.obj["config"]
 
-    validate_controls(k8s, logger, control_type=control_type, output_json=output_json)
+    validate_controls(
+        k8s,
+        logger,
+        control_type=control_type,
+        output_json=output_json,
+        network_topology=config.network_topology,
+    )

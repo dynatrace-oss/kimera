@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.rest import ApiException
 
-from kimera.container.core.exceptions import K8sError
+from kimera.container.core.exceptions import K8sError, PermissionDeniedError
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
 from kimera.container.enforcement import (
@@ -315,3 +315,47 @@ class TestEnforcementStatus:
 
         status = self.manager.get_status()
         assert status["installed"] is False
+
+
+class TestPermissionDeniedIsNotAbsence:
+    """A 403 says nothing about whether the DaemonSet exists.
+
+    Reading a denial as absence is what produced the false "Cilium is not
+    installed" conclusion; every path below must keep the two apart.
+    """
+
+    def setup_method(self):
+        self.k8s, self.mock_apps, _, _, self.mock_logger = _create_mock_k8s_client()
+        self.mock_apps.read_namespaced_daemon_set.side_effect = ApiException(
+            status=403, reason="Forbidden"
+        )
+        self.manager = PolicyEnforcementManager(self.k8s, self.mock_logger)
+
+    def test_get_daemonset_raises_rather_than_returning_none(self):
+        with pytest.raises(PermissionDeniedError, match="Forbidden"):
+            self.k8s.get_daemonset(CILIUM_DAEMONSET, CILIUM_NAMESPACE)
+
+    def test_is_enabled_returns_none_not_false(self):
+        assert self.manager.is_enabled() is None
+
+    def test_get_status_reports_unknown_and_names_the_denied_resource(self):
+        status = self.manager.get_status()
+
+        assert status["installed"] is None
+        assert CILIUM_DAEMONSET in status["denied"]
+        assert CILIUM_NAMESPACE in status["denied"]
+
+    def test_enable_warns_instead_of_printing_install_guidance(self):
+        with patch("kimera.container.enforcement.console") as mock_console:
+            assert self.manager.enable() is False
+
+        mock_console.print.assert_not_called()
+        assert "denied" in self.mock_logger.warning.call_args[0][0]
+
+    def test_absent_daemonset_still_reports_not_installed(self):
+        self.mock_apps.read_namespaced_daemon_set.side_effect = ApiException(
+            status=404, reason="Not Found"
+        )
+
+        assert self.manager.is_enabled() is False
+        assert self.manager.get_status() == {"installed": False}

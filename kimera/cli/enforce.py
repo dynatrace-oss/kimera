@@ -15,7 +15,7 @@
 import click
 
 from ..container.core.logger import console
-from ..container.enforcement import PolicyEnforcementManager
+from ..container.enforcement import PolicyEnforcementManager, enforcement_denial_message
 
 
 @click.group()
@@ -46,7 +46,11 @@ def enforce_disable(ctx: click.Context) -> None:
 
     manager = PolicyEnforcementManager(k8s, logger)
 
-    if not manager.is_enabled():
+    enabled = manager.is_enabled()
+    if enabled is None:
+        logger.warning(enforcement_denial_message())
+        return
+    if not enabled:
         logger.info("Cilium is not running — no enforcement to disable")
         return
 
@@ -62,8 +66,15 @@ def enforce_status(ctx: click.Context) -> None:
 
     manager = PolicyEnforcementManager(k8s, logger)
     status_info = manager.get_status()
+    installed = status_info.get("installed")
 
-    if not status_info.get("installed"):
+    if installed is None:
+        console.print("NetworkPolicy enforcement: [yellow]unknown[/yellow]")
+        console.print(f"  Denied:    {status_info['denied']}")
+        console.print(f"\n{enforcement_denial_message()}")
+        return
+
+    if not installed:
         console.print("NetworkPolicy enforcement: [red]not installed[/red]")
         console.print("\nRun 'kimera enforce enable' to check Cilium enforcement status.")
         return
