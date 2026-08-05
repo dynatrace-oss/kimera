@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Upgraded `cryptography` to 50.0.0, resolving GHSA-g6cj-pr64-35w5 (high).
+- Added a Dependabot config for `uv`, GitHub Actions and Docker. Routine bumps are grouped into a few weekly PRs; security updates stay immediate and ungrouped.
+
 ## [0.2.0] - 2026-08-05
 
 ### Added
