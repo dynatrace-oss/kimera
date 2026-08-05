@@ -12,104 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import shlex
 from typing import Any
+
+from .probe_prelude import PROBE_PRELUDE
 
 # Supported test operators for path_exists probes
 _VALID_CHECKS = {"-e", "-f", "-d", "-c", "-S", "-r", "-w", "-x"}
 
-UNKNOWN_STATE = "UNKNOWN (no probe tool)"
-
-# Emitted once per script and called by every probe that touches the network, so that
-# "we proved this is closed" is never confused with "we had no tool to test it".
-# POSIX sh only — exec_in_pod runs scripts under /bin/sh.
-PROBE_PRELUDE = f"""\
-kimera_port_open() {{
-    if command -v nc >/dev/null 2>&1; then
-        if nc -z -w "$3" "$1" "$2" >/dev/null 2>&1; then echo OPEN; else echo CLOSED; fi
-    elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-        if timeout "$3" bash -c "exec 3<>/dev/tcp/$1/$2" >/dev/null 2>&1; then
-            echo OPEN
-        else
-            echo CLOSED
-        fi
-    else
-        echo "{UNKNOWN_STATE}"
-    fi
-}}
-
-kimera_resolve() {{
-    if command -v nslookup >/dev/null 2>&1; then
-        nslookup "$1" 2>/dev/null | awk '/^Address: /{{print $2}}' | tail -1
-    elif command -v getent >/dev/null 2>&1; then
-        getent hosts "$1" 2>/dev/null | awk '{{print $1}}' | head -1
-    else
-        return 2
-    fi
-}}
-
-kimera_tcp_send() {{
-    if command -v nc >/dev/null 2>&1; then
-        nc -w "$3" "$1" "$2" 2>/dev/null
-    elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-        timeout "$3" bash -c '
-            exec 3<>/dev/tcp/"$0"/"$1" || exit 1
-            cat >&3
-            cat <&3
-        ' "$1" "$2" 2>/dev/null
-    else
-        return 2
-    fi
-}}
-
-kimera_http_reachable() {{
-    if command -v curl >/dev/null 2>&1; then
-        _code=$(curl -sk -o /dev/null -w "%{{http_code}}" -m "$2" "$1" 2>/dev/null)
-    elif command -v wget >/dev/null 2>&1; then
-        _code=$(wget -q -O /dev/null -T "$2" -S "$1" 2>&1 \\
-                | awk '/^  HTTP\\//{{print $2}}' | tail -1)
-    else
-        echo "{UNKNOWN_STATE}"
-        return 2
-    fi
-    if [ -n "$_code" ] && [ "$_code" != "000" ] && [ "$_code" != "0" ]; then
-        echo "REACHABLE (HTTP $_code)"
-    else
-        echo UNREACHABLE
-    fi
-}}
-
-kimera_http_get() {{
-    _url=$1
-    _tmo=$2
-    shift 2
-    if command -v curl >/dev/null 2>&1; then
-        for _h in "$@"; do set -- "$@" -H "$_h"; shift; done
-        curl -sk -m "$_tmo" "$@" "$_url" 2>/dev/null
-    elif command -v wget >/dev/null 2>&1; then
-        for _h in "$@"; do set -- "$@" --header="$_h"; shift; done
-        wget -q -O- --timeout="$_tmo" --no-check-certificate "$@" "$_url" 2>/dev/null
-    else
-        return 2
-    fi
-}}
-
-kimera_http_post() {{
-    _url=$1
-    _tmo=$2
-    _body=$3
-    shift 3
-    if command -v curl >/dev/null 2>&1; then
-        for _h in "$@"; do set -- "$@" -H "$_h"; shift; done
-        curl -sk -m "$_tmo" -X POST -d "$_body" "$@" "$_url" 2>/dev/null
-    elif command -v wget >/dev/null 2>&1; then
-        for _h in "$@"; do set -- "$@" --header="$_h"; shift; done
-        wget -q -O- --timeout="$_tmo" --no-check-certificate \\
-            --post-data="$_body" "$@" "$_url" 2>/dev/null
-    else
-        return 2
-    fi
-}}
-"""
+DEFAULT_HTTP_TIMEOUT = 5
+DEFAULT_MAX_BODY_BYTES = 512
 
 
 class ProbeRunner:
@@ -273,6 +185,35 @@ class ProbeRunner:
                 f"fi"
             )
         return "\n".join(lines)
+
+    @staticmethod
+    def _build_app_request(probe: dict[str, Any]) -> str:
+        """Request an application endpoint and report status plus a bounded response body.
+
+        Kimera makes one hop; anything further is the application's own outbound call, which
+        is why this is the only probe whose traffic an APM agent can attribute. The body is
+        reported because a status code alone cannot separate an application that forwarded
+        the request from one that answered without forwarding it.
+        """
+        url = shlex.quote(str(probe["url"]))
+        timeout = probe.get("timeout", DEFAULT_HTTP_TIMEOUT)
+        max_body = probe.get("max_body", DEFAULT_MAX_BODY_BYTES)
+        label = probe.get("label", str(probe["url"]))
+        return (
+            f'echo -n "  {label} -> "\n'
+            f"_st=$(kimera_http_reachable {url} {timeout})\n"
+            f'echo "$_st"\n'
+            f'case "$_st" in\n'
+            f"REACHABLE*)\n"
+            f"    _body=$(kimera_http_get {url} {timeout})\n"
+            f'    _len=$(printf %s "$_body" | wc -c)\n'
+            f'    printf "    body: %s\\n" "$(printf %s "$_body" | head -c {max_body})"\n'
+            f'    if [ "$_len" -gt {max_body} ]; then\n'
+            f'        echo "    body truncated at {max_body} bytes"\n'
+            f"    fi\n"
+            f"    ;;\n"
+            f"esac"
+        )
 
     @staticmethod
     def _build_command(probe: dict[str, Any]) -> str | Any:

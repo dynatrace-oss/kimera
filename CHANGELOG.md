@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `app_request` probe type — issues one HTTP request to a configured URL and reports the status with a bounded body excerpt. A process Kimera starts inside a container emits no client span, so only a request the application itself makes forms a topology edge.
+- `L7-app-mediated-request` technique — reaches a backend through an application that forwards caller-supplied URLs rather than directly from the attacker's pod.
 - Multi-provider LLM support for `kimera generate`. A single entry point (`kimera/core/llm.py`) replaces three duplicated Anthropic SDK call sites and selects a backend in a documented order: `KIMERA_LLM_PROVIDER` override, a `provider/model` prefix routed through litellm (`openai/`, `bedrock/`, `gemini/`, `ollama/`), `ANTHROPIC_API_KEY` via the Anthropic SDK, then the `claude` CLI using an existing Claude subscription with no API key. An override that cannot be honoured is an error rather than a silent fallback to a different model, so a run is always attributable to the model that was asked for. New `litellm` extra; `all` now composes the other extras instead of re-listing them.
 
 ### Fixed

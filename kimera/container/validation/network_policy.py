@@ -27,7 +27,7 @@ from kubernetes.client import ApiException
 
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
-from ..make_vulnerable.probe_runner import PROBE_PRELUDE, UNKNOWN_STATE
+from ..make_vulnerable.probe_prelude import PROBE_PRELUDE, UNKNOWN_STATE
 from .models import (
     ControlType,
     ValidationReport,

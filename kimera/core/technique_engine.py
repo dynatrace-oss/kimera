@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from ..container.core.k8s_client import K8sClient
+from ..container.make_vulnerable.base import _marker_matches
 from ..container.make_vulnerable.probe_runner import ProbeRunner
 from .api_executor import execute_api_technique
 from .findings import TechniqueResult
@@ -95,16 +96,18 @@ def _execute_exec_technique(
         result.evidence = [f"Exec failed: {exc}"]
         return
 
+    result.raw_output = output
+
     for marker_def in technique.evidence_markers:
         marker = marker_def.get("marker", "")
-        if marker and marker in output:
+        if marker and _marker_matches(marker, output):
             result.evidence.append(marker_def.get("evidence", marker))
             impact_text = marker_def.get("impact", "")
             if impact_text:
                 result.impact.append(impact_text)
 
     for indicator in technique.success_indicators:
-        if indicator in output:
+        if _marker_matches(indicator, output):
             result.success = True
             break
 
