@@ -30,13 +30,27 @@ CNI is installed.
 [bold]Install Cilium (Helm — recommended):[/bold]
 
   helm repo add cilium https://helm.cilium.io/
-  helm install cilium cilium/cilium --version 1.16.5 \\
+  helm install cilium cilium/cilium --version 1.20.0 \\
     --namespace kube-system \\
     --set ipam.mode=kubernetes
 
+[bold]Install Cilium on Amazon EKS (chained onto the VPC CNI):[/bold]
+
+  helm install cilium cilium/cilium --version 1.20.0 \\
+    --namespace kube-system \\
+    --set cni.chainingMode=aws-cni \\
+    --set cni.exclusive=false \\
+    --set enableIPv4Masquerade=false \\
+    --set routingMode=native
+
+  Chaining applies only to pods created after installation, so restart the
+  workloads you want enforced:
+
+    kubectl rollout restart deployment -n <namespace>
+
 [bold]Install Cilium (Cilium CLI):[/bold]
 
-  cilium install --version 1.16.5
+  cilium install --version 1.20.0
 
 After installation, verify with:
 

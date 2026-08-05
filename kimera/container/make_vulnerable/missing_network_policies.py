@@ -18,6 +18,7 @@ from ...domain.models import EvidenceMarker, ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.logger import console
 from .base import BaseExploit
+from .probe_runner import UNKNOWN_STATE
 from .test_loader import load_exploit_tests
 
 # Label used to identify network policies created by this toolkit
@@ -153,16 +154,24 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                         'echo "[*] Enumerating services via DNS..."\n'
                         "ns=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)\n"
                         "found=0\n"
+                        "no_tool=0\n"
                         f"for svc in {svc_list_str}; do\n"
                         '    fqdn="${svc}.${ns}.svc.cluster.local"\n'
-                        '    if nslookup "$fqdn" >/dev/null 2>&1; then\n'
-                        '        addr=$(nslookup "$fqdn" 2>/dev/null'
-                        " | grep \"Address\" | tail -1 | awk '{print $2}')\n"
+                        '    addr=$(kimera_resolve "$fqdn")\n'
+                        "    if [ $? -eq 2 ]; then\n"
+                        "        no_tool=1\n"
+                        "        break\n"
+                        "    fi\n"
+                        '    if [ -n "$addr" ]; then\n'
                         '        echo "  FOUND: ${svc} -> ${addr}"\n'
                         "        found=$((found + 1))\n"
                         "    fi\n"
                         "done\n"
-                        'echo "[*] Total services discovered: $found"\n'
+                        'if [ "$no_tool" -eq 1 ]; then\n'
+                        f'    echo "[*] DNS enumeration: {UNKNOWN_STATE}"\n'
+                        "else\n"
+                        '    echo "[*] Total services discovered: $found"\n'
+                        "fi\n"
                     ),
                     evidence_markers=[
                         EvidenceMarker(
@@ -181,15 +190,14 @@ class MissingNetworkPoliciesExploit(BaseExploit):
             for svc_name, port, label in data_stores:
                 probe_cmds.append(
                     f'echo -n "  {label} ({svc_name}:{port}) -> "; '
-                    f"if nc -z -w 3 {svc_name} {port} 2>/dev/null; then "
-                    f'echo "OPEN"; else echo "CLOSED"; fi'
+                    f"kimera_port_open {svc_name} {port} 3"
                 )
                 # For Redis: send a real DBSIZE command to produce observable traffic
                 # that Dynatrace OneAgent records as a Redis protocol interaction
                 if port == 6379:
                     probe_cmds.append(
                         f'key_count=$(printf "*1\\r\\n\\$6\\r\\nDBSIZE\\r\\n"'
-                        f" | nc -w3 {svc_name} {port} 2>/dev/null"
+                        f" | kimera_tcp_send {svc_name} {port} 3"
                         f' | tr -d "\\r" | grep -o "[0-9]*")\n'
                         f'[ -n "$key_count" ] && echo "[*] Redis key count: $key_count"'
                     )

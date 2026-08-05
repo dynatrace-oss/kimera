@@ -32,20 +32,24 @@ execution:
     - type: command
       run: |
         echo -n "METADATA_CHECK:"
-        if nc -z -w 3 169.254.169.254 80 2>/dev/null; then
+        if [ "$(kimera_port_open 169.254.169.254 80 3)" = "OPEN" ]; then
             echo "REACHABLE"
             # Attempt to identify cloud provider
-            AWS=$(wget -q -O- --timeout=2 http://169.254.169.254/latest/meta-data/ 2>/dev/null)
-            if [ -n "$AWS" ]; then
-                echo "CLOUD_PROVIDER:AWS"
-                ROLE=$(wget -q -O- --timeout=2 \
-                    http://169.254.169.254/latest/meta-data/iam/security-credentials/ 2>/dev/null)
-                [ -n "$ROLE" ] && echo "IAM_ROLE:$ROLE"
-            fi
-            GCP=$(wget -q -O- --timeout=2 --header="Metadata-Flavor: Google" \
-                http://169.254.169.254/computeMetadata/v1/ 2>/dev/null)
-            if [ -n "$GCP" ]; then
-                echo "CLOUD_PROVIDER:GCP"
+            AWS=$(kimera_http_get http://169.254.169.254/latest/meta-data/ 2)
+            if [ $? -eq 2 ]; then
+                echo "UNKNOWN_NO_PROBE_TOOL"
+            else
+                if [ -n "$AWS" ]; then
+                    echo "CLOUD_PROVIDER:AWS"
+                    ROLE=$(kimera_http_get \
+                        http://169.254.169.254/latest/meta-data/iam/security-credentials/ 2)
+                    [ -n "$ROLE" ] && echo "IAM_ROLE:$ROLE"
+                fi
+                GCP=$(kimera_http_get http://169.254.169.254/computeMetadata/v1/ 2 \
+                    "Metadata-Flavor: Google")
+                if [ -n "$GCP" ]; then
+                    echo "CLOUD_PROVIDER:GCP"
+                fi
             fi
         else
             echo "BLOCKED"

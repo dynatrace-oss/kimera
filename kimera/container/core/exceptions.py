@@ -59,3 +59,15 @@ class InfrastructureError(K8sSecurityError):
     """Infrastructure setup and teardown errors."""
 
     pass
+
+
+class ProviderNotConfiguredError(K8sSecurityError):
+    """No usable LLM backend, or an explicit override that cannot be honoured."""
+
+    pass
+
+
+class ProviderError(K8sSecurityError):
+    """A selected LLM backend failed to produce a usable response."""
+
+    pass

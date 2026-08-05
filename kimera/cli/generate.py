@@ -15,10 +15,12 @@
 import click
 
 from ..application.config.registry import ExploitRegistry
+from ..container.core.exceptions import ProviderError, ProviderNotConfiguredError
 from ..container.core.journal import record_operation
 from ..container.core.logger import console
 from ..container.resource_applier import ResourceApplier
 from ..core.enrichment import EnrichmentProvider
+from ..core.llm import DEFAULT_MODEL
 from . import REGISTRY as _REGISTRY
 
 REGISTRY: ExploitRegistry = _REGISTRY
@@ -42,7 +44,12 @@ REGISTRY: ExploitRegistry = _REGISTRY
 )
 @click.option("--service", default=None, help="Target service for exploit mode.")
 @click.option("--output", "-o", default=None, help="Output file path.")
-@click.option("--model", default="claude-sonnet-4-6", show_default=True, help="Anthropic model.")
+@click.option(
+    "--model",
+    default=DEFAULT_MODEL,
+    show_default=True,
+    help="Model identifier. A 'provider/model' prefix routes through litellm.",
+)
 @click.option(
     "--apply", "apply_generated", is_flag=True, default=False, help="Apply after generation."
 )
@@ -121,10 +128,10 @@ def generate(
                 kspm_context=compliance_context,
                 smartscape_context=topology_context,
             )
-    except ImportError as e:
+    except (ImportError, ProviderNotConfiguredError) as e:
         logger.error(str(e))
         return
-    except ValueError as e:
+    except (ProviderError, ValueError) as e:
         logger.error(f"Generation failed: {e}")
         return
 

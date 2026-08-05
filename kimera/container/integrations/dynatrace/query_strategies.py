@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -21,6 +22,7 @@ from typing import Any
 
 import yaml
 
+from ....core.llm import DEFAULT_MODEL, complete, strip_code_fence
 from .data_models import DtContext, KspmFinding, SmartscapeEdge
 
 logger = logging.getLogger(__name__)
@@ -324,10 +326,10 @@ class LlmQueryStrategy(DtDataStrategy):
     """Uses Claude to generate DQL queries from few-shot examples.
 
     Two-hop pipeline: Claude generates DQL → execute via MCP → parse results.
-    Requires both ``kimera[llm]`` and ``kimera[dt-mcp]`` extras.
+    Requires both ``kimera[llm]`` and ``kimera[mcp-server]`` extras.
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-6") -> None:  # noqa: D107
+    def __init__(self, model: str = DEFAULT_MODEL) -> None:  # noqa: D107
         self._model = model
 
     @property
@@ -392,15 +394,7 @@ class LlmQueryStrategy(DtDataStrategy):
     def _generate_queries(
         self, exploit_type: str, namespace: str, cluster_name: str
     ) -> list[dict[str, str]]:
-        """Call Anthropic Claude to generate DQL queries."""
-        try:
-            import anthropic  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "Anthropic SDK is required for llm-query strategy. "
-                "Install with: uv pip install 'kimera[llm]'"
-            ) from exc
-
+        """Call an LLM to generate DQL queries."""
         try:
             from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: PLC0415
         except ImportError as exc:
@@ -424,30 +418,13 @@ class LlmQueryStrategy(DtDataStrategy):
             cluster_name=cluster_name,
         )
 
-        client = anthropic.Anthropic()
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        raw = getattr(message.content[0], "text", "") if message.content else ""
+        raw = complete(system=system_prompt, user=user_prompt, model=self._model, max_tokens=4096)
         return self._parse_query_response(raw)
 
     @staticmethod
     def _parse_query_response(raw: str) -> list[dict[str, str]]:
         """Extract JSON array of {purpose, query} from LLM response."""
-        text = raw.strip()
-        # Strip markdown fences
-        if text.startswith("```"):
-            text = text.split("```", 2)[1]
-            first_nl = text.find("\n")
-            if first_nl != -1:
-                lang = text[:first_nl].strip()
-                if lang.isalpha():
-                    text = text[first_nl:]
-            text = text.rsplit("```", 1)[0].strip()
+        text = strip_code_fence(raw)
 
         try:
             parsed = json.loads(text)
@@ -710,7 +687,8 @@ def create_strategy(name: str, **kwargs: Any) -> DtDataStrategy:
 
     Args:
         name: One of ``targeted``, ``llm-query``, ``davis``.
-        **kwargs: Passed to the strategy constructor.
+        **kwargs: Constructor arguments. Any the chosen strategy does not accept are
+            dropped, so callers need not know which strategies take which arguments.
 
     Returns:
         A concrete ``DtDataStrategy`` instance.
@@ -722,4 +700,5 @@ def create_strategy(name: str, **kwargs: Any) -> DtDataStrategy:
     if cls is None:
         valid = ", ".join(sorted(_STRATEGIES))
         raise ValueError(f"Unknown DT strategy: {name!r}. Choose from: {valid}")
-    return cls(**kwargs)
+    accepted = inspect.signature(cls.__init__).parameters
+    return cls(**{k: v for k, v in kwargs.items() if k in accepted})

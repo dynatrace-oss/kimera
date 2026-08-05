@@ -57,7 +57,7 @@ class DynatraceMCPClient:
         except ImportError as exc:
             raise ImportError(
                 "MCP SDK is required for DT MCP integration. "
-                "Install with: uv pip install 'kimera[dt-mcp]'"
+                "Install with: uv pip install 'kimera[mcp-server]'"
             ) from exc
 
         headers = {"Authorization": f"Bearer {self._token}"}
@@ -88,7 +88,7 @@ class DynatraceMCPClient:
             pass
 
         raise ImportError(
-            "No MCP HTTP transport found. Install the MCP SDK: uv pip install 'kimera[dt-mcp]'"
+            "No MCP HTTP transport found. Install the MCP SDK: uv pip install 'kimera[mcp-server]'"
         )
 
     async def close(self) -> None:

@@ -34,8 +34,12 @@ execution:
         found=0
         for svc in {{ service_names }}; do
             fqdn="${svc}.${ns}.svc.cluster.local"
-            if nslookup "$fqdn" >/dev/null 2>&1; then
-                addr=$(nslookup "$fqdn" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}')
+            addr=$(kimera_resolve "$fqdn")
+            if [ $? -eq 2 ]; then
+                echo "DNS_UNKNOWN:no probe tool"
+                exit 0
+            fi
+            if [ -n "$addr" ]; then
                 echo "DNS_FOUND:${svc}:${addr}"
                 found=$((found + 1))
             fi

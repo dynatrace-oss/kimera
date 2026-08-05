@@ -17,12 +17,110 @@ from typing import Any
 # Supported test operators for path_exists probes
 _VALID_CHECKS = {"-e", "-f", "-d", "-c", "-S", "-r", "-w", "-x"}
 
+UNKNOWN_STATE = "UNKNOWN (no probe tool)"
+
+# Emitted once per script and called by every probe that touches the network, so that
+# "we proved this is closed" is never confused with "we had no tool to test it".
+# POSIX sh only — exec_in_pod runs scripts under /bin/sh.
+PROBE_PRELUDE = f"""\
+kimera_port_open() {{
+    if command -v nc >/dev/null 2>&1; then
+        if nc -z -w "$3" "$1" "$2" >/dev/null 2>&1; then echo OPEN; else echo CLOSED; fi
+    elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        if timeout "$3" bash -c "exec 3<>/dev/tcp/$1/$2" >/dev/null 2>&1; then
+            echo OPEN
+        else
+            echo CLOSED
+        fi
+    else
+        echo "{UNKNOWN_STATE}"
+    fi
+}}
+
+kimera_resolve() {{
+    if command -v nslookup >/dev/null 2>&1; then
+        nslookup "$1" 2>/dev/null | awk '/^Address: /{{print $2}}' | tail -1
+    elif command -v getent >/dev/null 2>&1; then
+        getent hosts "$1" 2>/dev/null | awk '{{print $1}}' | head -1
+    else
+        return 2
+    fi
+}}
+
+kimera_tcp_send() {{
+    if command -v nc >/dev/null 2>&1; then
+        nc -w "$3" "$1" "$2" 2>/dev/null
+    elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        timeout "$3" bash -c '
+            exec 3<>/dev/tcp/"$0"/"$1" || exit 1
+            cat >&3
+            cat <&3
+        ' "$1" "$2" 2>/dev/null
+    else
+        return 2
+    fi
+}}
+
+kimera_http_reachable() {{
+    if command -v curl >/dev/null 2>&1; then
+        _code=$(curl -sk -o /dev/null -w "%{{http_code}}" -m "$2" "$1" 2>/dev/null)
+    elif command -v wget >/dev/null 2>&1; then
+        _code=$(wget -q -O /dev/null -T "$2" -S "$1" 2>&1 \\
+                | awk '/^  HTTP\\//{{print $2}}' | tail -1)
+    else
+        echo "{UNKNOWN_STATE}"
+        return 2
+    fi
+    if [ -n "$_code" ] && [ "$_code" != "000" ] && [ "$_code" != "0" ]; then
+        echo "REACHABLE (HTTP $_code)"
+    else
+        echo UNREACHABLE
+    fi
+}}
+
+kimera_http_get() {{
+    _url=$1
+    _tmo=$2
+    shift 2
+    if command -v curl >/dev/null 2>&1; then
+        for _h in "$@"; do set -- "$@" -H "$_h"; shift; done
+        curl -sk -m "$_tmo" "$@" "$_url" 2>/dev/null
+    elif command -v wget >/dev/null 2>&1; then
+        for _h in "$@"; do set -- "$@" --header="$_h"; shift; done
+        wget -q -O- --timeout="$_tmo" --no-check-certificate "$@" "$_url" 2>/dev/null
+    else
+        return 2
+    fi
+}}
+
+kimera_http_post() {{
+    _url=$1
+    _tmo=$2
+    _body=$3
+    shift 3
+    if command -v curl >/dev/null 2>&1; then
+        for _h in "$@"; do set -- "$@" -H "$_h"; shift; done
+        curl -sk -m "$_tmo" -X POST -d "$_body" "$@" "$_url" 2>/dev/null
+    elif command -v wget >/dev/null 2>&1; then
+        for _h in "$@"; do set -- "$@" --header="$_h"; shift; done
+        wget -q -O- --timeout="$_tmo" --no-check-certificate \\
+            --post-data="$_body" "$@" "$_url" 2>/dev/null
+    else
+        return 2
+    fi
+}}
+"""
+
 
 class ProbeRunner:
     """Generate shell scripts from structured probe definitions."""
 
     def build_script(self, probes: list[dict[str, Any]]) -> str:
         """Convert a list of probe dicts into a single shell script.
+
+        The shared probe prelude is prepended so every probe — including raw
+        ``command`` probes defined in YAML — can call ``kimera_port_open`` and
+        ``kimera_resolve`` instead of re-implementing tool detection.
 
         Args:
             probes: List of probe definitions, each with a ``type`` key.
@@ -40,7 +138,9 @@ class ProbeRunner:
             if not builder:
                 raise ValueError(f"Unknown probe type: {probe_type!r}")
             parts.append(builder(probe))
-        return "\n".join(parts)
+        if not parts:
+            return ""
+        return PROBE_PRELUDE + "\n" + "\n".join(parts)
 
     # -- Probe builders -------------------------------------------------------
 
@@ -105,19 +205,12 @@ class ProbeRunner:
 
     @staticmethod
     def _build_port_open(probe: dict[str, Any]) -> str:
-        """Check TCP port reachability via nc."""
+        """Check TCP port reachability using the first available probe method."""
         host = probe["host"]
         port = probe["port"]
         timeout = probe.get("timeout", 2)
         label = probe.get("label", f"{host}:{port}")
-        return (
-            f'echo -n "  {label} -> "\n'
-            f"if nc -z -w {timeout} {host} {port} 2>/dev/null; then\n"
-            f'    echo "OPEN"\n'
-            f"else\n"
-            f'    echo "CLOSED"\n'
-            f"fi"
-        )
+        return f'echo -n "  {label} -> "\nkimera_port_open {host} {port} {timeout}'
 
     @staticmethod
     def _build_count_check(probe: dict[str, Any]) -> str:

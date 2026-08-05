@@ -80,7 +80,7 @@ kimera -n unguard apply policies.yaml
 Checks for Cilium and provides installation guidance for NetworkPolicy enforcement:
 
 ```python
-from kimera.container.infrastructure.enforcement import PolicyEnforcementManager
+from kimera.container.enforcement import PolicyEnforcementManager
 
 manager = PolicyEnforcementManager(k8s_client)
 manager.enable()   # Check Cilium status / print guidance

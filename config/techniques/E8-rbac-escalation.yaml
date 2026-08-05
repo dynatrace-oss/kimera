@@ -42,43 +42,26 @@ execution:
             exit 0
         fi
 
-        # Check if we can create roles
-        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
-            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"roles","group":"rbac.authorization.k8s.io"}}}')
+        SSAR="$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
 
-        if [ "$STATUS" = "201" ]; then
-            BODY=$(curl -sk \
-                -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
-                -H "Authorization: Bearer $TOKEN" \
-                -H "Content-Type: application/json" \
-                -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"roles","group":"rbac.authorization.k8s.io"}}}')
-            if echo "$BODY" | grep -q '"allowed":true'; then
-                echo "CAN_CREATE_ROLES"
-            fi
-        fi
+        kimera_ssar() {
+            kimera_http_post "$SSAR" 5 \
+                '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":'"$1"'}}' \
+                "Authorization: Bearer $TOKEN" "Content-Type: application/json"
+        }
 
-        # Check if we can create rolebindings
-        BODY=$(curl -sk \
-            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"namespace":"'$NS'","verb":"create","resource":"rolebindings","group":"rbac.authorization.k8s.io"}}}')
-        if echo "$BODY" | grep -q '"allowed":true'; then
-            echo "CAN_CREATE_ROLEBINDINGS"
+        BODY=$(kimera_ssar '{"namespace":"'$NS'","verb":"create","resource":"roles","group":"rbac.authorization.k8s.io"}')
+        if [ $? -eq 2 ]; then
+            echo "UNKNOWN_NO_PROBE_TOOL"
+            exit 0
         fi
+        echo "$BODY" | grep -q '"allowed":true' && echo "CAN_CREATE_ROLES"
 
-        # Check cluster-admin binding
-        BODY=$(curl -sk \
-            -X POST "$APISERVER/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"*","resource":"*"}}}')
-        if echo "$BODY" | grep -q '"allowed":true'; then
-            echo "CLUSTER_ADMIN_ACCESS"
-        fi
+        BODY=$(kimera_ssar '{"namespace":"'$NS'","verb":"create","resource":"rolebindings","group":"rbac.authorization.k8s.io"}')
+        echo "$BODY" | grep -q '"allowed":true' && echo "CAN_CREATE_ROLEBINDINGS"
+
+        BODY=$(kimera_ssar '{"verb":"*","resource":"*"}')
+        echo "$BODY" | grep -q '"allowed":true' && echo "CLUSTER_ADMIN_ACCESS"
 
   evidence_markers:
     - marker: "CAN_CREATE_ROLES"

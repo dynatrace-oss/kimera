@@ -27,6 +27,7 @@ from kubernetes.client import ApiException
 
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
+from ..make_vulnerable.probe_runner import PROBE_PRELUDE, UNKNOWN_STATE
 from .models import (
     ControlType,
     ValidationReport,
@@ -178,14 +179,44 @@ def _test_connectivity(
     host: str,
     port: int,
     timeout: int = 3,
-) -> bool:
-    """Test TCP connectivity from probe pod. Returns True if connection succeeds."""
-    cmd = f"nc -z -w {timeout} {host} {port} 2>&1 && echo OPEN || echo CLOSED"
+) -> str:
+    """Test TCP connectivity from the probe pod.
+
+    Returns:
+        ``"OPEN"``, ``"CLOSED"``, or ``UNKNOWN_STATE`` when the probe pod has no
+        usable probe tool. ``UNKNOWN_STATE`` must never be collapsed into
+        ``"CLOSED"`` — an untested port is not a blocked port.
+    """
+    cmd = f"{PROBE_PRELUDE}\nkimera_port_open {host} {port} {timeout}"
     try:
         output = k8s.exec_in_pod(PROBE_POD_NAME, cmd, container="probe")
-        return "OPEN" in output
     except Exception:
-        return False
+        return UNKNOWN_STATE
+    if "OPEN" in output:
+        return "OPEN"
+    if "CLOSED" in output:
+        return "CLOSED"
+    return UNKNOWN_STATE
+
+
+def _verdict_for(state: str, host: str, port: int) -> tuple[str, ValidationVerdict, str]:
+    """Map a probe state to (actual, verdict, evidence).
+
+    An ``UNKNOWN_STATE`` probe never yields PASS or FAIL: nothing was measured, so
+    the check is reported as ERROR rather than asserting the control's behaviour.
+    """
+    if state == UNKNOWN_STATE:
+        return (
+            "UNKNOWN",
+            ValidationVerdict.ERROR,
+            f"probe {host}:{port}: {UNKNOWN_STATE} - control not verified",
+        )
+    reachable = state == "OPEN"
+    return (
+        "ALLOWED" if reachable else "BLOCKED",
+        ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
+        f"probe {host}:{port}: {state}",
+    )
 
 
 def _discover_namespace_services(
@@ -327,7 +358,8 @@ def validate_network_policies(
         # Test cloud metadata endpoint (SSRF vector)
         for target in METADATA_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            state = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            actual, verdict, evidence = _verdict_for(state, target["host"], target["port"])
 
             if target["should_block"]:
                 report.results.append(
@@ -336,9 +368,9 @@ def validate_network_policies(
                         control_name="cloud-metadata-block",
                         test_description=f"{target['label']} should be blocked",
                         expected="BLOCK",
-                        actual="ALLOWED" if reachable else "BLOCKED",
-                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        actual=actual,
+                        verdict=verdict,
+                        evidence=evidence,
                         remediation_hint=target.get("remediation", ""),
                     )
                 )
@@ -346,7 +378,8 @@ def validate_network_policies(
         # Test infrastructure targets
         for target in INFRASTRUCTURE_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            state = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            actual, verdict, evidence = _verdict_for(state, target["host"], target["port"])
 
             if target["should_block"]:
                 report.results.append(
@@ -355,9 +388,9 @@ def validate_network_policies(
                         control_name="infrastructure-isolation",
                         test_description=f"{target['label']} should be blocked from app pods",
                         expected="BLOCK",
-                        actual="ALLOWED" if reachable else "BLOCKED",
-                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        actual=actual,
+                        verdict=verdict,
+                        evidence=evidence,
                         remediation_hint=target.get("remediation", ""),
                     )
                 )
@@ -365,7 +398,8 @@ def validate_network_policies(
         # Test cross-namespace connectivity
         for target in CROSS_NAMESPACE_TARGETS:
             sec_logger.info(f"Testing: {target['label']}...")
-            reachable = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            state = _test_connectivity(k8s, namespace, target["host"], target["port"])
+            actual, verdict, evidence = _verdict_for(state, target["host"], target["port"])
 
             if target["should_block"]:
                 report.results.append(
@@ -374,9 +408,9 @@ def validate_network_policies(
                         control_name="cross-namespace-isolation",
                         test_description=f"{target['label']} should be blocked",
                         expected="BLOCK",
-                        actual="ALLOWED" if reachable else "BLOCKED",
-                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                        evidence=f"nc -z {target['host']} {target['port']}: {'OPEN' if reachable else 'CLOSED'}",
+                        actual=actual,
+                        verdict=verdict,
+                        evidence=evidence,
                         remediation_hint=target.get("remediation", ""),
                     )
                 )
@@ -391,7 +425,8 @@ def validate_network_policies(
             for svc in namespace_services[:5]:  # Cap at 5 to limit test time
                 svc_name = svc["name"]
                 svc_port = svc["port"]
-                reachable = _test_connectivity(k8s, namespace, svc_name, svc_port)
+                state = _test_connectivity(k8s, namespace, svc_name, svc_port)
+                actual, verdict, evidence = _verdict_for(state, svc_name, svc_port)
 
                 report.results.append(
                     ValidationResult(
@@ -401,14 +436,14 @@ def validate_network_policies(
                             f"Unlabeled probe pod should not reach {svc_name}:{svc_port}"
                         ),
                         expected="BLOCK",
-                        actual="ALLOWED" if reachable else "BLOCKED",
-                        verdict=ValidationVerdict.FAIL if reachable else ValidationVerdict.PASS,
-                        evidence=f"nc -z {svc_name} {svc_port}: {'OPEN' if reachable else 'CLOSED'}",
+                        actual=actual,
+                        verdict=verdict,
+                        evidence=evidence,
                         remediation_hint=(
                             f"Ensure NetworkPolicy for {svc_name} uses specific podSelector "
                             "labels in ingress rules, not an empty selector."
                         )
-                        if reachable
+                        if state == "OPEN"
                         else "",
                     )
                 )

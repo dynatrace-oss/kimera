@@ -255,8 +255,7 @@ def _handle_detect_tool_version(
 
     if fixed_version and _version_is_vulnerable(version, fixed_version):
         result.evidence.append(
-            f"TOOL_VULNERABLE: {tool} {version} is older than fixed version "
-            f"{fixed_version} ({cve})"
+            f"TOOL_VULNERABLE: {tool} {version} is older than fixed version {fixed_version} ({cve})"
         )
         result.impact.append(
             f"{tool} {version} may be vulnerable to {cve} — upgrade to {fixed_version}+"
