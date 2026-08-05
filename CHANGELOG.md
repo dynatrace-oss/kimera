@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `kimera validate-control --type network-policy` now reports declared external egress that the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
 - `kimera validate-control --type network-policy` no longer reports a pass ratio for active connectivity tests it did not run. When the probe pod cannot be deployed — Pod Security Admission rejecting it, for one — the skipped tests are recorded as an ERROR result naming the reason, so the report is not `all_passed`. It previously printed "2/2 passed" having verified nothing.
+- Subprocess commands now time out instead of hanging indefinitely. `kimera revert` and `rollback` shell out to `kubectl rollout undo`; with no timeout an unreachable API server left the command waiting forever with no diagnosis. A command that exceeds its limit is killed and reported as a failure naming the limit, so it surfaces through the same path as any other failure. The default is 60 seconds, matching `timeouts.command`.
 - `kimera enforce status` and `enforce disable` no longer treat an authorization denial as absence. A 403 reading the enforcement DaemonSet raises `PermissionDeniedError`, and both commands report that the status is unknown and name the denied resource; `status` previously raised a traceback and `disable` reported "no enforcement to disable". A 404 still means not installed.
 
 ### Changed
