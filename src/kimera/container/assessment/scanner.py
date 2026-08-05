@@ -28,6 +28,25 @@ class SecurityScanner:
         self.k8s = k8s_client
         self.logger = logger
 
+    def assess_all_services(self, services: list[str]) -> None:
+        """Assess all services."""
+        self.logger.info("Assessing container security posture...")
+        console.print("\n[bold]=== Security Context Analysis ===[/bold]")
+
+        for service in services:
+            self.assess_service(service)
+
+        # Network policy assessment
+        self.assess_network_policies()
+
+        console.print("\n💡 [bold]Security Recommendations:[/bold]")
+        console.print("  • All containers should have explicit security contexts")
+        console.print("  • Use runAsNonRoot: true and specify runAsUser")
+        console.print("  • Drop all capabilities and add only what's needed")
+        console.print("  • Set resource requests and limits")
+        console.print("  • Avoid host namespace sharing unless absolutely necessary")
+        console.print("  • Define NetworkPolicies with a default-deny baseline")
+
     def assess_service(self, service: str) -> list[str]:
         """Assess security posture of a single service."""
         console.print(f"\n[green]--- {service} ---[/green]")
@@ -71,25 +90,6 @@ class SecurityScanner:
             console.print("Runtime State: ❌ No running pod found")
 
         return self._get_service_issues(deployment)
-
-    def assess_all_services(self, services: list[str]) -> None:
-        """Assess all services."""
-        self.logger.info("Assessing container security posture...")
-        console.print("\n[bold]=== Security Context Analysis ===[/bold]")
-
-        for service in services:
-            self.assess_service(service)
-
-        # Network policy assessment
-        self.assess_network_policies()
-
-        console.print("\n💡 [bold]Security Recommendations:[/bold]")
-        console.print("  • All containers should have explicit security contexts")
-        console.print("  • Use runAsNonRoot: true and specify runAsUser")
-        console.print("  • Drop all capabilities and add only what's needed")
-        console.print("  • Set resource requests and limits")
-        console.print("  • Avoid host namespace sharing unless absolutely necessary")
-        console.print("  • Define NetworkPolicies with a default-deny baseline")
 
     def assess_network_policies(self) -> list[str]:
         """Assess network policy posture for the namespace."""

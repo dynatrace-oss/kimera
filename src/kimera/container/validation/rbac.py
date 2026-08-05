@@ -24,10 +24,6 @@ from typing import Any
 
 from kubernetes.client import (
     ApiException,
-    AuthorizationV1Api,
-    V1ResourceAttributes,
-    V1SelfSubjectAccessReview,
-    V1SelfSubjectAccessReviewSpec,
 )
 
 from ..core.k8s_client import K8sClient
@@ -126,35 +122,6 @@ CLUSTER_SCOPE_CHECKS: list[tuple[str, str, str, str, str]] = [
         "Workload SAs should not be able to create namespaces.",
     ),
 ]
-
-
-def _check_access(
-    auth_api: AuthorizationV1Api,
-    namespace: str,
-    verb: str,
-    resource: str,
-    group: str = "",
-) -> bool:
-    """Check if the current context can perform an action via SelfSubjectAccessReview.
-
-    Returns True if the action is ALLOWED, False if DENIED.
-    """
-    review = V1SelfSubjectAccessReview(
-        spec=V1SelfSubjectAccessReviewSpec(
-            resource_attributes=V1ResourceAttributes(
-                namespace=namespace,
-                verb=verb,
-                resource=resource,
-                group=group if group else None,
-            )
-        )
-    )
-
-    try:
-        result = auth_api.create_self_subject_access_review(body=review)
-        return bool(result.status.allowed)
-    except ApiException:
-        return False
 
 
 def _list_service_accounts(k8s: K8sClient) -> list[dict[str, str]]:

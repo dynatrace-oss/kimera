@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ from kimera.container.validation.reachability import (
     close_gaps,
     egress_permits,
     find_gaps,
+    find_ingress_gaps,
 )
 
 # Reproduces the measured cns-zero defect: the Bitnami MariaDB subchart does not
@@ -195,3 +197,117 @@ def test_closed_gap_respects_port_boundaries(port_spec, probe_port, reachable):
     close_gaps(policies, [AUTH, MARIADB])
 
     assert egress_permits(AUTH, MARIADB, probe_port, policies) is reachable
+
+
+class TestIngressGaps:
+    """The converse direction: egress declares a flow the destination's ingress omits."""
+
+    def test_egress_declared_flow_denied_by_ingress_is_reported(self) -> None:
+        # auth may egress to anything labelled part-of: unguard, and redis carries
+        # that label — but redis's own ingress admits nobody. The flow is severed
+        # and find_gaps cannot see it, because no ingress rule declares it.
+        policies = [
+            _policy(
+                "auth-egress",
+                {"app.kubernetes.io/name": "user-auth-service"},
+                egress=[
+                    {
+                        "to": [
+                            {
+                                "podSelector": {
+                                    "matchLabels": {"app.kubernetes.io/part-of": "unguard"}
+                                }
+                            }
+                        ],
+                        "ports": [{"port": 6379, "protocol": "TCP"}],
+                    }
+                ],
+            ),
+            _policy("redis-ingress", {"app.kubernetes.io/name": "redis"}, ingress=[]),
+        ]
+
+        assert find_gaps(policies, [AUTH, REDIS]) == []
+
+        gaps = find_ingress_gaps(policies, [AUTH, REDIS])
+        assert len(gaps) == 1
+        assert gaps[0].source == AUTH.name
+        assert gaps[0].destination == REDIS.name
+        assert gaps[0].port == 6379
+        assert gaps[0].denied_by == "ingress"
+        assert "denied by" in gaps[0].describe()
+        assert f"{REDIS.name}'s ingress rules" in gaps[0].describe()
+
+    def test_matching_ingress_rule_is_not_a_gap(self) -> None:
+        policies = [
+            _policy(
+                "auth-egress",
+                {"app.kubernetes.io/name": "user-auth-service"},
+                egress=[
+                    {
+                        "to": [
+                            {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "redis"}}}
+                        ],
+                        "ports": [{"port": 6379}],
+                    }
+                ],
+            ),
+            _policy(
+                "redis-ingress",
+                {"app.kubernetes.io/name": "redis"},
+                ingress=[
+                    {
+                        "from": [
+                            {
+                                "podSelector": {
+                                    "matchLabels": {"app.kubernetes.io/name": "user-auth-service"}
+                                }
+                            }
+                        ],
+                        "ports": [{"port": 6379}],
+                    }
+                ],
+            ),
+        ]
+        assert find_ingress_gaps(policies, [AUTH, REDIS]) == []
+
+    def test_external_and_cross_namespace_peers_are_not_workload_gaps(self) -> None:
+        # An ipBlock peer addresses a CIDR, not a pod in this namespace. Treating it
+        # as a severed workload flow would report a gap for every external egress rule.
+        policies = [
+            _policy(
+                "auth-egress",
+                {"app.kubernetes.io/name": "user-auth-service"},
+                egress=[
+                    {"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}], "ports": [{"port": 443}]},
+                    {"to": [{"namespaceSelector": {}}], "ports": [{"port": 53}]},
+                ],
+            )
+        ]
+        assert find_ingress_gaps(policies, [AUTH, REDIS]) == []
+
+    def test_close_gaps_still_only_closes_the_egress_direction(self) -> None:
+        # Generation output must be unchanged: close_gaps appends egress rules, and an
+        # ingress-denied flow is the destination's decision, not something to infer.
+        policies = [
+            _policy(
+                "auth-egress",
+                {"app.kubernetes.io/name": "user-auth-service"},
+                egress=[
+                    {
+                        "to": [
+                            {
+                                "podSelector": {
+                                    "matchLabels": {"app.kubernetes.io/part-of": "unguard"}
+                                }
+                            }
+                        ],
+                        "ports": [{"port": 6379}],
+                    }
+                ],
+            ),
+            _policy("redis-ingress", {"app.kubernetes.io/name": "redis"}, ingress=[]),
+        ]
+        before = deepcopy(policies)
+
+        assert close_gaps(policies, [AUTH, REDIS]) == []
+        assert policies == before

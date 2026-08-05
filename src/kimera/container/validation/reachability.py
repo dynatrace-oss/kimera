@@ -30,7 +30,7 @@ class Workload:
 
 @dataclass(frozen=True)
 class Gap:
-    """A flow an ingress rule declares that the source's egress rules deny."""
+    """A flow one side of a policy set declares and the other side denies."""
 
     source: str
     destination: str
@@ -38,9 +38,18 @@ class Gap:
     protocol: str
     declared_by: str
     destination_selector: dict[str, str]
+    # Which side denies the flow. Defaults to "egress" because that is the only
+    # direction close_gaps can remedy: it appends egress rules.
+    denied_by: str = "egress"
 
     def describe(self) -> str:
         """Return a one-line explanation naming both sides of the mismatch."""
+        if self.denied_by == "ingress":
+            return (
+                f"{self.source} -> {self.destination}:{self.port}/{self.protocol} "
+                f"is allowed by egress in '{self.declared_by}' but denied by "
+                f"{self.destination}'s ingress rules"
+            )
         return (
             f"{self.source} -> {self.destination}:{self.port}/{self.protocol} "
             f"is allowed by ingress in '{self.declared_by}' but denied by "
@@ -150,6 +159,56 @@ def find_gaps(policies: list[dict[str, Any]], workloads: list[Workload]) -> list
                                     protocol=port_spec.get("protocol") or "TCP",
                                     declared_by=(policy.get("metadata") or {}).get("name", "?"),
                                     destination_selector=dict(selector.get("matchLabels") or {}),
+                                )
+                            )
+    return gaps
+
+
+def find_ingress_gaps(policies: list[dict[str, Any]], workloads: list[Workload]) -> list[Gap]:
+    """Return every flow declared by an egress rule that ingress rules deny.
+
+    The converse of ``find_gaps``, and reported rather than closed. A missing
+    ingress rule is the destination's decision about who may reach it, so
+    inferring one would grant access nobody declared; the egress side is the only
+    direction ``close_gaps`` may safely widen.
+    """
+    gaps: list[Gap] = []
+    seen: set[tuple[str, str, int]] = set()
+
+    for policy in policies:
+        spec = policy.get("spec") or {}
+        selector = spec.get("podSelector") or {"matchLabels": {}}
+        sources = [w for w in workloads if _selector_matches(selector, w)]
+        if not sources:
+            continue
+
+        for rule in spec.get("egress") or []:
+            port_specs = rule.get("ports") or []
+            for peer in rule.get("to") or []:
+                destinations = [w for w in workloads if _peer_matches(peer, w)]
+                for source in sources:
+                    for destination in destinations:
+                        if source.name == destination.name:
+                            continue
+                        for port_spec in port_specs:
+                            port = port_spec.get("port")
+                            if not isinstance(port, int):
+                                continue
+                            key = (source.name, destination.name, port)
+                            if key in seen:
+                                continue
+                            if ingress_permits(source, destination, port, policies):
+                                continue
+                            seen.add(key)
+                            gaps.append(
+                                Gap(
+                                    source=source.name,
+                                    destination=destination.name,
+                                    port=port,
+                                    protocol=port_spec.get("protocol") or "TCP",
+                                    declared_by=(policy.get("metadata") or {}).get("name", "?"),
+                                    destination_selector=dict(selector.get("matchLabels") or {}),
+                                    denied_by="ingress",
                                 )
                             )
     return gaps

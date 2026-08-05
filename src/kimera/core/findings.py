@@ -101,6 +101,14 @@ class TechniqueResult(BaseModel):
     )
     defense_detail: str = Field(default="")
     dry_run: bool = Field(default=False)
+    not_attempted: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Operations the technique declared but this build cannot perform. Distinct from "
+            "being blocked: nothing stopped these, they never ran. Reporting them as blocked "
+            "would read as a working control to anyone validating detection coverage."
+        ),
+    )
     raw_output: str = Field(
         default="",
         description=(
@@ -111,31 +119,13 @@ class TechniqueResult(BaseModel):
 
     def to_summary(self) -> str:
         """One-line summary for LLM consumption."""
-        status = "SUCCESS" if self.success else "BLOCKED"
+        if self.success:
+            status = "SUCCESS"
+        elif self.not_attempted:
+            status = f"NOT_ATTEMPTED ({'; '.join(self.not_attempted)})"
+        else:
+            status = "BLOCKED"
         defense = f" (caught by: {self.defense_detail})" if self.defense_caught else ""
         return (
             f"[{self.technique_id}] {self.technique_name}: {status} against {self.target}{defense}"
-        )
-
-
-class PentestReport(BaseModel):
-    """Aggregated results from a pentest run."""
-
-    namespace: str
-    techniques_attempted: int = 0
-    techniques_succeeded: int = 0
-    techniques_blocked: int = 0
-    results: list[TechniqueResult] = Field(default_factory=list)
-    assessment: AssessmentReport | None = None
-    kill_chain: list[str] = Field(
-        default_factory=list,
-        description="Ordered technique IDs forming a successful attack path",
-    )
-
-    def to_summary(self) -> str:
-        """One-line summary for LLM consumption."""
-        return (
-            f"{self.techniques_attempted} techniques attempted, "
-            f"{self.techniques_succeeded} succeeded, "
-            f"{self.techniques_blocked} blocked by defenses"
         )

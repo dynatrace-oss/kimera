@@ -9,25 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload legitimately reaches, as a CIDR with an `except` list, ports and protocol. Generated policy sets carry every declared destination whether or not the model emitted it: a post-processing pass adds what is missing, attaching it to the workload's own policy or creating one scoped to its labels, never widening the namespace-wide default-deny. Nothing is inferred — an undeclared destination stays denied. Without this, a default-deny set severs a workload's external dependency and it fails to start while every app-to-app flow still passes, which reads as a segmentation failure it is not.
+- `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload may reach, as a CIDR with an `except` list, ports and protocol. A post-processing pass guarantees every declared destination survives generation. Undeclared destinations stay denied.
 
 ### Fixed
 
-- `kimera validate-control --type network-policy` now reports declared external egress that the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
-- `kimera validate-control --type network-policy` no longer reports a pass ratio for active connectivity tests it did not run. When the probe pod cannot be deployed — Pod Security Admission rejecting it, for one — the skipped tests are recorded as an ERROR result naming the reason, so the report is not `all_passed`. It previously printed "2/2 passed" having verified nothing.
-- **Breaking (MCP):** `attempt_technique` now honours `dry_run`. It previously ran the technique for real and then labelled the result a dry run, so an agent asking for a simulation got a live mutation reported as a preview. `dry_run` defaults to `True`, so an MCP client that relied on the old behaviour to execute must now pass `dry_run=False`. `dry_run` is handled once in `execute_technique`, so both execution modes and both callers get the same guarantee: exec-mode reports the resolved probe script without running it, api-mode reports the calls it would issue. `kimera technique run --dry-run` is unchanged, and now also works for api-mode techniques, where it previously printed nothing.
-- Subprocess commands now time out instead of hanging indefinitely. `kimera revert` and `rollback` shell out to `kubectl rollout undo`; with no timeout an unreachable API server left the command waiting forever with no diagnosis. A command that exceeds its limit is killed and reported as a failure naming the limit, so it surfaces through the same path as any other failure. The default is 60 seconds, matching `timeouts.command`.
-- `kimera enforce status` and `enforce disable` no longer treat an authorization denial as absence. A 403 reading the enforcement DaemonSet raises `PermissionDeniedError`, and both commands report that the status is unknown and name the denied resource; `status` previously raised a traceback and `disable` reported "no enforcement to disable". A 404 still means not installed.
+- `validate-control --type network-policy` reports declared external egress the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
+- `validate-control --type network-policy` also reports flows an egress rule declares that the destination's ingress denies. Only the opposite direction was checked. Reported, never auto-corrected — inferring an ingress rule would grant access nobody declared.
+- `validate-control --type network-policy` no longer reports a pass ratio for connectivity tests it did not run. A probe pod that cannot be deployed is recorded as an ERROR naming the reason; it previously printed "2/2 passed" having verified nothing.
+- Techniques report operations Kimera cannot perform as `NOT_ATTEMPTED`, not `BLOCKED`. `P1`, `P2`, `P3` and `DE3` declare `verb: create` for unimplemented resources — they created nothing and summarised as blocked, which reads as a working control to anyone checking detection coverage. `TechniqueResult` gained `not_attempted`.
+- **Breaking (MCP):** `attempt_technique` honours `dry_run`. It previously executed and then labelled the result a dry run. `dry_run` defaults to `True`, so a client relying on the old behaviour must now pass `dry_run=False`.
+- Subprocess commands time out after 60 seconds instead of hanging. An unreachable API server left `kubectl rollout undo` waiting forever with no diagnosis.
+- `enforce status` and `enforce disable` no longer treat a 403 as absence. Both report the status as unknown and name the denied resource; `status` previously raised a traceback. A 404 still means not installed.
 
 ### Changed
 
-- The package moved to a `src/` layout and its YAML configuration now ships inside the package at `src/kimera/config/`. An installed wheel previously could not find its own configuration at all: six modules located `config/` by counting parent directories of their own `__file__`, using four different depth expressions, and every one resolved to the repository root. It worked only because the package happened to sit there. Set `KIMERA_CONFIG_DIR` to supply your own profiles and checks without editing an installed package; it replaces the packaged directory wholesale, so it needs its own `default.yaml`. Prompt templates are unaffected by that override.
-- `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry that declares only egress no longer blocks that workload's ingress as a side effect. An explicit empty list still means block all ingress. Shipped profiles are unaffected.
+- The package moved to a `src/` layout and its YAML configuration ships inside the package. An installed wheel previously could not find its own configuration — six modules located `config/` by counting parent directories, all resolving to the repository root. Set `KIMERA_CONFIG_DIR` to supply your own; it replaces the packaged directory wholesale.
+- `R8-permission-probe` declares the permissions it probes in its own YAML rather than in Python.
+- `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry declaring only egress no longer blocks that workload's ingress. An explicit empty list still blocks all ingress.
 
 ### Security
 
 - Upgraded `cryptography` to 50.0.0, resolving GHSA-g6cj-pr64-35w5 (high).
-- Added a Dependabot config for `uv`, GitHub Actions and Docker. Routine bumps are grouped into a few weekly PRs; security updates stay immediate and ungrouped.
+- Added a Dependabot config for `uv`, GitHub Actions and Docker. Routine bumps are grouped weekly; security updates stay immediate.
 
 ## [0.2.0] - 2026-08-05
 

@@ -34,14 +34,6 @@ class ExploitResult:
     impact: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def add_evidence(self, item: str) -> None:
-        """Add evidence item."""
-        self.evidence.append(item)
-
-    def add_impact(self, item: str) -> None:
-        """Add impact item."""
-        self.impact.append(item)
-
 
 @dataclass
 class EvidenceMarker:

@@ -297,43 +297,6 @@ class K8sClient:
             self.logger.error(f"Error during rollback: {e}")
             return False
 
-    def deployment_exists(self, name: str, namespace: str | None = None) -> bool:
-        """Check if a deployment exists in the specified namespace."""
-        ns = namespace or self.namespace
-        try:
-            self.apps_v1.read_namespaced_deployment(name, ns)
-            return True
-        except ApiException as e:
-            if e.status == 404:
-                return False
-            raise K8sError(f"Failed to check deployment {name}: {e}") from e
-
-    def delete_deployment(self, name: str, namespace: str | None = None) -> bool:
-        """Delete a deployment."""
-        ns = namespace or self.namespace
-        try:
-            self.apps_v1.delete_namespaced_deployment(
-                name=name, namespace=ns, body=client.V1DeleteOptions()
-            )
-            self.logger.success(f"Deleted deployment {name}")
-            return True
-        except ApiException as e:
-            if e.status == 404:
-                self.logger.warning(f"Deployment {name} not found")
-                return False
-            self.logger.error(f"Failed to delete deployment {name}: {e}")
-            return False
-
-    def namespace_exists(self, name: str) -> bool:
-        """Check if a namespace exists."""
-        try:
-            self.v1.read_namespace(name)
-            return True
-        except ApiException as e:
-            if e.status == 404:
-                return False
-            raise K8sError(f"Failed to check namespace {name}: {e}") from e
-
     def list_network_policies(self, namespace: str | None = None) -> list[V1NetworkPolicy]:
         """List all network policies in a namespace."""
         ns = namespace or self.namespace
@@ -457,32 +420,6 @@ class K8sClient:
             if e.status == 404:
                 return False
             raise K8sError(f"Failed to check DaemonSet {name}: {e}") from e
-
-    def wait_for_daemonset(
-        self, name: str, namespace: str | None = None, timeout: int = 120
-    ) -> bool:
-        """Wait for all DaemonSet pods to be ready."""
-        ns = namespace or self.namespace
-        self.logger.info(f"Waiting for DaemonSet {name} to be ready...")
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            ds = self.get_daemonset(name, ns)
-            if not ds or not ds.status:
-                time.sleep(5)
-                continue
-
-            desired = ds.status.desired_number_scheduled or 0
-            ready = ds.status.number_ready or 0
-
-            if desired > 0 and ready == desired:
-                self.logger.success(f"DaemonSet {name} ready ({ready}/{desired} pods)")
-                return True
-
-            time.sleep(5)
-
-        self.logger.warning(f"Timeout waiting for DaemonSet {name}")
-        return False
 
     # --- ServiceAccount operations ---
 

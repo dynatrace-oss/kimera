@@ -21,8 +21,11 @@ from kubernetes.client import ApiException
 
 from kimera.core.api_executor import (
     _handle_detect_tool_version,
+    _handle_permission_probe,
     _parse_image_version,
+    _parse_permissions,
     _version_is_vulnerable,
+    execute_api_technique,
 )
 from kimera.core.findings import TechniqueResult
 from kimera.core.technique_registry import TechniqueRegistry
@@ -331,3 +334,75 @@ class TestStealthTechniqueRegistry:
         assert tech is not None
         assert tech.api_calls[0]["tool"] == "kyverno"
         assert tech.api_calls[0]["fixed_version"] == "1.13.0"
+
+
+class TestUnimplementedOperationsAreNotReportedAsBlocked:
+    """A technique that never ran must not read as one a defense stopped."""
+
+    @pytest.mark.parametrize(
+        "technique_id,resource",
+        [
+            ("P1", "cronjobs"),
+            ("P2", "serviceaccounts"),
+            ("P3", "pods"),
+            ("DE3", "policyexceptions"),
+        ],
+    )
+    def test_create_techniques_report_not_attempted(self, technique_id: str, resource: str) -> None:
+        # These four declare `verb: create` for resources _handle_create does not
+        # implement. They previously appended an evidence string and summarised as
+        # BLOCKED, so a defender validating detection coverage saw a controlled
+        # outcome for an attack that was never launched.
+        registry = TechniqueRegistry()
+        technique = registry.get(technique_id)
+        assert technique is not None
+        result = TechniqueResult(
+            technique_id=technique_id,
+            technique_name=technique.name,
+            target="demo",
+            success=False,
+        )
+
+        execute_api_technique(MagicMock(), technique, result)
+
+        assert result.success is False
+        assert any(resource in entry for entry in result.not_attempted)
+        assert "NOT_ATTEMPTED" in result.to_summary()
+        assert "BLOCKED" not in result.to_summary()
+
+
+class TestPermissionProbeIsConfigDriven:
+    """The probed permission set is data in R8's YAML, not a list in Python."""
+
+    def test_r8_declares_its_permission_list(self) -> None:
+        registry = TechniqueRegistry()
+        technique = registry.get("R8")
+        assert technique is not None
+        ssar = next(c for c in technique.api_calls if c["resource"] == "selfsubjectaccessreviews")
+        assert "list secrets" in ssar["permissions"]
+        assert "create pods/exec" in ssar["permissions"]
+
+    @pytest.mark.parametrize(
+        "declared,expected",
+        [
+            (["list secrets"], [("secrets", "list")]),
+            (["create pods/exec"], [("pods/exec", "create")]),
+            (["list secrets", "malformed", "get pods"], [("secrets", "list"), ("pods", "get")]),
+            (None, []),
+            ([], []),
+        ],
+    )
+    def test_permission_entries_are_parsed_or_dropped(
+        self, declared: list[str] | None, expected: list[tuple[str, str]]
+    ) -> None:
+        assert _parse_permissions(declared) == expected
+
+    def test_missing_permission_list_is_not_attempted_not_blocked(self) -> None:
+        result = TechniqueResult(
+            technique_id="R8", technique_name="probe", target="demo", success=False
+        )
+        _handle_permission_probe(MagicMock(), {}, result)
+
+        assert result.success is False
+        assert result.not_attempted
+        assert "NOT_ATTEMPTED" in result.to_summary()

@@ -51,7 +51,7 @@ def execute_api_technique(
             elif verb == "detect_tool_version":
                 _handle_detect_tool_version(k8s, api_call, result)
             else:
-                result.evidence.append(f"Unsupported verb: {verb}")
+                result.not_attempted.append(f"verb {verb!r} is not implemented")
         except ApiException as exc:
             marker = _denied_marker(technique)
             result.evidence.append(
@@ -59,26 +59,6 @@ def execute_api_technique(
             )
 
     _match_evidence_markers(technique, result)
-
-
-def enumerate_for_technique(
-    k8s: K8sClient,
-    technique: TechniqueDefinition,
-    namespace: str,
-) -> list[dict[str, Any]]:
-    """Enumerate K8s resources defined in technique api_calls."""
-    resources: list[dict[str, Any]] = []
-
-    for api_call in technique.api_calls:
-        resource_type = api_call.get("resource", "")
-        ns = api_call.get("namespace", namespace)
-        try:
-            items = list_resource(k8s, ns, resource_type)
-            resources.extend(items)
-        except ApiException as exc:
-            logger.warning("Failed to enumerate %s: %s", resource_type, exc.reason)
-
-    return resources
 
 
 # ── Verb handlers ─────────────────────────────────────────────────────
@@ -107,7 +87,7 @@ def _handle_delete(
     }
     handler = delete_dispatch.get(resource_type)
     if handler is None:
-        result.evidence.append(f"Delete not supported for: {resource_type}")
+        result.not_attempted.append(f"delete {resource_type} is not implemented")
         return
     handler()
     result.success = True
@@ -122,7 +102,7 @@ def _handle_patch(
 ) -> None:
     patch_body = api_call.get("patch", {}).get("body", {})
     if not patch_body:
-        result.evidence.append("No patch body defined")
+        result.not_attempted.append("patch declared no body")
         return
 
     if resource_type == "namespaces":
@@ -130,9 +110,9 @@ def _handle_patch(
         result.success = True
         result.evidence.append(f"Namespace {k8s.namespace} patched")
     elif resource_type == "pods":
-        result.evidence.append("Pod patch requires target_pod parameter")
+        result.not_attempted.append("patch pods requires a target_pod parameter")
     else:
-        result.evidence.append(f"Patch not supported for: {resource_type}")
+        result.not_attempted.append(f"patch {resource_type} is not implemented")
 
 
 def _handle_create(
@@ -142,14 +122,32 @@ def _handle_create(
     result: TechniqueResult,
 ) -> None:
     if resource_type == "selfsubjectaccessreviews":
-        _handle_permission_probe(k8s, result)
+        _handle_permission_probe(k8s, api_call, result)
         return
 
-    result.evidence.append(f"Create for {resource_type} — use dry_run=False to execute")
+    result.not_attempted.append(f"create {resource_type} is not implemented")
+
+
+def _parse_permissions(declared: Any) -> list[tuple[str, str]]:
+    """Split "<verb> <resource>" entries into (resource, verb) pairs.
+
+    Malformed entries are dropped rather than probed, since a half-parsed pair
+    would query a resource nobody asked about.
+    """
+    checks: list[tuple[str, str]] = []
+    for entry in declared or []:
+        parts = str(entry).split()
+        if len(parts) != 2:
+            logger.warning("Ignoring malformed permission entry %r", entry)
+            continue
+        verb, resource = parts
+        checks.append((resource, verb))
+    return checks
 
 
 def _handle_permission_probe(
     k8s: K8sClient,
+    api_call: dict[str, Any],
     result: TechniqueResult,
 ) -> None:
     """Probe permissions via SelfSubjectAccessReview — zero Falco alerts."""
@@ -161,19 +159,12 @@ def _handle_permission_probe(
 
     auth_api = AuthorizationV1Api(api_client=k8s.v1.api_client)
 
-    checks = [
-        ("secrets", "list"),
-        ("secrets", "get"),
-        ("pods", "create"),
-        ("pods/exec", "create"),
-        ("rolebindings", "create"),
-        ("clusterrolebindings", "create"),
-        ("events", "delete"),
-        ("namespaces", "patch"),
-        ("cronjobs", "create"),
-        ("serviceaccounts", "create"),
-        ("daemonsets", "create"),
-    ]
+    checks = _parse_permissions(api_call.get("permissions"))
+    if not checks:
+        result.not_attempted.append(
+            "selfsubjectaccessreviews declared no 'permissions' list to probe"
+        )
+        return
 
     allowed: list[str] = []
     denied: list[str] = []

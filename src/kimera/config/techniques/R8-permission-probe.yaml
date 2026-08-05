@@ -40,6 +40,21 @@ execution:
       scope: cluster
       api_group: authorization.k8s.io/v1
       description: "Probe individual permissions via SelfSubjectAccessReview"
+      # The permissions to probe. Each entry is "<verb> <resource>"; a resource may
+      # name a subresource with a slash, e.g. "create pods/exec". Edit this list to
+      # probe a different set — it is data, not code.
+      permissions:
+        - list secrets
+        - get secrets
+        - create pods
+        - create pods/exec
+        - create rolebindings
+        - create clusterrolebindings
+        - delete events
+        - patch namespaces
+        - create cronjobs
+        - create serviceaccounts
+        - create daemonsets
     - resource: selfsubjectrulesreviews
       verb: create
       scope: cluster
