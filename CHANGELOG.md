@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
 ### Added
 
 - `kimera query` — runs a query against an observability provider and reports the records; `--json` for evidence capture. Adds a `QueryProvider` protocol beside `EnrichmentProvider`, so a provider can support either alone. An empty result exits zero and says so, so absence is distinguishable from failure.
