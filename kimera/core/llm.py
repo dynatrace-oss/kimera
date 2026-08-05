@@ -33,6 +33,8 @@ CLAUDE_CLI_BINARY = "claude"
 
 
 class Backend(StrEnum):
+    """Completion backends, in the order `_resolve` considers them."""
+
     ANTHROPIC = "anthropic"
     LITELLM = "litellm"
     CLAUDE_CLI = "claude-cli"

@@ -32,7 +32,9 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _with_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(llm.shutil, "which", lambda name: "/usr/bin/claude" if name == "claude" else None)
+    monkeypatch.setattr(
+        llm.shutil, "which", lambda name: "/usr/bin/claude" if name == "claude" else None
+    )
 
 
 class TestBackendResolution:
@@ -170,9 +172,7 @@ class TestClaudeCliBackend:
         # Prompts must travel via argv, never through a shell.
         assert run.call_args.kwargs.get("shell") is not True
 
-    def test_api_key_is_scrubbed_from_subprocess_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_api_key_is_scrubbed_from_subprocess_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The CLI refuses the subscription while ANTHROPIC_API_KEY is set, so a stale key
         # would make the override unusable on exactly the machines that need it.
         _with_cli(monkeypatch)
