@@ -12,7 +12,7 @@
 
 Kimera is a Kubernetes security testing toolkit that exposes attack techniques as [MCP](https://modelcontextprotocol.io/) tools. An AI agent connects to kimera's MCP server, plans multi-step attack chains using MITRE ATT&CK techniques, executes them against a cluster, and validates whether defenses caught each attack.
 
-22 techniques across 5 phases — reconnaissance, credential access, privilege escalation, lateral movement, and defense validation — all defined as YAML configs and executable via MCP or CLI.
+40 techniques across 8 phases — reconnaissance, credential access, privilege escalation, lateral movement, defense evasion, persistence, execution, and defense validation — all defined as YAML configs and executable via MCP or CLI.
 
 ## Disclaimer
 
@@ -106,15 +106,18 @@ kimera -n target-namespace validate-control --type all
 
 ## Technique Registry
 
-22 techniques defined in `config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
+40 techniques defined in `config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
 
-| Phase | ID Range | Count | Examples |
-|-------|----------|-------|---------|
-| Reconnaissance | R1–R7 | 7 | Enumerate namespaces, services, RBAC, secrets metadata |
-| Credential Access | C1–C6 | 5 | SA token theft, secret enumeration, cloud metadata SSRF |
-| Privilege Escalation | E1–E8 | 4 | Privileged escape, SYS_ADMIN abuse, RBAC escalation |
-| Lateral Movement | L1–L6 | 3 | Network probe, DNS enumeration, data store access |
-| Defense Validation | V1–V3 | 3 | Admission, NetworkPolicy, RBAC validation |
+| Phase | Count | Examples |
+|-------|-------|---------|
+| Reconnaissance | 10 | Enumerate namespaces, services, RBAC, secrets metadata |
+| Credential Access | 6 | SA token theft, secret enumeration, cloud metadata SSRF |
+| Defense Validation | 6 | Admission, NetworkPolicy, RBAC validation; defense-tool version detection |
+| Lateral Movement | 5 | Network probe, DNS enumeration, data store access, app-mediated request |
+| Privilege Escalation | 4 | Privileged escape, SYS_ADMIN abuse, RBAC escalation |
+| Defense Evasion | 4 | Delete events, disable PSA, Kyverno bypass, Cilium label mutation |
+| Persistence | 3 | CronJob persistence, SA with role binding, backdoor pod |
+| Execution | 2 | Exec into pod via API, ephemeral container injection |
 
 Add a technique: drop a YAML file in `config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
 
@@ -160,6 +163,9 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 | `vuln-service <svc> <type>` | Introduce a vulnerability for testing |
 | `generate --type <type> [--apply]` | Generate remediations via LLM |
 | `generate --enrich dynatrace` | Enrich LLM context with Dynatrace data |
+| `technique list [--phase <phase>]` | Browse the technique registry |
+| `technique run <id> --pod <pod>` | Run one technique; `--dry-run` prints the probe |
+| `query '<query>' [--json]` | Query an observability provider |
 | `revert [type]` | Undo all kimera changes |
 | `verify` | Confirm security posture |
 
@@ -167,7 +173,7 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 
 Layered config: `config/default.yaml` → profile → environment variables → CLI flags.
 
-Assessment checks are defined in `config/checks/workload.yaml` — 15 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
+Assessment checks are defined in `config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
 
 Environment variable overrides are defined in `config/env_mappings.yaml`.
 
@@ -208,8 +214,6 @@ Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in 
 - [Microsoft Kubernetes Threat Matrix](https://microsoft.github.io/Threat-Matrix-for-Kubernetes/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 
-## License
-
-Apache License 2.0 — see [LICENSE](LICENSE).
-
-Maintained by [Dynatrace OSS](https://github.com/dynatrace-oss).
+<p align="center">
+  Maintained by <a href="https://github.com/dynatrace-oss">Dynatrace OSS</a> · Apache 2.0
+</p>
