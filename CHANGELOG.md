@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evidence markers matched by substring, so the success marker `REACHABLE` fired on the failure text `UNREACHABLE` — a demonstration reported lateral movement as proven while every probe had failed. Markers now match whole tokens only.
 - Probe false negatives: `nc`/`nslookup` absent from a target image made port and DNS probes report `CLOSED` / `0 services discovered`, indistinguishable from a genuinely blocked port. Probes now fall back to `bash /dev/tcp` and `getent hosts`, and report `UNKNOWN (no probe tool)` when no method exists — never `CLOSED`. `validate-control` reports `ERROR` for an untestable check instead of `PASS`. All probe shell is emitted from a single prelude in `probe_runner.py`; no module or config file constructs probe commands inline.
 
+## [0.1.0] - 2026-07-13
+
+Versioning restarted at 0.1.0 for the open-source release. The `v1.0.0`, `v1.1.0` and `v2.0.0`
+tags predate it and are retained as history.
+
 ### Added
 
 - 5 exploit types: privileged containers, dangerous capabilities, host namespace sharing, missing resource limits, RBAC abuse
