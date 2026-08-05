@@ -18,12 +18,7 @@ import click
 from rich.table import Table
 
 from ..container.core.logger import console
-from ..container.make_vulnerable.probe_runner import ProbeRunner
-from ..core.technique_engine import (
-    TechniqueRegistry,
-    _resolve_probe_params,
-    execute_technique,
-)
+from ..core.technique_engine import TechniqueRegistry, execute_technique
 
 
 def _parse_params(pairs: tuple[str, ...]) -> dict[str, str]:
@@ -100,17 +95,13 @@ def run_technique(
     if not definition:
         raise click.ClickException(f"Technique {technique_id!r} is not in the registry.")
 
-    if dry_run:
-        resolved = [_resolve_probe_params(p, params, k8s.namespace) for p in definition.probes]
-        console.print(ProbeRunner().build_script(resolved), highlight=False)
-        return
-
     result = execute_technique(
         k8s=k8s,
         registry=registry,
         technique_id=technique_id,
         target_pod=target_pod,
         params=params,
+        dry_run=dry_run,
     )
 
     if output_json:
@@ -123,5 +114,5 @@ def run_technique(
     for line in result.impact:
         console.print(f"  ! {line}")
     if result.raw_output:
-        console.print("[INFO] Probe output:")
+        console.print("[INFO] Resolved probe script:" if dry_run else "[INFO] Probe output:")
         console.print(result.raw_output, highlight=False)

@@ -186,6 +186,20 @@ class TestExecuteTechnique:
         assert result.success is False
         assert result.evidence == []
 
+    def test_dry_run_does_not_exec_in_the_pod(self, technique_dir: Path) -> None:
+        # The defect this guards against: dry_run was applied to the result after
+        # execution, so a caller asking for a simulation got a real one.
+        registry = TechniqueRegistry(config_dir=technique_dir)
+        k8s = MagicMock()
+        k8s.namespace = "demo"
+
+        result = execute_technique(k8s, registry, "T1", target_pod="test-pod", dry_run=True)
+
+        k8s.exec_in_pod.assert_not_called()
+        assert result.dry_run is True
+        assert result.success is False
+        assert "TEST_MARKER" in result.raw_output
+
     def test_exec_exception_returns_structured_error(self, technique_dir: Path) -> None:
         """Connection error → structured result, not a crash."""
         registry = TechniqueRegistry(config_dir=technique_dir)

@@ -35,8 +35,14 @@ def execute_technique(
     technique_id: str,
     target_pod: str | None = None,
     params: dict[str, Any] | None = None,
+    dry_run: bool = False,
 ) -> TechniqueResult:
-    """Execute a technique from the registry against a target."""
+    """Execute a technique from the registry against a target.
+
+    Under ``dry_run`` nothing touches the cluster: exec-mode reports the resolved
+    probe script, api-mode reports the calls it would issue. Both modes are
+    handled here so every caller gets the same guarantee from one place.
+    """
     technique = registry.get(technique_id)
     if not technique:
         return TechniqueResult(
@@ -44,6 +50,7 @@ def execute_technique(
             technique_name="Unknown",
             target=target_pod or "unknown",
             success=False,
+            dry_run=dry_run,
             evidence=[f"Technique {technique_id} not found in registry"],
         )
 
@@ -54,16 +61,31 @@ def execute_technique(
         tactic=technique.tactic,
         target=target_pod or k8s.namespace,
         success=False,
+        dry_run=dry_run,
     )
 
     if technique.mode == "exec":
-        _execute_exec_technique(k8s, technique, result, target_pod, params or {})
+        _execute_exec_technique(k8s, technique, result, target_pod, params or {}, dry_run)
     elif technique.mode == "api":
-        execute_api_technique(k8s, technique, result)
+        if dry_run:
+            _describe_api_technique(technique, result)
+        else:
+            execute_api_technique(k8s, technique, result)
     else:
         result.evidence = [f"Unknown execution mode: {technique.mode}"]
 
     return result
+
+
+def _describe_api_technique(technique: TechniqueDefinition, result: TechniqueResult) -> None:
+    """Record the API calls a technique would issue, without issuing them."""
+    if not technique.api_calls:
+        result.evidence = ["DRY RUN: technique defines no API calls"]
+        return
+    described = [
+        f"{call.get('verb', '?')} {call.get('resource', '?')}" for call in technique.api_calls
+    ]
+    result.evidence = [f"DRY RUN: would issue {len(described)} API call(s)", *described]
 
 
 def _execute_exec_technique(
@@ -72,6 +94,7 @@ def _execute_exec_technique(
     result: TechniqueResult,
     target_pod: str | None,
     params: dict[str, Any],
+    dry_run: bool = False,
 ) -> None:
     if not target_pod:
         result.evidence = ["No target pod specified for exec-mode technique"]
@@ -88,6 +111,11 @@ def _execute_exec_technique(
         script = _probe_runner.build_script(resolved_probes)
     except ValueError as exc:
         result.evidence = [f"Failed to build probe script: {exc}"]
+        return
+
+    if dry_run:
+        result.raw_output = script
+        result.evidence = ["DRY RUN: probe script resolved, not executed"]
         return
 
     try:

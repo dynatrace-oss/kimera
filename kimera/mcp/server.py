@@ -183,7 +183,8 @@ def attempt_technique(
     calls or in-pod execution. Results include evidence of success/failure,
     impact assessment, and whether defenses caught the attempt.
 
-    SAFETY: Defaults to dry_run=True. Set dry_run=False only when explicitly
+    SAFETY: Defaults to dry_run=True, which reports what the technique would do
+    without touching the cluster. Set dry_run=False only when explicitly
     instructed by the operator.
 
     Noise budget controls stealth:
@@ -250,8 +251,8 @@ def attempt_technique(
         technique_id=technique_id,
         target_pod=target_pod,
         params=params,
+        dry_run=dry_run,
     )
-    result.dry_run = dry_run
     data: dict[str, Any] = result.model_dump()
     data["summary"] = result.to_summary()
     return data
