@@ -108,6 +108,8 @@ from .exploit import exploit, exploit_all, vuln, vuln_service  # noqa: E402, I00
 from .manage import apply_resources, revert, rollback, rollback_original, status  # noqa: E402, I001
 from .generate import generate  # noqa: E402, I001
 from .secure import secure, secure_service, verify  # noqa: E402, I001
+from .query import query  # noqa: E402, I001
+from .technique import technique  # noqa: E402, I001
 from .validate import validate_control  # noqa: E402, I001
 
 cli.add_command(assess)
@@ -126,3 +128,5 @@ cli.add_command(apply_resources)
 cli.add_command(validate_control)
 cli.add_command(enforce)
 cli.add_command(generate)
+cli.add_command(technique)
+cli.add_command(query)

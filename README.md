@@ -181,7 +181,17 @@ kimera generate --type network-policies --enrich dynatrace
 kimera generate --type network-policies --enrich dynatrace --enrich-strategy llm-query
 ```
 
-Adding a new provider: implement `EnrichmentProvider` in `kimera/container/integrations/<provider>/`.
+Providers can also answer direct queries, which is how you measure whether a control had the effect it claims rather than feeding an LLM prompt:
+
+```bash
+# Run a query in the provider's own query language
+kimera query 'fetch spans, from: -1h | filter k8s.namespace.name == "unguard" | limit 10'
+kimera query '<query>' --provider dynatrace --json > evidence.json
+```
+
+The query language stays the provider's own — DQL for Dynatrace — because a common cross-platform query language would be a translation layer that could only ever expose the subset every backend shares.
+
+Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
 
 ## Safety
 

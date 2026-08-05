@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..container.core.logger import SecurityLogger
 
@@ -31,6 +31,31 @@ class EnrichmentContext:
     topology_context: str | None = None
     source: str = ""
     queries_executed: list[str] = field(default_factory=list)
+
+
+class QueryProvider(Protocol):
+    """Protocol for running a query against an observability platform.
+
+    Separate from EnrichmentProvider: that one answers a fixed question shaped for
+    an LLM prompt, this one runs the caller's own query and returns the records.
+    The query language stays the platform's own — translating between platform
+    query languages would be a layer with one implementation on each side.
+    """
+
+    @property
+    def name(self) -> str: ...  # noqa: D102
+
+    @property
+    def query_language(self) -> str: ...  # noqa: D102
+
+    def execute_query(self, query: str) -> list[dict[str, Any]]:  # noqa: D102
+        """Run ``query`` and return its records.
+
+        Raises:
+            ImportError: An optional dependency the provider needs is absent.
+            ValueError: Required credentials are absent.
+        """
+        ...
 
 
 class EnrichmentProvider(Protocol):
