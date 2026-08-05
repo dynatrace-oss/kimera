@@ -65,6 +65,7 @@ tags predate it and are retained as history.
 - Replaced kube-router enforcement with Cilium CNI enforcement
 - Config system uses merge order: `default.yaml` → profile → env vars → CLI flags
 - Removed legacy plugin architecture, build files (`setup.py`, `setup.cfg`, `requirements.txt`), and unused profiles
+- Removed `scripts/` from version control — development scaffolding referenced by no packaged code, test or workflow
 
 ### Fixed
 
