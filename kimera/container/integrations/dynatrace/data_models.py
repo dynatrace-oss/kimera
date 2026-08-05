@@ -30,8 +30,6 @@ class SmartscapeEdge:
 
     source_name: str
     target_name: str
-    source_workload: str = ""  # K8s workload name (from getNodeField(id, "k8s.workload.name"))
-    target_workload: str = ""
 
 
 @dataclass(frozen=True)
