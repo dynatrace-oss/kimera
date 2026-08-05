@@ -15,6 +15,13 @@ StatefulSets:
 {% endfor %}
 {% endif %}
 
+{% if context.cronjobs %}
+CronJobs (pods appear and disappear on schedule; they still need egress rules):
+{% for name, info in context.cronjobs.items() %}
+  {{ name }}: labels={{ info.labels | tojson }}, ports={{ info.ports | tojson }}
+{% endfor %}
+{% endif %}
+
 {% if context.services %}
 Services:
 {% for name, info in context.services.items() %}
@@ -38,7 +45,8 @@ Allowed ingress topology (service -> callers):
   (none configured — apply fail-open ingress for all services)
 {% endif %}
 
-Generate NetworkPolicies for ALL workloads listed above.
+Generate NetworkPolicies for ALL workloads listed above — Deployments, StatefulSets and CronJobs.
+A workload with no policy is denied all traffic by the default-deny policy.
 {% endif %}
 
 {% if exploit_type in ("privileged-containers", "dangerous-capabilities", "host-namespace-sharing", "missing-resource-limits", "all") %}
