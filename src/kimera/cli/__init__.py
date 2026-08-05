@@ -79,6 +79,17 @@ def _resolve_services(config: ToolkitConfig, k8s: K8sClient) -> list[str]:
 @click.option("--debug", is_flag=True, help="Enable debug output")
 @click.option("--dry-run", is_flag=True, help="Preview changes without applying")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Never prompt; assume the safe answer at every confirmation.",
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help="Affirm destructive confirmations. Only takes effect with --non-interactive.",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -87,6 +98,8 @@ def cli(
     debug: bool,
     dry_run: bool,
     verbose: bool,
+    non_interactive: bool,
+    assume_yes: bool,
 ) -> None:
     """Kubernetes Container Security Lab - Assessment and Exploitation Toolkit."""
     ctx.ensure_object(dict)
@@ -102,6 +115,8 @@ def cli(
 
     ctx.obj["config"] = config
     ctx.obj["logger"] = logger
+    ctx.obj["non_interactive"] = non_interactive
+    ctx.obj["assume_yes"] = assume_yes
     ctx.obj["k8s"] = k8s_client
 
     if ctx.invoked_subcommand in ["assess", "exploit", "secure", "verify"]:

@@ -13,7 +13,40 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
+
+
+class PathResult(StrEnum):
+    """Observed outcome of probing one network path.
+
+    ``UNKNOWN`` is never collapsed into ``BLOCKED``: a path nothing could measure
+    is not a path something denied, and treating it as denied would close a flow
+    on no evidence.
+    """
+
+    REACHABLE = "REACHABLE"
+    BLOCKED = "BLOCKED"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class AttackPath:
+    """One network path a demonstration probed, and what it observed.
+
+    ``source`` is the workload name, not the pod name: a NetworkPolicy selects
+    pods by the workload's labels, and pod names change on every restart.
+    """
+
+    source: str
+    host: str
+    port: int
+    protocol: str
+    result: PathResult
+
+    def describe(self) -> str:
+        """Return a one-line summary naming both ends and the outcome."""
+        return f"{self.source} -> {self.host}:{self.port}/{self.protocol} {self.result}"
 
 
 @dataclass
@@ -25,6 +58,7 @@ class ExploitResult:
         message: Result message
         evidence: List of evidence items
         impact: List of impact items
+        attack_paths: Network paths probed, with their observed results
         metadata: Additional metadata
     """
 
@@ -32,6 +66,7 @@ class ExploitResult:
     message: str
     evidence: list[str] = field(default_factory=list)
     impact: list[str] = field(default_factory=list)
+    attack_paths: list[AttackPath] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

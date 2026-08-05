@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--non-interactive` and `--yes` on the root command. `--non-interactive` never prompts and assumes the safe answer at each site; `--yes` affirms destructive ones and takes effect only alongside it, so `--yes` on its own cannot turn `vuln` into a one-liner. `exploit --mode demo` previously read stdin directly and ended the run on EOF under ssh or CI.
+- `exploit --json` writes a findings document — exploit type, namespace, source workload, probed paths and evidence — to stdout, with all other output on stderr so the result is parseable.
 - `dns_resolve` probe type — resolves a list of names and reports which answer, reporting an explicit unknown state when no resolver tool exists. Emits no path record: a name resolving is not a connection.
 - `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload may reach, as a CIDR with an `except` list, ports and protocol. A post-processing pass guarantees every declared destination survives generation. Undeclared destinations stay denied.
 

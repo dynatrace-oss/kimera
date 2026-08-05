@@ -22,6 +22,7 @@ from ..container.resource_applier import ResourceApplier
 from ..core.enrichment import EnrichmentProvider
 from ..core.llm import DEFAULT_MODEL
 from . import REGISTRY as _REGISTRY
+from .prompts import confirm
 
 REGISTRY: ExploitRegistry = _REGISTRY
 
@@ -149,7 +150,7 @@ def generate(
         return
 
     if not yes and not config.dry_run:
-        if not click.confirm(f"\nApply {label} from {output}?", default=False):
+        if not confirm(ctx, f"\nApply {label} from {output}?", default=False):
             logger.info("Cancelled")
             return
 

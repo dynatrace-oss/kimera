@@ -22,6 +22,12 @@ _VALID_CHECKS = {"-e", "-f", "-d", "-c", "-S", "-r", "-w", "-x"}
 
 DEFAULT_HTTP_TIMEOUT = 5
 
+# Prefix of a machine-readable path record. Lines carrying it are parsed into
+# AttackPaths and stripped before the output is shown. Only probes that declare a
+# destination host and port emit one: `command` declares nothing, and an
+# `app_request` URL may name either the application or the endpoint behind it.
+PATH_MARKER = "KIMERA_PATH|"
+
 # Cluster DNS suffix appended after the namespace segment.
 DEFAULT_DNS_SUFFIX = "svc.cluster.local"
 DEFAULT_MAX_BODY_BYTES = 512
@@ -120,12 +126,22 @@ class ProbeRunner:
 
     @staticmethod
     def _build_port_open(probe: dict[str, Any]) -> str:
-        """Check TCP port reachability using the first available probe method."""
+        """Check TCP port reachability using the first available probe method.
+
+        Emits a path record so the destination is recovered from the probe
+        definition rather than parsed out of the label, which is free text and
+        would silently break path capture when reworded.
+        """
         host = probe["host"]
         port = probe["port"]
         timeout = probe.get("timeout", 2)
         label = probe.get("label", f"{host}:{port}")
-        return f'echo -n "  {label} -> "\nkimera_port_open {host} {port} {timeout}'
+        return (
+            f'echo -n "  {label} -> "\n'
+            f"_state=$(kimera_port_open {host} {port} {timeout})\n"
+            f'echo "$_state"\n'
+            f'echo "{PATH_MARKER}{host}|{port}|TCP|$_state"'
+        )
 
     @staticmethod
     def _build_dns_resolve(probe: dict[str, Any]) -> str:

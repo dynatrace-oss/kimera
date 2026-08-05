@@ -15,15 +15,24 @@
 import re
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 from rich.panel import Panel
 
-from ...domain.models import ExploitResult, SecurityTest
+from ...domain.models import AttackPath, ExploitResult, PathResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console, setup_logger
 from .probe_prelude import PROBE_PRELUDE
+from .probe_runner import PATH_MARKER
+
+# kimera_port_open's vocabulary. Anything else, including the no-tool state, is
+# UNKNOWN rather than BLOCKED.
+_PROBE_STATE_TO_RESULT = {
+    "OPEN": PathResult.REACHABLE,
+    "CLOSED": PathResult.BLOCKED,
+}
 
 
 def _marker_matches(marker: str, output: str) -> bool:
@@ -158,9 +167,9 @@ class BaseExploit(ABC):
     ) -> ExploitResult:
         """Run a list of security tests in a pod and collect evidence.
 
-        Each test's output is scanned for evidence markers. Matching
-        markers are recorded as evidence and impact entries in the
-        returned ``ExploitResult``.
+        Path records are parsed out of each test's output and the remaining
+        visible text is scanned for evidence markers. Markers are matched against
+        the visible text only, so a path record alone never satisfies one.
 
         Args:
             pod_name: Name of the pod to execute tests in.
@@ -169,15 +178,18 @@ class BaseExploit(ABC):
         """
         evidence: list[str] = []
         impact: list[str] = []
+        attack_paths: list[AttackPath] = []
 
         for test in tests:
             self.logger.exploit(f"Test: {test.name}")
             try:
                 output = self.k8s.exec_in_pod(pod_name, PROBE_PRELUDE + "\n" + test.script)
-                console.print(output, highlight=False)
+                visible, paths = self._extract_paths(output)
+                attack_paths.extend(paths)
+                console.print(visible, highlight=False)
 
                 for marker in test.evidence_markers:
-                    if _marker_matches(marker.marker, output):
+                    if _marker_matches(marker.marker, visible):
                         evidence.append(marker.evidence)
                         if marker.impact:
                             impact.append(marker.impact)
@@ -189,21 +201,66 @@ class BaseExploit(ABC):
             message=message or f"{self.name} exploit demonstrated",
             evidence=evidence,
             impact=impact,
+            attack_paths=attack_paths,
         )
 
-    def run_interactive(self) -> None:
-        """Run interactive demonstration."""
+    def _extract_paths(self, output: str) -> tuple[str, list[AttackPath]]:
+        """Split probe output into what the operator sees and the paths it recorded.
+
+        A malformed record is dropped with a warning rather than guessed at: a
+        half-parsed path would be classified and acted on like a measured one.
+        """
+        visible: list[str] = []
+        paths: list[AttackPath] = []
+
+        for line in output.splitlines():
+            if not line.startswith(PATH_MARKER):
+                visible.append(line)
+                continue
+            fields = line[len(PATH_MARKER) :].split("|")
+            if len(fields) != 4:
+                self.logger.warning(f"Malformed path record, ignored: {line!r}")
+                continue
+            host, port, protocol, state = fields
+            try:
+                port_number = int(port)
+            except ValueError:
+                self.logger.warning(f"Path record has a non-numeric port, ignored: {line!r}")
+                continue
+            paths.append(
+                AttackPath(
+                    source=self.service,
+                    host=host,
+                    port=port_number,
+                    protocol=protocol,
+                    result=_PROBE_STATE_TO_RESULT.get(state.strip(), PathResult.UNKNOWN),
+                )
+            )
+
+        rendered = "\n".join(visible)
+        return (rendered + "\n" if output.endswith("\n") and rendered else rendered), paths
+
+    def run_interactive(
+        self, make_vulnerable_if_needed: Callable[[], bool] | None = None
+    ) -> ExploitResult:
+        """Run the demonstration, offering to introduce the vulnerability first.
+
+        The decision is injected rather than read from stdin so the caller owns
+        it: under ``--non-interactive`` there is no stdin to read, and a raw
+        ``input()`` here ended the run on EOF.
+        """
         self.show_info()
 
         if not self.check_vulnerability():
-            response = input("Service is not vulnerable. Make it vulnerable? (y/n) ")
-            if response.lower() == "y":
+            decide = make_vulnerable_if_needed or (lambda: False)
+            if decide():
                 self.make_vulnerable()
                 console.print()
                 time.sleep(2)
 
         result = self.demonstrate()
         self._display_results(result)
+        return result
 
     def _display_results(self, result: ExploitResult) -> None:
         """Display consolidated exploit findings."""
