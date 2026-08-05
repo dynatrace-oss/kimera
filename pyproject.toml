@@ -27,7 +27,7 @@ llm = [
     "jinja2>=3.1.0",
 ]
 mcp-server = [
-    "mcp[cli]>=1.0.0",
+    "mcp[cli]>=2.0.0",
 ]
 litellm = [
     "litellm>=1.83",
