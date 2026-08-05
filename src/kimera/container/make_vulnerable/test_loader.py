@@ -18,12 +18,13 @@ from typing import Any
 import yaml
 
 from ...domain.models import EvidenceMarker, SecurityTest
+from ...resources import config_dir
 from .probe_runner import ProbeRunner
 
 _runner = ProbeRunner()
 
 # Resolve config directory relative to project root
-_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config" / "exploits"
+_CONFIG_DIR = config_dir() / "exploits"
 
 
 def load_exploit_tests(

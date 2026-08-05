@@ -21,9 +21,9 @@ from typing import Any, cast
 
 import yaml
 
-_REGISTRY_PATH = (
-    Path(__file__).parent.parent.parent.parent / "config" / "exploits" / "registry.yaml"
-)
+from ...resources import config_dir
+
+_REGISTRY_PATH = config_dir() / "exploits" / "registry.yaml"
 
 
 @dataclass(frozen=True)

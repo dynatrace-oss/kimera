@@ -17,17 +17,17 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ....core.llm import DEFAULT_MODEL, complete, strip_code_fence
+from ....resources import prompts_dir
 from .data_models import DtContext, KspmFinding, SmartscapeEdge
 
 logger = logging.getLogger(__name__)
 
-_PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts"
+_PROMPTS_DIR = prompts_dir()
 
 
 @lru_cache(maxsize=1)

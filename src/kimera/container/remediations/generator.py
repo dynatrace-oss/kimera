@@ -13,19 +13,19 @@
 # limitations under the License.
 
 import json
-from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ...application.config.schemas import NetworkTopologyEntry
 from ...core.llm import DEFAULT_MODEL, complete, strip_code_fence
+from ...resources import prompts_dir
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 from ..validation.external_egress import close_external_gaps, unmatched_declarations
 from ..validation.reachability import Workload, close_gaps
 
-_PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+_PROMPTS_DIR = prompts_dir()
 
 SUPPORTED_TYPES = frozenset(
     {

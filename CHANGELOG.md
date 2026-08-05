@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The package moved to a `src/` layout and its YAML configuration now ships inside the package at `src/kimera/config/`. An installed wheel previously could not find its own configuration at all: six modules located `config/` by counting parent directories of their own `__file__`, using four different depth expressions, and every one resolved to the repository root. It worked only because the package happened to sit there. Set `KIMERA_CONFIG_DIR` to supply your own profiles and checks without editing an installed package; it replaces the packaged directory wholesale, so it needs its own `default.yaml`. Prompt templates are unaffected by that override.
 - `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry that declares only egress no longer blocks that workload's ingress as a side effect. An explicit empty list still means block all ingress. Shipped profiles are unaffected.
 
 ### Security

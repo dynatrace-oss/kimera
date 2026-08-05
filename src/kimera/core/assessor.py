@@ -22,11 +22,12 @@ from kubernetes.client import V1Deployment
 from kubernetes.client.rest import ApiException
 
 from ..container.core.k8s_client import K8sClient
+from ..resources import config_dir
 from .findings import AssessmentReport, Finding, Severity, TechniqueRef
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_DIR = Path(__file__).resolve().parents[2] / "config" / "checks"
+_CONFIG_DIR = config_dir() / "checks"
 
 
 def _load_checks(config_path: Path | None = None) -> list[dict[str, Any]] | Any:

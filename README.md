@@ -106,7 +106,7 @@ kimera -n target-namespace validate-control --type all
 
 ## Technique Registry
 
-40 techniques defined in `config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
+40 techniques defined in `src/kimera/config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
 
 | Phase | Count | Examples |
 |-------|-------|---------|
@@ -119,7 +119,7 @@ kimera -n target-namespace validate-control --type all
 | Persistence | 3 | CronJob persistence, SA with role binding, backdoor pod |
 | Execution | 2 | Exec into pod via API, ephemeral container injection |
 
-Add a technique: drop a YAML file in `config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
+Add a technique: drop a YAML file in `src/kimera/config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
 
 ## In-Cluster Deployment
 
@@ -171,11 +171,13 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 
 ## Configuration
 
-Layered config: `config/default.yaml` → profile → environment variables → CLI flags.
+Layered config: `src/kimera/config/default.yaml` → profile → environment variables → CLI flags.
 
-Assessment checks are defined in `config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
+Assessment checks are defined in `src/kimera/config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
 
-Environment variable overrides are defined in `config/env_mappings.yaml`.
+Environment variable overrides are defined in `src/kimera/config/env_mappings.yaml`.
+
+Configuration ships inside the installed package. To supply your own profiles and checks without editing an installed package, point `KIMERA_CONFIG_DIR` at a directory laid out the same way — it replaces the packaged one wholesale, so it needs its own `default.yaml`.
 
 ### Network topology
 
@@ -216,7 +218,7 @@ kimera query '<query>' --provider dynatrace --json > evidence.json
 
 The query language stays the provider's own — DQL for Dynatrace — because a common cross-platform query language would be a translation layer that could only ever expose the subset every backend shares.
 
-Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
+Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `src/kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
 
 ## Safety
 

@@ -570,8 +570,15 @@ class TestNoInlineProbeCommands:
 
     def test_no_raw_probe_shell_outside_prelude(self):
         root = Path(__file__).resolve().parent.parent
+        sources = root / "src" / "kimera"
+        configs = sources / "config"
+        # rglob on a missing directory yields nothing, which would make this
+        # guard pass while inspecting zero files.
+        assert (
+            sources.is_dir() and configs.is_dir()
+        ), "source roots moved; guard is checking nothing"
         offenders = []
-        for path in list((root / "kimera").rglob("*.py")) + list((root / "config").rglob("*.yaml")):
+        for path in list(sources.rglob("*.py")) + list(configs.rglob("*.yaml")):
             if path.name in ("probe_runner.py", "probe_prelude.py"):
                 continue
             text = path.read_text(encoding="utf-8")

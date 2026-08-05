@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ...domain.models import ExploitResult
+from ...resources import config_dir
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console
 from .base import BaseExploit
 from .test_loader import load_exploit_tests
 
-_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config" / "exploits"
+_CONFIG_DIR = config_dir() / "exploits"
 
 
 def _load_exploit_config(config_key: str) -> dict[str, Any]:

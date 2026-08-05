@@ -18,9 +18,11 @@ from typing import Any
 
 import yaml
 
+from ..resources import config_dir
+
 logger = logging.getLogger(__name__)
 
-_CONFIG_DIR = Path(__file__).resolve().parents[2] / "config" / "techniques"
+_CONFIG_DIR = config_dir() / "techniques"
 
 
 class TechniqueDefinition:

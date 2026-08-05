@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from ...resources import config_dir as _packaged_config_dir
 from .schemas import ToolkitConfig
 
 
@@ -40,11 +41,7 @@ class ConfigLoader:
         Args:
             config_dir: Directory containing config files. Defaults to ./config
         """
-        if config_dir is None:
-            # Default to config/ in project root
-            self.config_dir = Path(__file__).parent.parent.parent.parent / "config"
-        else:
-            self.config_dir = Path(config_dir)
+        self.config_dir = Path(config_dir) if config_dir else _packaged_config_dir()
 
         if not self.config_dir.exists():
             raise FileNotFoundError(f"Config directory not found: {self.config_dir}")
