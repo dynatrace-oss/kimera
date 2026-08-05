@@ -103,16 +103,7 @@ def classify_records(
         elif any(k in r for k in ("source_name", "source.name", "sourceId")):
             src = r.get("source_name") or r.get("source.name") or "?"
             tgt = r.get("target_name") or r.get("destination.name") or "?"
-            src_wl = str(r.get("source_workload") or "")
-            tgt_wl = str(r.get("target_workload") or "")
-            edges.append(
-                SmartscapeEdge(
-                    source_name=src,
-                    target_name=tgt,
-                    source_workload=src_wl,
-                    target_workload=tgt_wl,
-                )
-            )
+            edges.append(SmartscapeEdge(source_name=src, target_name=tgt))
     return findings, edges
 
 
@@ -125,12 +116,7 @@ def _format_kspm(findings: list[KspmFinding]) -> str:
 def _format_smartscape(edges: list[SmartscapeEdge]) -> str:
     if not edges:
         return ""
-    lines = []
-    for e in edges:
-        src = f"{e.source_name} (k8s: {e.source_workload})" if e.source_workload else e.source_name
-        tgt = f"{e.target_name} (k8s: {e.target_workload})" if e.target_workload else e.target_name
-        lines.append(f"  {src} -> {tgt}")
-    return "\n".join(lines)
+    return "\n".join(f"  {e.source_name} -> {e.target_name}" for e in edges)
 
 
 def _build_summary(
@@ -217,7 +203,7 @@ class TargetedQueryStrategy(DtDataStrategy):
         # 2. Smartscape edges
         scope = EXPLOIT_SMARTSCAPE_SCOPE.get(exploit_type, "none")
         if scope != "none":
-            ss_query = self._build_smartscape_query(scope, namespace)
+            ss_query = self._build_smartscape_query(scope)
             queries_executed.append(ss_query)
             try:
                 records = await mcp_client.execute_dql(ss_query)
@@ -287,23 +273,23 @@ class TargetedQueryStrategy(DtDataStrategy):
         return "\n".join(lines)
 
     @staticmethod
-    def _build_smartscape_query(scope: str, namespace: str = "") -> str:
-        """Build a Smartscape DQL query based on scope level."""
+    def _build_smartscape_query(scope: str) -> str:
+        """Build a Smartscape DQL query based on scope level.
+
+        Scoping is by node type. SERVICE nodes expose no namespace or cluster attribute, and their
+        display names follow application identity rather than K8s naming, so a name filter drops
+        real edges.
+        """
         if scope == "full":
-            lines = [
-                "smartscapeEdges calls, from:-30m",
-                '| fieldsAdd source_name = getNodeField(source_id, "name"),',
-                '    target_name = getNodeField(target_id, "name"),',
-                '    source_workload = getNodeField(source_id, "k8s.workload.name"),',
-                '    target_workload = getNodeField(target_id, "k8s.workload.name")',
-            ]
-            if namespace:
-                lines.append(
-                    f'| filter contains(lower(source_name), "{namespace}") '
-                    f'or contains(lower(target_name), "{namespace}")'
-                )
-            lines.append("| fields source_name, target_name, source_workload, target_workload")
-            return "\n".join(lines)
+            return "\n".join(
+                [
+                    "smartscapeEdges calls, from:-30m",
+                    '| filter source_type == "SERVICE" and target_type == "SERVICE"',
+                    '| fieldsAdd source_name = getNodeField(source_id, "name"),',
+                    '    target_name = getNodeField(target_id, "name")',
+                    "| fields source_name, target_name",
+                ]
+            )
         # minimal — edge count only
         return "smartscapeEdges calls, from:-30m\n| summarize total_edges = count()"
 
@@ -565,7 +551,7 @@ class DavisStrategy(DtDataStrategy):
         scope = EXPLOIT_SMARTSCAPE_SCOPE.get(exploit_type, "none")
         if not all_edges and scope != "none":
             logger.info("Supplementing with targeted Smartscape query.")
-            ss_query = TargetedQueryStrategy._build_smartscape_query(scope, namespace)
+            ss_query = TargetedQueryStrategy._build_smartscape_query(scope)
             queries_executed.append(ss_query)
             try:
                 records = await mcp_client.execute_dql(ss_query)
@@ -660,11 +646,11 @@ def _build_davis_requests(
         requests.append(
             (
                 "smartscape",
-                f"Query smartscapeEdges calls to show service-to-service communication "
-                f"edges involving namespace '{namespace}'. "
-                f"Resolve display names with getNodeField(source_id, 'name') and getNodeField(target_id, 'name'). "
-                f"Also retrieve K8s workload names with getNodeField(source_id, 'k8s.workload.name') "
-                f"and getNodeField(target_id, 'k8s.workload.name') to correlate Smartscape nodes with KSPM findings.",
+                "Query smartscapeEdges calls to show service-to-service communication edges. "
+                'Restrict to source_type == "SERVICE" and target_type == "SERVICE"; SERVICE '
+                "nodes carry no namespace or cluster attribute, so do not filter on one. "
+                "Resolve display names with getNodeField(source_id, 'name') and "
+                "getNodeField(target_id, 'name').",
             )
         )
 

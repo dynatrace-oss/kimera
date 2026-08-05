@@ -28,6 +28,8 @@ from kimera.container.integrations.dynatrace.query_strategies import (
     DavisStrategy,
     LlmQueryStrategy,
     TargetedQueryStrategy,
+    _build_davis_requests,
+    _format_smartscape,
     classify_records,
     create_strategy,
 )
@@ -113,15 +115,6 @@ class TestKspmFinding:
             f.object_name = "z"  # type: ignore[misc]
 
 
-class TestSmartscapeEdge:
-    """Tests for the SmartscapeEdge dataclass."""
-
-    def test_creation(self) -> None:
-        e = SmartscapeEdge(source_name="php-cli", target_name="unguard-auth-pod")
-        assert e.source_name == "php-cli"
-        assert e.target_name == "unguard-auth-pod"
-
-
 # ===========================================================================
 # TargetedQueryStrategy tests
 # ===========================================================================
@@ -161,12 +154,22 @@ class TestTargetedQueryStrategy:
         assert "k8s.cluster.name" not in query
 
     def test_builds_smartscape_full_scope(self) -> None:
-        query = TargetedQueryStrategy._build_smartscape_query("full", "unguard")
+        query = TargetedQueryStrategy._build_smartscape_query("full")
+        assert 'source_type == "SERVICE"' in query
+        assert 'target_type == "SERVICE"' in query
         assert "getNodeField(source_id" in query
         assert "getNodeField(target_id" in query
-        assert "source_name" in query
-        assert "target_name" in query
-        assert "unguard" in query
+
+    def test_smartscape_query_does_not_filter_on_display_name(self) -> None:
+        # Display names follow application identity, not K8s naming: contains(source_name, "unguard")
+        # kept 15 of 128 edges in a measured window and dropped ProxyController -> MembershipService.
+        query = TargetedQueryStrategy._build_smartscape_query("full")
+        assert "contains(" not in query
+
+    @pytest.mark.parametrize("scope", ["full", "minimal"])
+    def test_smartscape_query_requests_no_null_workload_field(self, scope: str) -> None:
+        # k8s.workload.name returned null on every node measured, so the column is always empty.
+        assert "k8s.workload.name" not in TargetedQueryStrategy._build_smartscape_query(scope)
 
     def test_builds_smartscape_minimal_scope(self) -> None:
         query = TargetedQueryStrategy._build_smartscape_query("minimal")
@@ -461,6 +464,22 @@ class TestClassifyRecords:
         assert len(findings) == 0
         assert len(edges) == 1
         assert edges[0].source_name == "svc-a"
+
+    def test_ignores_stale_workload_keys(self) -> None:
+        # A cached or hand-written record may still carry the fields Kimera used to request.
+        records = [{"source_name": "a", "target_name": "b", "source_workload": "unguard-a"}]
+        _, edges = classify_records(records)
+        assert edges == [SmartscapeEdge(source_name="a", target_name="b")]
+
+    def test_formats_edges_without_workload_annotation(self) -> None:
+        edges = [SmartscapeEdge(source_name="ProxyController", target_name="MembershipService")]
+        assert _format_smartscape(edges) == "  ProxyController -> MembershipService"
+
+    def test_davis_topology_request_asks_for_no_null_field(self) -> None:
+        requests = _build_davis_requests("missing-network-policies", "unguard", "cns-zero")
+        smartscape = [text for name, text in requests if name == "smartscape"]
+        assert smartscape, "expected a smartscape request for this exploit type"
+        assert "k8s.workload.name" not in smartscape[0]
 
     def test_handles_mixed_records(self) -> None:
         records = [
