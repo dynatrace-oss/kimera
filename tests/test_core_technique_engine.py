@@ -159,6 +159,33 @@ class TestExecuteTechnique:
         assert result.success is False
         assert result.evidence == []
 
+    def test_raw_probe_output_is_retained(self, technique_dir: Path) -> None:
+        # Evidence markers summarise the output; without the output itself no one
+        # can check the summary against what the probe actually printed.
+        registry = TechniqueRegistry(config_dir=technique_dir)
+        k8s = MagicMock()
+        k8s.namespace = "demo"
+        k8s.exec_in_pod.return_value = "TEST_MARKER:found\nbody: downstream-response"
+
+        result = execute_technique(k8s, registry, "T1", target_pod="test-pod")
+
+        assert "downstream-response" in result.raw_output
+
+    def test_marker_does_not_fire_on_a_longer_token_containing_it(
+        self, technique_dir: Path
+    ) -> None:
+        # The failure this guards against is REACHABLE matching inside UNREACHABLE:
+        # a probe reporting the negative outcome scored as the positive one.
+        registry = TechniqueRegistry(config_dir=technique_dir)
+        k8s = MagicMock()
+        k8s.namespace = "demo"
+        k8s.exec_in_pod.return_value = "NOT_TEST_MARKER:absent"
+
+        result = execute_technique(k8s, registry, "T1", target_pod="test-pod")
+
+        assert result.success is False
+        assert result.evidence == []
+
     def test_exec_exception_returns_structured_error(self, technique_dir: Path) -> None:
         """Connection error → structured result, not a crash."""
         registry = TechniqueRegistry(config_dir=technique_dir)

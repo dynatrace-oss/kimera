@@ -23,7 +23,7 @@ from ...domain.models import ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger, console, setup_logger
-from .probe_runner import PROBE_PRELUDE
+from .probe_prelude import PROBE_PRELUDE
 
 
 def _marker_matches(marker: str, output: str) -> bool:

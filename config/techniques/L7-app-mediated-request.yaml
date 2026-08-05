@@ -1,0 +1,85 @@
+# Technique: App-mediated request (SSRF)
+# ID: L7
+# Tactic: Lateral Movement
+# Reaches a backend through an application that can reach it, rather than directly.
+
+id: L7
+name: App-mediated request
+enabled: true
+
+mitre:
+  technique_id: T1090
+  technique_name: "Proxy"
+  tactic: lateral-movement
+  data_sources: [Network Traffic, Application Log]
+
+cis_controls: []
+
+severity: high
+
+description: |
+  Requests an application endpoint that fetches a URL supplied by the caller —
+  a server-side request forgery vector — so the application issues the
+  downstream request on the attacker's behalf. This reaches backends the
+  attacker's own pod may not be permitted to contact, because the request
+  originates from a workload that is permitted.
+
+  It is also the only form of lateral movement that is observable in
+  process-level topology. An APM agent instruments a workload's long-running
+  application process; a process started beside it by exec emits no client
+  span, so its calls never form a service-call edge. Here the instrumented
+  application makes the call, so the hop is recorded.
+
+  The URL is supplied by the operator. The technique asserts nothing about
+  whether the application actually forwarded the request — that is a property
+  of the application, and the reported response body is the evidence for
+  judging it.
+
+  Endpoint choice decides visibility. An endpoint that forwards using the
+  application's own HTTP client is instrumented and produces a client span; one
+  that shells out to a command-line HTTP tool is not, because the outbound call is
+  made by a forked process outside the monitored application. Both forward the request and
+  return the same body, so the response cannot tell them apart — only the absence
+  of a client span does. Where a service exposes several forwarding endpoints,
+  expect them to differ.
+
+execution:
+  mode: exec
+  requires_target_pod: true
+
+  parameters:
+    - name: url
+      required: true
+      description: >
+        Full URL of the application endpoint, with the downstream target already
+        embedded and percent-encoded where the endpoint takes it as a parameter.
+        Example: http://proxy-service/image?url=http%3A%2F%2Fbackend%2Fpath
+
+  probes:
+    - type: app_request
+      url: "{{ url }}"
+      label: "app-mediated request"
+      timeout: 5
+      max_body: 512
+
+  evidence_markers:
+    - marker: "REACHABLE"
+      evidence: "Application endpoint responded; inspect the reported body to confirm whether the downstream target was actually fetched"
+      impact: "A reachable request-forwarding endpoint lets an attacker reach backends their own pod cannot contact directly"
+    - marker: "UNREACHABLE"
+      evidence: "Application endpoint could not be contacted from this pod"
+
+success_indicators:
+  - "REACHABLE"
+
+impact:
+  - "Reach backends that deny the attacker's pod but allow the forwarding workload"
+  - "Requests carry the forwarding workload's identity, not the attacker's"
+  - "Unlike shell-based lateral movement, the hop is visible in topology — which also makes it detectable"
+
+remediation: |
+  Validate and allow-list the URLs an application will fetch on a caller's
+  behalf; reject private and link-local address ranges by default. Add a
+  NetworkPolicy restricting the forwarding workload's egress to the backends it
+  genuinely needs, so a bypass of the application-level check still fails at the
+  network layer.

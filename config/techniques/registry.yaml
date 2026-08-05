@@ -173,6 +173,12 @@ techniques:
     phase: lateral-movement
     noise: medium
 
+  L7:
+    name: App-mediated request
+    file: L7-app-mediated-request.yaml
+    phase: lateral-movement
+    noise: low
+
   # ── Defense Evasion (modifies cluster state, variable noise) ──────
 
   DE1:

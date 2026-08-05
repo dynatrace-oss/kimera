@@ -16,6 +16,7 @@
 
 import http.server
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -27,25 +28,31 @@ from typing import ClassVar
 import pytest
 
 from kimera.container.make_vulnerable.base import _marker_matches
-from kimera.container.make_vulnerable.probe_runner import (
-    PROBE_PRELUDE,
-    UNKNOWN_STATE,
-    ProbeRunner,
-)
+from kimera.container.make_vulnerable.probe_prelude import PROBE_PRELUDE, UNKNOWN_STATE
+from kimera.container.make_vulnerable.probe_runner import ProbeRunner
 
 
 class _SilentHandler(http.server.BaseHTTPRequestHandler):
     """Echoes request headers and body so header/body propagation is observable."""
 
-    def _respond(self, payload: bytes) -> None:
-        self.send_response(200)
+    def _respond(self, payload: bytes, status: int = 200) -> None:
+        self.send_response(status)
         self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
-        self._respond(self.headers.get("X-Kimera", "ok").encode())
+        # Routes used by the app_request probe tests; any other path keeps the
+        # header-echo behaviour the prelude tests rely on.
+        if self.path.startswith("/status/"):
+            self._respond(b"error-page-body", int(self.path.rsplit("/", 1)[1]))
+        elif self.path == "/big":
+            self._respond(b"A" * 4096)
+        elif self.path == "/empty":
+            self._respond(b"")
+        else:
+            self._respond(self.headers.get("X-Kimera", "ok").encode())
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         length = int(self.headers.get("Content-Length", 0))
@@ -274,7 +281,7 @@ class _PreludeSandbox:
                 source = source or shutil.which(tool)
                 if source:
                     target.symlink_to(source)
-        for helper in ("awk", "tail", "head"):
+        for helper in ("awk", "tail", "head", "wc"):
             path = shutil.which(helper)
             if path and not (bin_dir / helper).exists():
                 (bin_dir / helper).symlink_to(path)
@@ -437,6 +444,109 @@ class TestHttpPreludeBehaviour(_PreludeSandbox):
         assert '"allowed":true' in result.stdout
 
 
+class TestAppRequestProbe(_PreludeSandbox):
+    """Drive the emitted script for real: the probe's value is what it reports, not its text.
+
+    The probe exists to make one distinction — an application that forwarded the request
+    versus one that answered without forwarding — and only the response body carries it.
+    """
+
+    @pytest.fixture
+    def http_server(self):
+        server = http.server.HTTPServer(("127.0.0.1", 0), _SilentHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        yield server.server_address[1]
+        server.shutdown()
+        server.server_close()
+
+    def _run(
+        self,
+        runner: ProbeRunner,
+        url: str,
+        tools: tuple[str, ...] = ("curl",),
+        **probe: object,
+    ) -> str:
+        script = runner.build_script([{"type": "app_request", "url": url, **probe}])
+        result: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603 - fixed argv, test-controlled url
+            ["/bin/sh", "-c", script],
+            capture_output=True,
+            text=True,
+            env=self._sandbox(tools),
+        )
+        return result.stdout
+
+    def test_emits_the_configured_url_and_no_other(self, runner, http_server):
+        url = f"http://127.0.0.1:{http_server}/only-this"
+        script = runner.build_script([{"type": "app_request", "url": url}])
+        assert url in script
+        # The probe must request nothing the operator did not configure.
+        assert set(re.findall(r"https?://[^\s'\"]+", script)) == {url}
+
+    def test_percent_encoded_target_survives_verbatim(self, runner):
+        # An SSRF endpoint carries its target as an encoded parameter; re-encoding
+        # or unescaping it silently changes which host the application contacts.
+        url = "http://svc/image?url=http%3A%2F%2Fbackend%2Fpath%3Fa%3D1"
+        script = runner.build_script([{"type": "app_request", "url": url}])
+        assert "http%3A%2F%2Fbackend%2Fpath%3Fa%3D1" in script
+
+    @pytest.mark.parametrize("tools", [("curl",), ("wget",)])
+    def test_reports_status_and_body(self, runner, tools, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", tools)
+        assert "200" in out
+        assert "ok" in out
+
+    @pytest.mark.parametrize("tools", [("curl",), ("wget",)])
+    def test_body_is_reported_for_a_non_success_status(self, runner, tools, http_server):
+        # The case the probe exists for: a 404 body is how a refusal to forward
+        # is told apart from the downstream target's own response.
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/status/404", tools)
+        assert "404" in out
+        assert "error-page-body" in out
+        assert "UNREACHABLE" not in out
+
+    def test_oversized_body_is_truncated_and_marked(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/big", max_body=64)
+        assert "A" * 64 in out
+        assert "A" * 65 not in out
+        assert "truncated" in out
+
+    def test_body_within_limit_is_not_marked_truncated(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", max_body=512)
+        assert "truncated" not in out
+
+    def test_empty_body_is_not_reported_as_unreachable(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/empty")
+        assert "200" in out
+        assert "UNREACHABLE" not in out
+
+    def test_connection_failure_reports_no_status_code(self, runner, closed_port):
+        out = self._run(runner, f"http://127.0.0.1:{closed_port}/")
+        assert "UNREACHABLE" in out
+        assert "HTTP" not in out
+
+    def test_absent_http_client_reports_unknown_not_a_negative(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", tools=())
+        assert UNKNOWN_STATE in out
+        assert "UNREACHABLE" not in out
+        assert "200" not in out
+
+    def test_unknown_state_does_not_fire_a_success_marker(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", tools=())
+        assert _marker_matches("REACHABLE", out) is False
+
+    def test_output_claims_nothing_about_observability(self, runner, http_server):
+        out = self._run(runner, f"http://127.0.0.1:{http_server}/hello").lower()
+        for claim in ("span", "topology", "edge", "service call"):
+            assert claim not in out
+
+    def test_shell_metacharacters_in_url_are_not_executed(self, runner, tmp_path):
+        canary = tmp_path / "canary"
+        out = self._run(runner, f"http://127.0.0.1:1/';touch {canary};'")
+        assert not canary.exists(), "URL content reached the shell as code"
+        assert "UNREACHABLE" in out
+
+
 class TestEvidenceMarkerMatching:
     """A success marker must not fire on its own negation."""
 
@@ -462,7 +572,7 @@ class TestNoInlineProbeCommands:
         root = Path(__file__).resolve().parent.parent
         offenders = []
         for path in list((root / "kimera").rglob("*.py")) + list((root / "config").rglob("*.yaml")):
-            if path.name == "probe_runner.py":
+            if path.name in ("probe_runner.py", "probe_prelude.py"):
                 continue
             text = path.read_text(encoding="utf-8")
             raw = [

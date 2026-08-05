@@ -18,7 +18,7 @@ from ...domain.models import EvidenceMarker, ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
 from ..core.logger import console
 from .base import BaseExploit
-from .probe_runner import UNKNOWN_STATE
+from .probe_prelude import UNKNOWN_STATE
 from .test_loader import load_exploit_tests
 
 # Label used to identify network policies created by this toolkit
