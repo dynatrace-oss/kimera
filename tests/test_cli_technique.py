@@ -71,7 +71,10 @@ def technique_dir(tmp_path: Path) -> Path:
     return tech_dir
 
 
-def _invoke(args: list[str], technique_dir: Path, exec_output: str = "FOUND") -> Result:
+def _invoke_capturing(
+    args: list[str], technique_dir: Path, exec_output: str = "FOUND"
+) -> tuple[Result, MagicMock]:
+    """Invoke the CLI and return the result alongside the mocked K8s client."""
     k8s = MagicMock()
     k8s.namespace = "demo"
     k8s.exec_in_pod.return_value = exec_output
@@ -81,8 +84,11 @@ def _invoke(args: list[str], technique_dir: Path, exec_output: str = "FOUND") ->
 
         registry_cls.return_value = TechniqueRegistry(config_dir=technique_dir)
         result = CliRunner().invoke(technique, args, obj=obj)
-    result.k8s = k8s  # type: ignore[attr-defined]
-    return result
+    return result, k8s
+
+
+def _invoke(args: list[str], technique_dir: Path, exec_output: str = "FOUND") -> Result:
+    return _invoke_capturing(args, technique_dir, exec_output)[0]
 
 
 class TestTechniqueList:
@@ -110,10 +116,10 @@ class TestTechniqueRun:
         assert result.exit_code != 0
 
     def test_parameter_substitutes_into_the_executed_probe(self, technique_dir: Path) -> None:
-        result = _invoke(
+        _, k8s = _invoke_capturing(
             ["run", "P1", "--pod", "p", "--param", "url=http://target/path"], technique_dir
         )
-        script = result.k8s.exec_in_pod.call_args.args[1]  # type: ignore[attr-defined]
+        script = k8s.exec_in_pod.call_args.args[1]
         assert "http://target/path" in script
         assert "{{ url }}" not in script
 
@@ -129,18 +135,20 @@ class TestTechniqueRun:
     def test_malformed_parameter_is_rejected_and_nothing_runs(self, technique_dir: Path) -> None:
         # Dropping it silently would run the probe with an unresolved placeholder and
         # attribute the result to a target the operator never named.
-        result = _invoke(["run", "P1", "--pod", "p", "--param", "no-equals-sign"], technique_dir)
+        result, k8s = _invoke_capturing(
+            ["run", "P1", "--pod", "p", "--param", "no-equals-sign"], technique_dir
+        )
         assert result.exit_code != 0
-        result.k8s.exec_in_pod.assert_not_called()  # type: ignore[attr-defined]
+        k8s.exec_in_pod.assert_not_called()
 
 
 class TestTechniqueDryRun:
     def test_dry_run_executes_nothing(self, technique_dir: Path) -> None:
-        result = _invoke(
+        result, k8s = _invoke_capturing(
             ["run", "P1", "--pod", "p", "--param", "url=http://x/", "--dry-run"], technique_dir
         )
         assert result.exit_code == 0
-        result.k8s.exec_in_pod.assert_not_called()  # type: ignore[attr-defined]
+        k8s.exec_in_pod.assert_not_called()
 
     def test_dry_run_reports_the_resolved_script(self, technique_dir: Path) -> None:
         result = _invoke(
