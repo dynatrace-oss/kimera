@@ -34,6 +34,7 @@ from .models import (
     ValidationResult,
     ValidationVerdict,
 )
+from .reachability import Workload, find_gaps
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,64 @@ def _check_default_deny(k8s: K8sClient, namespace: str) -> ValidationResult | No
     )
 
 
+def _check_policy_reachability(k8s: K8sClient, namespace: str) -> list[ValidationResult]:
+    """Report flows an ingress rule permits that the source's egress rules deny.
+
+    The probe-pod tests below only ever measure an unlabeled pod, so a policy set
+    that severs a real workload-to-workload path still passes them. This check
+    reads the flows the policy set declares and confirms both sides agree.
+    """
+    try:
+        policies_raw = k8s.list_network_policies(namespace)
+        pods_raw = k8s.v1.list_namespaced_pod(namespace)
+    except ApiException as e:
+        logger.warning("Could not read policies or pods for reachability check: %s", e)
+        return []
+
+    if not policies_raw:
+        return []
+
+    serialize = k8s.v1.api_client.sanitize_for_serialization
+    policies = [serialize(p) for p in policies_raw]
+    workloads = [
+        Workload(name=p.metadata.name, labels=dict(p.metadata.labels or {})) for p in pods_raw.items
+    ]
+
+    gaps = find_gaps(policies, workloads)
+    if not gaps:
+        return [
+            ValidationResult(
+                control_type=ControlType.NETWORK_POLICY,
+                control_name="policy-reachability",
+                test_description="Every flow declared by an ingress rule is permitted end to end",
+                expected="REACHABLE",
+                actual="REACHABLE",
+                verdict=ValidationVerdict.PASS,
+                evidence="All ingress-declared flows have matching egress rules",
+                remediation_hint="",
+            )
+        ]
+
+    return [
+        ValidationResult(
+            control_type=ControlType.NETWORK_POLICY,
+            control_name="policy-reachability",
+            test_description=f"{gap.source} -> {gap.destination}:{gap.port} should be permitted",
+            expected="REACHABLE",
+            actual="EGRESS_DENIED",
+            verdict=ValidationVerdict.ERROR,
+            evidence=gap.describe(),
+            remediation_hint=(
+                f"Add an egress rule on {gap.source} permitting "
+                f"{gap.destination_selector} on port {gap.port}. A NetworkPolicy allows "
+                "a flow only when the source's egress and the destination's ingress "
+                "both permit it."
+            ),
+        )
+        for gap in gaps
+    ]
+
+
 def validate_network_policies(
     k8s: K8sClient,
     sec_logger: SecurityLogger,
@@ -329,6 +388,15 @@ def validate_network_policies(
     default_deny_result = _check_default_deny(k8s, namespace)
     if default_deny_result:
         report.results.append(default_deny_result)
+
+    reachability_results = _check_policy_reachability(k8s, namespace)
+    report.results.extend(reachability_results)
+    broken = [r for r in reachability_results if r.verdict == ValidationVerdict.ERROR]
+    if broken:
+        sec_logger.warning(
+            f"{len(broken)} declared flow(s) are severed: ingress permits them but "
+            "the source's egress does not"
+        )
 
     # Count existing policies
     try:
