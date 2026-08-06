@@ -159,7 +159,7 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 |---------|-------------|
 | `assess [--json]` | Scan namespace against CIS checks |
 | `validate-control --type all\|admission\|network-policy\|rbac` | Test defense controls |
-| `exploit <type>` | Demonstrate a specific exploit |
+| `exploit <type> [--service <workload>]` | Demonstrate a specific exploit; `--service` overrides the profile mapping |
 | `vuln-service <svc> <type>` | Introduce a vulnerability for testing |
 | `generate --type <type> [--apply]` | Generate remediations via LLM |
 | `generate --from-findings <file>` | Remediate only the workload the exploit ran from |
