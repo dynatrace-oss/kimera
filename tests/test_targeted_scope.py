@@ -13,12 +13,14 @@
 # limitations under the License.
 
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from kimera.application.config.schemas import ExternalEgressDestination, NetworkTopologyEntry
 from kimera.cli.generate import _resolve_scope
+from kimera.container.core.exceptions import PermissionDeniedError
 from kimera.container.remediations.exploit_findings import AttackPathRecord, FindingsDocument
 from kimera.container.remediations.finding_scope import NAMESPACE_SCOPE, TARGETED_SCOPE
 from kimera.container.remediations.generator import _load_template
@@ -287,3 +289,34 @@ class TestScopeDefaulting:
 
         assert scope == NAMESPACE_SCOPE
         assert document is not None
+
+
+class TestGenerateExitCode:
+    """A failed generation must not report success to a script."""
+
+    def _invoke(self, error: Exception) -> Any:
+        from click.testing import CliRunner
+
+        from kimera.cli.generate import generate
+
+        obj = {"config": MagicMock(namespace=NAMESPACE), "logger": MagicMock(), "k8s": MagicMock()}
+        with patch("kimera.container.remediations.generator.LLMRemediationGenerator") as factory:
+            factory.return_value.generate.side_effect = error
+            return CliRunner().invoke(generate, ["--type", "missing-network-policies"], obj=obj)
+
+    def test_a_refused_namespace_read_exits_non_zero(self) -> None:
+        result = self._invoke(PermissionDeniedError("Cannot read deployments (HTTP 401)"))
+
+        assert result.exit_code != 0
+        assert "401" in result.output
+
+    def test_targeted_scope_without_findings_exits_non_zero(self) -> None:
+        from click.testing import CliRunner
+
+        from kimera.cli.generate import generate
+
+        obj = {"config": MagicMock(namespace=NAMESPACE), "logger": MagicMock(), "k8s": MagicMock()}
+        result = CliRunner().invoke(generate, ["--scope", TARGETED_SCOPE], obj=obj)
+
+        assert result.exit_code != 0
+        assert "requires --from-findings" in result.output

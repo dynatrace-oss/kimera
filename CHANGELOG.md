@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `missing-network-policies` reports the services it did not probe. The lateral-movement target list was capped at 10 and truncated in silence, so a namespace with more services produced a path count that understated the attack surface — on a 16-service namespace it dropped three, including the one an app-mediated exploit reached. The cap is now 25 and names what it drops.
+- `generate` exits non-zero when generation fails, and when `--scope targeted` is given without `--from-findings`. It reported the error and exited 0, so a script could not tell success from failure.
+- A namespace the credential cannot read stops generation instead of yielding an empty context. A 401 or 403 while listing workloads was logged and returned nothing, and the emitted set then severed every workload the listing had missed.
 - `validate-control --type network-policy` reports declared external egress the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
 - `validate-control --type network-policy` also reports flows an egress rule declares that the destination's ingress denies. Only the opposite direction was checked. Reported, never auto-corrected — inferring an ingress rule would grant access nobody declared.
 - `validate-control --type network-policy` no longer reports a pass ratio for connectivity tests it did not run. A probe pod that cannot be deployed is recorded as an ERROR naming the reason; it previously printed "2/2 passed" having verified nothing.

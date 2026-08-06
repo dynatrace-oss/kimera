@@ -14,6 +14,7 @@
 
 from typing import Any
 
+from ..core.exceptions import PermissionDeniedError
 from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 
@@ -40,6 +41,9 @@ def gather_cluster_context(
 
     Read-only. A listing failure is logged and yields an empty section rather
     than aborting, so a partial context still reaches the model.
+
+    Raises:
+        PermissionDeniedError: if the API refuses the read (401/403).
     """
     namespace = k8s.namespace
     context: dict[str, Any] = {"deployments": deployment_info(k8s, logger, namespace)}
@@ -57,6 +61,20 @@ def gather_cluster_context(
     return context
 
 
+def _reject_unreadable(error: Exception, kind: str) -> None:
+    """A refused read is not an empty namespace.
+
+    Generating from one would sever every workload it could not see.
+    """
+    status = getattr(error, "status", None)
+    if status in (401, 403):
+        raise PermissionDeniedError(
+            f"Cannot read {kind} in the namespace (HTTP {status}); the credential is "
+            "unauthenticated or lacks permission. Refusing to generate from a namespace "
+            "that cannot be read."
+        ) from error
+
+
 def deployment_info(
     k8s: K8sClient, logger: SecurityLogger, namespace: str
 ) -> dict[str, dict[str, Any]]:
@@ -68,6 +86,7 @@ def deployment_info(
             labels = dep.spec.selector.match_labels or {}
             result[dep.metadata.name] = {"labels": dict(labels), "ports": extract_ports(dep)}
     except Exception as e:
+        _reject_unreadable(e, "deployments")
         logger.error(f"Failed to list deployments: {e}")
     return result
 
@@ -83,6 +102,7 @@ def statefulset_info(
             labels = sts.spec.selector.match_labels or {}
             result[sts.metadata.name] = {"labels": dict(labels), "ports": extract_ports(sts)}
     except Exception as e:
+        _reject_unreadable(e, "statefulsets")
         logger.error(f"Failed to list statefulsets: {e}")
     return result
 
@@ -102,6 +122,7 @@ def cronjob_info(
                 "ports": extract_ports(job_template),
             }
     except Exception as e:
+        _reject_unreadable(e, "cronjobs")
         logger.error(f"Failed to list cronjobs: {e}")
     return result
 
@@ -127,6 +148,7 @@ def service_info(
                 "selector": dict(svc.spec.selector) if svc.spec.selector else {},
             }
     except Exception as e:
+        _reject_unreadable(e, "services")
         logger.error(f"Failed to list services: {e}")
     return result
 
@@ -149,6 +171,7 @@ def security_contexts(
                 "containers": [_container_context(c) for c in pod_spec.containers],
             }
     except Exception as e:
+        _reject_unreadable(e, "workloads")
         logger.error(f"Failed to get security contexts: {e}")
     return result
 

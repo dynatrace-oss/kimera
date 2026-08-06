@@ -40,8 +40,10 @@ REDIS_PORT = 6379
 PROBE_TIMEOUT_SECONDS = 3
 
 # Probing every port of every service scales the demonstration with namespace
-# size; the first port of each service is what a lateral move would try.
-MAX_LATERAL_TARGETS = 10
+# size; the first port of each service is what a lateral move would try. The
+# bound is reported when it bites — an unreported cap understates the attack
+# surface, and every path count downstream inherits the understatement.
+MAX_LATERAL_TARGETS = 25
 
 
 class MissingNetworkPoliciesExploit(BaseExploit):
@@ -168,6 +170,11 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                 continue
             targets.append((name, port))
 
+        if len(targets) > MAX_LATERAL_TARGETS:
+            dropped = ", ".join(name for name, _ in targets[MAX_LATERAL_TARGETS:])
+            self.logger.warning(
+                f"Probing {MAX_LATERAL_TARGETS} of {len(targets)} services; not probed: {dropped}"
+            )
         return targets[:MAX_LATERAL_TARGETS]
 
     def _build_dynamic_tests(self) -> list[SecurityTest]:

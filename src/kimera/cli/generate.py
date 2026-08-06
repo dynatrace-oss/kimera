@@ -17,7 +17,11 @@ from pathlib import Path
 import click
 
 from ..application.config.registry import ExploitRegistry
-from ..container.core.exceptions import ProviderError, ProviderNotConfiguredError
+from ..container.core.exceptions import (
+    PermissionDeniedError,
+    ProviderError,
+    ProviderNotConfiguredError,
+)
 from ..container.core.journal import record_operation
 from ..container.core.logger import console
 from ..container.remediations.exploit_findings import FindingsDocument
@@ -111,8 +115,7 @@ def generate(
     try:
         findings, scope = _resolve_scope(findings_path, scope)
     except ValueError as e:
-        logger.error(str(e))
-        return
+        raise click.ClickException(str(e)) from e
 
     if output is None:
         output = "kimera-exploit.yaml" if mode == "exploit" else "kimera-remediations.yaml"
@@ -159,11 +162,9 @@ def generate(
                 scope=scope,
             )
     except (ImportError, ProviderNotConfiguredError) as e:
-        logger.error(str(e))
-        return
-    except (ProviderError, ValueError) as e:
-        logger.error(f"Generation failed: {e}")
-        return
+        raise click.ClickException(str(e)) from e
+    except (PermissionDeniedError, ProviderError, ValueError) as e:
+        raise click.ClickException(f"Generation failed: {e}") from e
 
     from pathlib import Path
 

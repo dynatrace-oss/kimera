@@ -22,9 +22,10 @@ exploit_mappings:
   dangerous-capabilities: "unguard-profile-service"
   host-namespace-sharing: "unguard-frontend"
   missing-resource-limits: "unguard-membership-service"
-  # ad-service has no legitimate data-store dependency, so it is the honest
-  # stand-in for a compromised pod: least-privilege policies genuinely block it.
-  missing-network-policies: "unguard-ad-service"
+  # proxy-service is Unguard's documented SSRF vector: an attacker makes the
+  # application fetch an internal URL, so the hop is the app's own and shows up
+  # in topology. Its only legitimate egress is external, which is declared below.
+  missing-network-policies: "unguard-proxy-service"
 
 # Least-privilege network topology for NetworkPolicy generation.
 # Defines which pods may send ingress traffic to each service.
@@ -68,6 +69,13 @@ network_topology:
   unguard-proxy-service:
     allowed_ingress_from:
       - {app.kubernetes.io/name: frontend}
+    # Fetching user-supplied external URLs is what this service is for; a set
+    # that omits it severs the feature while every app-to-app flow still passes.
+    allowed_egress_to:
+      - cidr: 0.0.0.0/0
+        except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32]
+        ports: [80, 443]
+        protocol: TCP
   unguard-status-service:
     allowed_ingress_from:
       - {app.kubernetes.io/name: frontend}
