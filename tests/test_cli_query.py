@@ -23,6 +23,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from kimera.cli.query import query
+from kimera.container.core.exceptions import QueryDeniedError
 
 
 def _invoke(args: list[str], provider: Any = None) -> Result:
@@ -133,6 +134,15 @@ class TestUnusableProvider:
         result = _invoke(["q", "--provider", "stubprovider"], provider)
         assert result.exit_code != 0
         assert "DT_ENVIRONMENT" in result.output
+
+    def test_a_denial_names_the_endpoint_and_leaves_no_traceback(self) -> None:
+        provider = _provider(
+            error=QueryDeniedError("Access denied (HTTP 403) by https://gw.example/mcp.")
+        )
+        result = _invoke(["q", "--provider", "stubprovider"], provider)
+        assert result.exit_code != 0
+        assert "https://gw.example/mcp" in result.output
+        assert "Traceback" not in result.output
 
     def test_failed_query_does_not_report_an_empty_result(self) -> None:
         provider = _provider(error=RuntimeError("gateway refused"))

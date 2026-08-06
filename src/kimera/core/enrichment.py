@@ -54,6 +54,7 @@ class QueryProvider(Protocol):
         Raises:
             ImportError: An optional dependency the provider needs is absent.
             ValueError: Required credentials are absent.
+            QueryDeniedError: The provider refused the request (HTTP 403).
         """
         ...
 

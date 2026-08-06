@@ -18,6 +18,7 @@ from typing import Any
 import click
 from rich.table import Table
 
+from ..container.core.exceptions import QueryDeniedError
 from ..container.core.logger import console
 from ..core.enrichment import QueryProvider
 
@@ -74,7 +75,7 @@ def query(query_string: str, provider_name: str, output_json: bool) -> None:
 
     try:
         records = provider.execute_query(query_string)
-    except (ImportError, ValueError) as exc:
+    except (ImportError, ValueError, QueryDeniedError) as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:
         raise click.ClickException(f"Query failed: {exc}") from exc

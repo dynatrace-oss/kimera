@@ -23,6 +23,7 @@ from .exploit_findings import AttackPathRecord, FindingsDocument
 
 TARGETED_SCOPE = "targeted"
 NAMESPACE_SCOPE = "namespace"
+DNS_PORT = 53
 
 
 class Scope(StrEnum):
@@ -95,7 +96,10 @@ def classify(
             result.unmeasured.append(path)
             continue
 
-        if _matches_declared(path.host, declared):
+        if path.port == DNS_PORT:
+            # Every targeted set permits DNS, so reporting it denied would be a lie.
+            result.keep.append(ScopedPath(path, Scope.KEEP, "DNS, permitted by every policy"))
+        elif _matches_declared(path.host, declared):
             result.keep.append(ScopedPath(path, Scope.KEEP, "declared in network_topology"))
         elif path.port in DATA_STORE_PORTS:
             result.deny.append(

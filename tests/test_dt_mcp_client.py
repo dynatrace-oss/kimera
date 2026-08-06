@@ -14,10 +14,13 @@
 
 """Tests for DynatraceMCPClient parsers and URL building."""
 
-from unittest.mock import MagicMock
+import asyncio
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from kimera.container.core.exceptions import QueryDeniedError
 from kimera.container.integrations.dynatrace.mcp_client import DynatraceMCPClient
 
 # ---------------------------------------------------------------------------
@@ -185,3 +188,133 @@ class TestBuildGatewayUrl:
     def test_url_with_trailing_slash(self) -> None:
         url = DynatraceMCPClient._build_gateway_url("https://abc.apps.dynatrace.com/")
         assert "//" not in url.split("://", 1)[1]  # no double slashes in path
+
+
+# ===========================================================================
+# Authorization denial tests
+# ===========================================================================
+
+
+def _http_error(status: int) -> Exception:
+    """An httpx-shaped transport error carrying an HTTP status."""
+    error = Exception(f"Server error '{status}' for url")
+    error.response = MagicMock(status_code=status)  # type: ignore[attr-defined]
+    return error
+
+
+def _nest(inner: Exception, how: str) -> Exception:
+    """Bury an error the way the MCP transport surfaces it to the caller."""
+    if how == "task_group":
+        return ExceptionGroup("unhandled errors in a TaskGroup", [inner])
+    outer = RuntimeError("session initialization failed")
+    outer.__cause__ = inner
+    return outer
+
+
+class TestAuthorizationDenial:
+    """A 403 from the gateway is reported, never surfaced as a raw transport error."""
+
+    @pytest.mark.parametrize("how", ["task_group", "cause"])
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_a_buried_refusal_is_reported_as_a_denial_naming_the_endpoint(
+        self, client: DynatraceMCPClient, how: str, status: int
+    ) -> None:
+        # A malformed or expired token answers 401, a scope gap 403. Both are
+        # facts about the token, and both arrive buried in the task group.
+        client._session = MagicMock()
+        client._session.call_tool = AsyncMock(side_effect=_nest(_http_error(status), how))
+
+        with pytest.raises(QueryDeniedError) as exc:
+            asyncio.run(client.execute_dql("fetch spans"))
+
+        assert "abc.apps.dynatrace.com" in str(exc.value)
+        assert str(status) in str(exc.value)
+
+    def test_another_status_keeps_its_own_error(self, client: DynatraceMCPClient) -> None:
+        # Only a denial is reworded; a gateway fault must not be reported as one.
+        client._session = MagicMock()
+        client._session.call_tool = AsyncMock(side_effect=_nest(_http_error(500), "task_group"))
+
+        with pytest.raises(ExceptionGroup):
+            asyncio.run(client.execute_dql("fetch spans"))
+
+    def test_a_self_referencing_exception_chain_terminates(
+        self, client: DynatraceMCPClient
+    ) -> None:
+        looped: Any = RuntimeError("connection reset")
+        looped.__context__ = looped
+        client._session = MagicMock()
+        client._session.call_tool = AsyncMock(side_effect=looped)
+
+        with pytest.raises(RuntimeError, match="connection reset"):
+            asyncio.run(client.execute_dql("fetch spans"))
+
+
+class TestFailedConnectTeardown:
+    """A connect that fails must not leave the transport to unwind on its own."""
+
+    def test_a_failed_connect_leaves_no_transport_behind(self) -> None:
+        client = DynatraceMCPClient("https://abc.apps.dynatrace.com", "test-token")
+        transport = MagicMock()
+        transport.__aenter__ = AsyncMock(side_effect=_nest(_http_error(403), "task_group"))
+        transport.__aexit__ = AsyncMock(return_value=False)
+        with patch.object(
+            DynatraceMCPClient, "_resolve_transport", return_value=lambda *a, **k: transport
+        ):
+            with pytest.raises(QueryDeniedError):
+                asyncio.run(client.connect())
+
+        transport.__aexit__.assert_awaited_once()
+        assert client._transport_ctx is None
+
+    def test_a_status_reaching_the_caller_only_at_teardown_is_still_reported(self) -> None:
+        # The live shape: the refusal kills the transport's reader task, so the
+        # initialize that was waiting for a reply is merely cancelled, and the
+        # status appears in the transport's teardown alone.
+        client = DynatraceMCPClient("https://abc.apps.dynatrace.com", "test-token")
+        transport = MagicMock()
+        transport.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        transport.__aexit__ = AsyncMock(side_effect=_nest(_http_error(401), "task_group"))
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        # The session unwinds with that same cancellation, before the transport
+        # reports the status — so the first teardown error is not the useful one.
+        session.__aexit__ = AsyncMock(side_effect=asyncio.CancelledError("Cancelled via scope"))
+        session.initialize = AsyncMock(side_effect=asyncio.CancelledError("Cancelled via scope"))
+
+        with (
+            patch.object(
+                DynatraceMCPClient, "_resolve_transport", return_value=lambda *a, **k: transport
+            ),
+            patch("mcp.ClientSession", return_value=session),
+            pytest.raises(QueryDeniedError, match="401"),
+        ):
+            asyncio.run(client.connect())
+
+    def test_an_unexplained_failure_is_an_exception_the_cli_can_catch(self) -> None:
+        # A BaseException reaching the CLI is an unhandled traceback.
+        client = DynatraceMCPClient("https://abc.apps.dynatrace.com", "test-token")
+        transport = MagicMock()
+        transport.__aenter__ = AsyncMock(side_effect=asyncio.CancelledError("Cancelled via scope"))
+        transport.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(
+            DynatraceMCPClient, "_resolve_transport", return_value=lambda *a, **k: transport
+        ):
+            with pytest.raises(ConnectionError, match="abc.apps.dynatrace.com"):
+                asyncio.run(client.connect())
+
+    def test_a_teardown_error_does_not_replace_the_failure_being_reported(self) -> None:
+        # The cancel-scope error the transport raises on a botched unwind is
+        # noise; reporting it instead of the denial hides the real cause.
+        client = DynatraceMCPClient("https://abc.apps.dynatrace.com", "test-token")
+        transport = MagicMock()
+        transport.__aenter__ = AsyncMock(side_effect=_nest(_http_error(403), "task_group"))
+        transport.__aexit__ = AsyncMock(
+            side_effect=RuntimeError("Attempted to exit cancel scope in a different task")
+        )
+        with patch.object(
+            DynatraceMCPClient, "_resolve_transport", return_value=lambda *a, **k: transport
+        ):
+            with pytest.raises(QueryDeniedError, match="403"):
+                asyncio.run(client.connect())

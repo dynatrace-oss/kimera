@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Techniques report operations Kimera cannot perform as `NOT_ATTEMPTED`, not `BLOCKED`. `P1`, `P2`, `P3` and `DE3` declare `verb: create` for unimplemented resources — they created nothing and summarised as blocked, which reads as a working control to anyone checking detection coverage. `TechniqueResult` gained `not_attempted`.
 - **Breaking (MCP):** `attempt_technique` honours `dry_run`. It previously executed and then labelled the result a dry run. `dry_run` defaults to `True`, so a client relying on the old behaviour must now pass `dry_run=False`.
 - Subprocess commands time out after 60 seconds instead of hanging. An unreachable API server left `kubectl rollout undo` waiting forever with no diagnosis.
+- `query` reports a refusal by an observability provider as a denial naming the gateway and the status (401 for a missing or expired token, 403 for a scope gap), and exits non-zero. The refusal ends the transport's reader task, so the pending request was only cancelled and the status surfaced during teardown — the operator saw a page of task-group and cancel-scope tracebacks rather than a token problem. Any other connection failure is now reported as an error the CLI handles, not a bare `CancelledError`.
+- Targeted egress rules name the destination pod's port, not its Service port. Service traffic is translated before a policy is evaluated, so a rule naming the Service port permitted nothing and severed the dependency it was meant to keep.
+- The banner prints to stderr. It was the first thing in `exploit --json` output, so the findings document could not be parsed.
+- A DNS path is reported KEEP, not DENY. Every targeted set permits DNS, so the report contradicted the policy it described.
 - `enforce status` and `enforce disable` no longer treat a 403 as absence. Both report the status as unknown and name the denied resource; `status` previously raised a traceback. A 404 still means not installed.
 
 ### Changed

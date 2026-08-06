@@ -183,3 +183,25 @@ class TestReport:
         )
 
         assert "closes no observed path" in capsys.readouterr().out
+
+
+class TestDnsIsNeverDenied:
+    def test_a_dns_path_is_kept_because_every_policy_permits_it(self) -> None:
+        # Reporting DNS as denied contradicts the rule the generator always emits.
+        document = FindingsDocument(
+            exploit_type="missing-network-policies",
+            namespace="unguard",
+            source_workload="ad-service",
+            attack_paths=[
+                AttackPathRecord(
+                    host="kube-dns.kube-system.svc.cluster.local",
+                    port=53,
+                    result=PathResult.REACHABLE,
+                )
+            ],
+        )
+
+        result = classify(document, {"app": "ad"}, {}, {"ad-service"})
+
+        assert [(s.path.port, s.scope) for s in result.keep] == [(53, Scope.KEEP)]
+        assert not result.deny

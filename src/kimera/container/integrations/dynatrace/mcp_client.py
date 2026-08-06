@@ -13,7 +13,62 @@
 # limitations under the License.
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
+
+from ...core.exceptions import QueryDeniedError
+
+STATUS_ATTRIBUTES = ("status_code", "status", "code")
+DENIAL_CAUSES = {
+    401: "The token is missing, malformed or expired.",
+    403: "The token is missing the scopes this request needs.",
+}
+
+
+def _denial_status(exc: BaseException, seen: set[int] | None = None) -> int | None:
+    """The denial status anywhere in an exception tree, if there is one.
+
+    The transport raises inside a task group, so the status reaches the caller
+    nested in an ExceptionGroup rather than on the exception itself.
+    """
+    seen = seen if seen is not None else set()
+    if id(exc) in seen:
+        return None
+    seen.add(id(exc))
+
+    for holder in (exc, getattr(exc, "response", None)):
+        for attribute in STATUS_ATTRIBUTES:
+            status = getattr(holder, attribute, None)
+            if status in DENIAL_CAUSES:
+                return int(status)
+
+    nested: tuple[BaseException | None, ...] = (
+        *getattr(exc, "exceptions", ()),
+        exc.__cause__,
+        exc.__context__,
+    )
+    for inner in nested:
+        if inner is None:
+            continue
+        status = _denial_status(inner, seen)
+        if status is not None:
+            return status
+    return None
+
+
+@contextmanager
+def _denials_reported(gateway_url: str) -> Iterator[None]:
+    """Translate a refusal by the gateway into a denial naming the endpoint."""
+    try:
+        yield
+    except Exception as exc:
+        status = _denial_status(exc)
+        if status is None:
+            raise
+        raise QueryDeniedError(
+            f"Access denied (HTTP {status}) by {gateway_url}. {DENIAL_CAUSES[status]}"
+        ) from exc
 
 
 class DynatraceMCPClient:
@@ -63,10 +118,14 @@ class DynatraceMCPClient:
         headers = {"Authorization": f"Bearer {self._token}"}
         transport_factory = self._resolve_transport()
         self._transport_ctx = transport_factory(self._gateway_url, headers=headers)
-        read_stream, write_stream, *_ = await self._transport_ctx.__aenter__()
-        self._session = ClientSession(read_stream, write_stream)
-        await self._session.__aenter__()
-        await self._session.initialize()
+        try:
+            read_stream, write_stream, *_ = await self._transport_ctx.__aenter__()
+            self._session = ClientSession(read_stream, write_stream)
+            await self._session.__aenter__()
+            await self._session.initialize()
+        except BaseException as exc:
+            teardown = await self._unwind(exc)
+            raise self._connect_failure(exc, teardown) from (teardown[-1] if teardown else exc)
 
     @staticmethod
     def _resolve_transport() -> Any:
@@ -91,6 +150,43 @@ class DynatraceMCPClient:
             "No MCP HTTP transport found. Install the MCP SDK: uv pip install 'kimera[mcp-server]'"
         )
 
+    async def _unwind(self, exc: BaseException) -> list[BaseException]:
+        """Exit whatever ``connect`` entered, in the task that entered it.
+
+        Returns every failure the teardown raised, which is where a refusal by
+        the gateway actually appears: the HTTP response kills the transport's
+        reader task, so ``initialize`` only ever sees its own cancellation, and
+        the session unwinds with that same cancellation before the transport
+        reports the status.
+        """
+        teardown: list[BaseException] = []
+        for context in (self._session, self._transport_ctx):
+            if context is None:
+                continue
+            try:
+                await context.__aexit__(type(exc), exc, exc.__traceback__)
+            except BaseException as unwound:  # noqa: BLE001 - inspected, then reported by the caller
+                teardown.append(unwound)
+        self._session = None
+        self._transport_ctx = None
+        return teardown
+
+    def _connect_failure(self, exc: BaseException, teardown: list[BaseException]) -> Exception:
+        """The error a caller can act on, drawn from the failure or its teardown.
+
+        Never a ``BaseException``: a bare ``CancelledError`` reaching the CLI is
+        an unhandled traceback, since every handler on the way up catches
+        ``Exception``.
+        """
+        for candidate in (exc, *teardown):
+            status = _denial_status(candidate)
+            if status is not None:
+                return QueryDeniedError(
+                    f"Access denied (HTTP {status}) by {self._gateway_url}. {DENIAL_CAUSES[status]}"
+                )
+        reported = teardown[-1] if teardown else exc
+        return ConnectionError(f"Could not connect to {self._gateway_url}: {reported}")
+
     async def close(self) -> None:
         """Close the MCP session and transport."""
         if self._session:
@@ -112,7 +208,8 @@ class DynatraceMCPClient:
         if not self._session:
             raise RuntimeError("Not connected. Call connect() first.")
 
-        result = await self._session.call_tool("execute-dql", {"dqlQueryString": query})
+        with _denials_reported(self._gateway_url):
+            result = await self._session.call_tool("execute-dql", {"dqlQueryString": query})
         return self._parse_response_records(result.content)
 
     async def list_tools(self) -> list[dict[str, Any]]:
@@ -129,7 +226,8 @@ class DynatraceMCPClient:
         if self._cached_tools is not None:
             return self._cached_tools
 
-        result = await self._session.list_tools()
+        with _denials_reported(self._gateway_url):
+            result = await self._session.list_tools()
         self._cached_tools = [
             {
                 "name": t.name,
@@ -153,7 +251,8 @@ class DynatraceMCPClient:
         if not self._session:
             raise RuntimeError("Not connected. Call connect() first.")
 
-        result = await self._session.call_tool(tool_name, arguments)
+        with _denials_reported(self._gateway_url):
+            result = await self._session.call_tool(tool_name, arguments)
         return self._parse_response_records(result.content)
 
     def _parse_response_records(self, content_blocks: list[Any]) -> list[dict[str, Any]]:

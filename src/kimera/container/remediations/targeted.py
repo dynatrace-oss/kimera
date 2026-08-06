@@ -23,9 +23,8 @@ from ..core.logger import SecurityLogger
 from ..validation.external_egress import egress_rule, rule_permits
 from ..validation.reachability import Workload, peer_matches, rules_permit
 from .exploit_findings import AttackPathRecord, FindingsDocument
-from .finding_scope import Classification, classify, declared_dependencies
+from .finding_scope import DNS_PORT, Classification, classify, declared_dependencies
 
-DNS_PORT = 53
 DNS_SELECTOR = {"k8s-app": "kube-dns"}
 WORKLOAD_KINDS = ("deployments", "statefulsets", "cronjobs")
 MANAGED_BY = {"app.kubernetes.io/managed-by": "kimera"}
@@ -210,16 +209,27 @@ def _allowed_egress(plan: TargetedPlan) -> list[dict[str, Any]]:
 
 
 def _target_ports(name: str, context: dict[str, Any]) -> list[int]:
-    """Ports the destination listens on, preferring its Service over its container ports."""
+    """Ports the destination's pods listen on.
+
+    A policy matches the pod port, not the Service port: traffic to a Service is
+    translated before the rule is evaluated, so a rule naming the Service's own
+    port permits nothing. The Service is read only for its ``targetPort``, and a
+    named one resolves through the workload's container ports.
+    """
     service = (context.get("services") or {}).get(name) or {}
-    numbers = [p["port"] for p in service.get("ports") or [] if isinstance(p.get("port"), int)]
-    if numbers:
-        return numbers
+    targets = [
+        int(port["target_port"])
+        for port in service.get("ports") or []
+        if str(port.get("target_port") or "").isdigit()
+    ]
+    if targets:
+        return targets
+
     for kind in WORKLOAD_KINDS:
         info = (context.get(kind) or {}).get(name) or {}
-        numbers = [int(p) for p in info.get("ports") or [] if isinstance(p, int)]
-        if numbers:
-            return numbers
+        container_ports = [int(p) for p in info.get("ports") or [] if isinstance(p, int)]
+        if container_ports:
+            return container_ports
     return []
 
 

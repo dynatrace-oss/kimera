@@ -40,6 +40,7 @@ class DynatraceQueryProvider:
         Raises:
             ValueError: If the Dynatrace credentials are not set.
             ImportError: If the MCP client dependency is not installed.
+            QueryDeniedError: If the gateway refuses the token (HTTP 403).
         """
         missing = [var for var in DT_CREDENTIAL_VARS if not os.environ.get(var)]
         if missing:

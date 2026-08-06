@@ -73,3 +73,11 @@ class ProviderError(K8sSecurityError):
     """A selected LLM backend failed to produce a usable response."""
 
     pass
+
+
+class QueryDeniedError(K8sSecurityError):
+    """An observability provider refused the request (HTTP 403).
+
+    A denial is a fact about the token, not about the data — reporting it as an
+    empty result would be a confident wrong answer.
+    """

@@ -33,6 +33,9 @@ SECURITY_THEME = Theme(
 
 console = Console(theme=SECURITY_THEME)
 
+# For decoration that must never mix into a command's data on stdout.
+err_console = Console(theme=SECURITY_THEME, stderr=True)
+
 
 def setup_logger(name: str, level: str = "INFO", debug: bool = False) -> logging.Logger:
     """Set up a logger with rich formatting."""

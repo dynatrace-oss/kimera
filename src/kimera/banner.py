@@ -14,7 +14,7 @@
 
 """ASCII art banner and display utilities for Kimera CLI."""
 
-from .container.core.logger import console
+from .container.core.logger import err_console
 
 KIMERA_LOGO = """\
 ██   ██ ██ ███    ███ ███████ ██████   █████
@@ -27,10 +27,10 @@ TAGLINE = "Kubernetes Security Testing Framework"
 
 
 def show_banner(namespace: str | None = None) -> None:
-    """Display the Kimera banner with optional namespace info."""
-    console.print()
-    console.print(f"[bold cyan]{KIMERA_LOGO}[/bold cyan]")
-    console.print(f"  [dim]{TAGLINE}[/dim]")
+    """Display the Kimera banner on stderr, so it never lands in --json output."""
+    err_console.print()
+    err_console.print(f"[bold cyan]{KIMERA_LOGO}[/bold cyan]")
+    err_console.print(f"  [dim]{TAGLINE}[/dim]")
     if namespace:
-        console.print(f"  Namespace: [bold]{namespace}[/bold]")
-    console.print()
+        err_console.print(f"  Namespace: [bold]{namespace}[/bold]")
+    err_console.print()

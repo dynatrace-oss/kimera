@@ -238,6 +238,8 @@ kimera query 'fetch spans, from: -1h | filter k8s.namespace.name == "unguard" | 
 kimera query '<query>' --provider dynatrace --json > evidence.json
 ```
 
+A provider that refuses the request (HTTP 403) is reported as a denial naming the gateway, and the command exits non-zero — a scope problem is a fact about the token, not an empty result.
+
 The query language stays the provider's own — DQL for Dynatrace — because a common cross-platform query language would be a translation layer that could only ever expose the subset every backend shares.
 
 Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `src/kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.

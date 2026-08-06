@@ -22,7 +22,7 @@ from kimera.cli.generate import _resolve_scope
 from kimera.container.remediations.exploit_findings import AttackPathRecord, FindingsDocument
 from kimera.container.remediations.finding_scope import NAMESPACE_SCOPE, TARGETED_SCOPE
 from kimera.container.remediations.generator import _load_template
-from kimera.container.remediations.targeted import build_plan, enforce
+from kimera.container.remediations.targeted import TargetedPlan, build_plan, enforce
 from kimera.container.validation.reachability import Workload, egress_permits
 from kimera.domain.models import PathResult
 
@@ -44,7 +44,9 @@ CONTEXT: dict[str, Any] = {
 TOPOLOGY = {"user-auth-service": NetworkTopologyEntry(allowed_ingress_from=[SOURCE_LABELS])}
 
 
-def _findings(*paths: tuple[str, int], namespace: str = NAMESPACE, source: str = "ad-service"):
+def _findings(
+    *paths: tuple[str, int], namespace: str = NAMESPACE, source: str = "ad-service"
+) -> FindingsDocument:
     return FindingsDocument(
         exploit_type="missing-network-policies",
         namespace=namespace,
@@ -65,7 +67,9 @@ OBSERVED = _findings(
 )
 
 
-def _policy(name: str, labels: dict[str, str], egress: list[dict[str, Any]] | None = None):
+def _policy(
+    name: str, labels: dict[str, str], egress: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     return {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "NetworkPolicy",
@@ -78,7 +82,7 @@ def _policy(name: str, labels: dict[str, str], egress: list[dict[str, Any]] | No
     }
 
 
-def _plan(document: FindingsDocument | None = None, topology: Any = None):
+def _plan(document: FindingsDocument | None = None, topology: Any = None) -> TargetedPlan:
     return build_plan(
         document or OBSERVED, CONTEXT, TOPOLOGY if topology is None else topology, NAMESPACE
     )
