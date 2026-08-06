@@ -24,6 +24,11 @@ from ..core.k8s_client import K8sClient
 from ..core.logger import SecurityLogger
 from ..validation.external_egress import close_external_gaps, unmatched_declarations
 from ..validation.reachability import Workload, close_gaps
+from .cluster_context import gather_cluster_context
+from .exploit_findings import FindingsDocument
+from .finding_scope import NAMESPACE_SCOPE, TARGETED_SCOPE, report
+from .output_validation import validate_exploit_yaml, validate_resource_yaml
+from .targeted import apply_scope, build_plan
 
 _PROMPTS_DIR = prompts_dir()
 
@@ -73,10 +78,8 @@ def _load_template(name: str) -> Any:
 class LLMRemediationGenerator:
     """Generate security remediations for Kubernetes workloads using Anthropic Claude.
 
-    Supports all exploit types: network policies, privileged containers,
-    dangerous capabilities, host namespace sharing, and resource limits.
-    Context is sourced from the Kubernetes API and, optionally, from
-    Dynatrace KSPM/Smartscape data via the DT MCP gateway.
+    Covers every exploit type. Context comes from the Kubernetes API and,
+    optionally, Dynatrace KSPM/Smartscape data via the DT MCP gateway.
 
     Attributes:
         k8s: Kubernetes client for cluster introspection.
@@ -106,13 +109,13 @@ class LLMRemediationGenerator:
         self._topology = network_topology or {}
         self.model = model
 
-    # -- Public API ----------------------------------------------------------------
-
     def generate(
         self,
         exploit_type: str = "missing-network-policies",
         kspm_context: str | None = None,
         smartscape_context: str | None = None,
+        findings: FindingsDocument | None = None,
+        scope: str = NAMESPACE_SCOPE,
     ) -> str:
         """Generate remediation YAML for the given exploit type.
 
@@ -120,6 +123,9 @@ class LLMRemediationGenerator:
             exploit_type: One of ``SUPPORTED_TYPES``.
             kspm_context: Optional KSPM compliance findings (text).
             smartscape_context: Optional Smartscape edge data (text).
+            findings: Observed paths from one exploited workload. Required in
+                targeted scope, and used to report what a namespace set closes.
+            scope: ``targeted`` constrains only the findings' source workload.
 
         Returns:
             Multi-document YAML string ready to write to a file.
@@ -137,10 +143,17 @@ class LLMRemediationGenerator:
             )
 
         namespace = self.k8s.namespace
-        context = self._get_cluster_context(exploit_type)
+        context = gather_cluster_context(self.k8s, self.logger, exploit_type)
         topology = self._render_topology()
 
-        system_prompt = _load_template("generate_system.j2").render(exploit_type=exploit_type)
+        plan = None
+        if findings is not None:
+            plan = build_plan(findings, context, self._topology, namespace)
+            report(plan.classification)
+
+        system_prompt = _load_template("generate_system.j2").render(
+            exploit_type=exploit_type, scope=scope
+        )
         user_prompt = _load_template("generate_user.j2").render(
             exploit_type=exploit_type,
             namespace=namespace,
@@ -148,13 +161,17 @@ class LLMRemediationGenerator:
             topology=topology,
             kspm_context=kspm_context,
             smartscape_context=smartscape_context,
+            scope=scope,
+            plan=plan,
         )
 
         self.logger.info(f"Calling {self.model} to generate {exploit_type} remediations...")
 
         raw = complete(system=system_prompt, user=user_prompt, model=self.model, max_tokens=8192)
         yaml_output = strip_code_fence(raw)
-        self._validate_yaml(yaml_output)
+        validate_resource_yaml(yaml_output)
+        if scope == TARGETED_SCOPE and plan is not None:
+            return apply_scope(yaml_output, plan, namespace, self.logger)
         if exploit_type in ("missing-network-policies", "all"):
             yaml_output = self._close_gaps(yaml_output, context)
         return yaml_output
@@ -188,12 +205,8 @@ class LLMRemediationGenerator:
     def _close_gaps(self, yaml_text: str, context: dict[str, Any]) -> str:
         """Add egress rules for flows the policy set declares but denies.
 
-        Two classes are closed. A NetworkPolicy permits a pod-to-pod flow only when
-        both sides agree, and an LLM writing ingress and egress independently can
-        allow a source in one and omit it in the other. Separately, a declared
-        external destination is only permitted if some rule carries a matching
-        ``ipBlock`` — a set that omits it severs the workload's dependency while
-        every app-to-app flow still passes.
+        Pod-to-pod needs both sides to agree, which an LLM writing them
+        independently can miss; external destinations need a matching ``ipBlock``.
         """
         workloads = [
             Workload(name=name, labels=dict(info.get("labels") or {}))
@@ -262,7 +275,7 @@ class LLMRemediationGenerator:
             )
 
         namespace = self.k8s.namespace
-        context = self._get_cluster_context(exploit_type)
+        context = gather_cluster_context(self.k8s, self.logger, exploit_type)
 
         system_prompt = _load_template("exploit_system.j2").render(
             exploit_type=exploit_type,
@@ -281,208 +294,5 @@ class LLMRemediationGenerator:
 
         raw = complete(system=system_prompt, user=user_prompt, model=self.model, max_tokens=8192)
         yaml_output = strip_code_fence(raw)
-        self._validate_exploit_yaml(yaml_output)
+        validate_exploit_yaml(yaml_output)
         return yaml_output
-
-    def _validate_exploit_yaml(self, yaml_text: str) -> None:
-        """Validate the generated exploit YAML structure."""
-        try:
-            docs = list(yaml.safe_load_all(yaml_text))
-        except yaml.YAMLError as e:
-            raise ValueError(f"LLM returned invalid YAML: {e}") from e
-
-        for i, doc in enumerate(docs):
-            if doc is None:
-                continue
-            if not isinstance(doc, dict):
-                raise ValueError(f"Document {i} is not a mapping")
-            if "target" not in doc:
-                raise ValueError(f"Document {i} missing 'target' field")
-            target = doc["target"]
-            if not isinstance(target, dict) or "deployment" not in target:
-                raise ValueError(f"Document {i} missing 'target.deployment'")
-            if "patches" not in doc:
-                raise ValueError(f"Document {i} missing 'patches' field")
-            patches = doc["patches"]
-            if not isinstance(patches, list) or not patches:
-                raise ValueError(f"Document {i} has empty or invalid 'patches'")
-
-    # -- Context gathering ---------------------------------------------------------
-
-    def _get_cluster_context(self, exploit_type: str) -> dict[str, Any]:
-        """Gather K8s context relevant to the exploit type."""
-        namespace = self.k8s.namespace
-        context: dict[str, Any] = {}
-
-        # Deployment info is always useful
-        context["deployments"] = self._get_deployment_info(namespace)
-
-        if exploit_type in ("missing-network-policies", "all"):
-            context["statefulsets"] = self._get_statefulset_info(namespace)
-            # A default-deny policy selects every pod, so a workload missing here loses all traffic.
-            context["cronjobs"] = self._get_cronjob_info(namespace)
-            context["services"] = self._get_service_info(namespace)
-
-        if exploit_type in (
-            "privileged-containers",
-            "dangerous-capabilities",
-            "host-namespace-sharing",
-            "missing-resource-limits",
-            "all",
-        ):
-            context["security_contexts"] = self._get_security_contexts(namespace)
-
-        return context
-
-    def _get_deployment_info(self, namespace: str) -> dict[str, dict[str, Any]]:
-        """Return deployment name to labels and ports mapping."""
-        result: dict[str, dict[str, Any]] = {}
-        try:
-            deps = self.k8s.apps_v1.list_namespaced_deployment(namespace)
-            for dep in deps.items:
-                name = dep.metadata.name
-                labels = dep.spec.selector.match_labels or {}
-                ports = self._extract_ports(dep)
-                result[name] = {"labels": dict(labels), "ports": ports}
-        except Exception as e:
-            self.logger.error(f"Failed to list deployments: {e}")
-        return result
-
-    def _get_statefulset_info(self, namespace: str) -> dict[str, dict[str, Any]]:
-        """Return statefulset name to labels and ports mapping."""
-        result: dict[str, dict[str, Any]] = {}
-        try:
-            stss = self.k8s.apps_v1.list_namespaced_stateful_set(namespace)
-            for sts in stss.items:
-                name = sts.metadata.name
-                labels = sts.spec.selector.match_labels or {}
-                ports = self._extract_ports(sts)
-                result[name] = {"labels": dict(labels), "ports": ports}
-        except Exception as e:
-            self.logger.error(f"Failed to list statefulsets: {e}")
-        return result
-
-    def _get_cronjob_info(self, namespace: str) -> dict[str, dict[str, Any]]:
-        """Return cronjob name to pod labels and ports mapping."""
-        result: dict[str, dict[str, Any]] = {}
-        try:
-            cjs = self.k8s.batch_v1.list_namespaced_cron_job(namespace)
-            for cj in cjs.items:
-                job_template = cj.spec.job_template
-                labels = job_template.spec.template.metadata.labels or {}
-                result[cj.metadata.name] = {
-                    "labels": dict(labels),
-                    "ports": self._extract_ports(job_template),
-                }
-        except Exception as e:
-            self.logger.error(f"Failed to list cronjobs: {e}")
-        return result
-
-    def _get_service_info(self, namespace: str) -> dict[str, dict[str, Any]]:
-        """Return service name to ports and selector mapping."""
-        result: dict[str, dict[str, Any]] = {}
-        try:
-            svcs = self.k8s.v1.list_namespaced_service(namespace)
-            for svc in svcs.items:
-                name = svc.metadata.name
-                ports: list[dict[str, Any]] = []
-                if svc.spec.ports:
-                    for p in svc.spec.ports:
-                        ports.append(
-                            {
-                                "port": p.port,
-                                "target_port": str(p.target_port) if p.target_port else None,
-                                "protocol": p.protocol or "TCP",
-                            }
-                        )
-                selector = dict(svc.spec.selector) if svc.spec.selector else {}
-                result[name] = {"ports": ports, "selector": selector}
-        except Exception as e:
-            self.logger.error(f"Failed to list services: {e}")
-        return result
-
-    def _get_security_contexts(self, namespace: str) -> dict[str, dict[str, Any]]:
-        """Return deployment security context details for hardening analysis."""
-        result: dict[str, dict[str, Any]] = {}
-        try:
-            deps = self.k8s.apps_v1.list_namespaced_deployment(namespace)
-            for dep in deps.items:
-                name = dep.metadata.name
-                pod_spec = dep.spec.template.spec
-
-                pod_level = {
-                    "host_pid": getattr(pod_spec, "host_pid", False) or False,
-                    "host_network": getattr(pod_spec, "host_network", False) or False,
-                    "host_ipc": getattr(pod_spec, "host_ipc", False) or False,
-                }
-
-                containers: list[dict[str, Any]] = []
-                for c in pod_spec.containers:
-                    info: dict[str, Any] = {"name": c.name}
-                    ctx = c.security_context
-
-                    if ctx:
-                        info["privileged"] = getattr(ctx, "privileged", None)
-                        info["allow_privilege_escalation"] = getattr(
-                            ctx, "allow_privilege_escalation", None
-                        )
-                        info["run_as_non_root"] = getattr(ctx, "run_as_non_root", None)
-                        info["run_as_user"] = getattr(ctx, "run_as_user", None)
-                        info["read_only_root_filesystem"] = getattr(
-                            ctx, "read_only_root_filesystem", None
-                        )
-                        caps = getattr(ctx, "capabilities", None)
-                        if caps:
-                            info["capabilities_add"] = list(caps.add or [])
-                            info["capabilities_drop"] = list(caps.drop or [])
-
-                    resources = c.resources
-                    if resources:
-                        info["resources"] = {
-                            "limits": dict(resources.limits) if resources.limits else None,
-                            "requests": dict(resources.requests) if resources.requests else None,
-                        }
-
-                    containers.append(info)
-
-                result[name] = {"pod": pod_level, "containers": containers}
-        except Exception as e:
-            self.logger.error(f"Failed to get security contexts: {e}")
-        return result
-
-    # -- Output handling -----------------------------------------------------------
-
-    def _validate_yaml(self, yaml_text: str) -> None:
-        """Parse and validate the generated YAML structure."""
-        try:
-            docs = list(yaml.safe_load_all(yaml_text))
-        except yaml.YAMLError as e:
-            raise ValueError(f"LLM returned invalid YAML: {e}") from e
-
-        for i, doc in enumerate(docs):
-            if doc is None:
-                continue
-            if not isinstance(doc, dict):
-                raise ValueError(f"Document {i} is not a mapping")
-            if "apiVersion" not in doc:
-                raise ValueError(f"Document {i} missing apiVersion")
-            if "kind" not in doc:
-                raise ValueError(f"Document {i} missing kind")
-            if not doc.get("metadata", {}).get("name"):
-                raise ValueError(f"Document {i} missing metadata.name")
-
-    # -- Helpers -------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_ports(workload: Any) -> list[int]:
-        """Extract declared container ports from a workload spec."""
-        ports: list[int] = []
-        try:
-            for container in workload.spec.template.spec.containers:
-                if container.ports:
-                    for port in container.ports:
-                        if port.container_port:
-                            ports.append(int(port.container_port))
-        except (AttributeError, TypeError):
-            pass
-        return ports

@@ -47,11 +47,8 @@ MAX_LATERAL_TARGETS = 10
 class MissingNetworkPoliciesExploit(BaseExploit):
     """Exploit demonstrating risks of missing network policies.
 
-    Unlike container-level exploits that patch deployments, this exploit
-    operates at the namespace level by creating and removing NetworkPolicy
-    resources. The ``make_secure`` method auto-discovers deployments and
-    generates restrictive policies; ``make_vulnerable`` removes them,
-    restoring the flat network default.
+    Operates at the namespace level rather than patching deployments:
+    ``make_vulnerable`` removes NetworkPolicies, restoring the flat network.
     """
 
     name = "Missing Network Policies"
@@ -152,9 +149,8 @@ class MissingNetworkPoliciesExploit(BaseExploit):
     def _discover_reachable_services(self) -> list[tuple[str, int]]:
         """Find application services to probe for lateral movement.
 
-        Data stores are excluded because they are probed by their own test, and
-        the source workload is excluded because reaching itself is not a lateral
-        move.
+        Data stores have their own test; the source workload reaching itself is
+        not a lateral move.
         """
         targets: list[tuple[str, int]] = []
         try:
@@ -177,10 +173,8 @@ class MissingNetworkPoliciesExploit(BaseExploit):
     def _build_dynamic_tests(self) -> list[SecurityTest]:
         """Build tests that depend on auto-discovered services.
 
-        Probes are declared as data and rendered by ``ProbeRunner``, the same path
-        YAML-declared tests take. Building the shell here instead would bypass the
-        builders that record machine-readable paths, which is what a remediation
-        scoped to one workload classifies.
+        Probes go through ``ProbeRunner`` like YAML-declared ones — hand-writing
+        the shell here would bypass the builders that record attack paths.
         """
         tests: list[SecurityTest] = []
         runner = ProbeRunner()
@@ -263,9 +257,8 @@ class MissingNetworkPoliciesExploit(BaseExploit):
                 }
             )
             if port == REDIS_PORT:
-                # A real DBSIZE exchange, so the traffic appears as a Redis protocol
-                # interaction rather than a bare connection. No typed builder writes
-                # a wire-protocol payload.
+                # A real DBSIZE exchange, so it reads as Redis protocol traffic
+                # rather than a bare connection. No typed builder writes payloads.
                 probes.append(
                     {
                         "type": "command",

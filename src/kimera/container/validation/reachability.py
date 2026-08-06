@@ -15,9 +15,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-# A NetworkPolicy permits a flow only when the source's egress AND the destination's
-# ingress both allow it. An ingress rule naming a source that cannot egress to it is
-# a policy set that silently severs the flow it claims to permit.
+# A NetworkPolicy permits a flow only when the source's egress and the destination's
+# ingress both allow it; one side alone silently severs the flow it claims to permit.
 
 
 @dataclass(frozen=True)
@@ -64,7 +63,8 @@ def _selector_matches(selector: dict[str, Any] | None, workload: Workload) -> bo
     return all(workload.labels.get(key) == value for key, value in match_labels.items())
 
 
-def _peer_matches(peer: dict[str, Any], workload: Workload) -> bool:
+def peer_matches(peer: dict[str, Any], workload: Workload) -> bool:
+    """Whether a policy peer addresses this workload."""
     # namespaceSelector/ipBlock peers address other namespaces or CIDRs, never a
     # workload in this one.
     if "namespaceSelector" in peer or "ipBlock" in peer:
@@ -79,16 +79,17 @@ def _governs(policy: dict[str, Any], workload: Workload, direction: str) -> bool
     return _selector_matches(spec.get("podSelector") or {"matchLabels": {}}, workload)
 
 
-def _rules_permit(
+def rules_permit(
     rules: list[dict[str, Any]] | None,
     peer_key: str,
     other: Workload,
     port: int,
 ) -> bool:
+    """Whether any rule permits ``other`` on ``port`` under the given peer key."""
     for rule in rules or []:
         peers = rule.get(peer_key)
         # A rule with no peer list applies to every destination.
-        if peers is not None and not any(_peer_matches(p, other) for p in peers):
+        if peers is not None and not any(peer_matches(p, other) for p in peers):
             continue
         ports = rule.get("ports")
         if ports is None or any(p.get("port") == port for p in ports):
@@ -104,7 +105,7 @@ def egress_permits(
     if not governing:
         return True
     return any(
-        _rules_permit((p.get("spec") or {}).get("egress"), "to", destination, port)
+        rules_permit((p.get("spec") or {}).get("egress"), "to", destination, port)
         for p in governing
     )
 
@@ -117,7 +118,7 @@ def ingress_permits(
     if not governing:
         return True
     return any(
-        _rules_permit((p.get("spec") or {}).get("ingress"), "from", source, port) for p in governing
+        rules_permit((p.get("spec") or {}).get("ingress"), "from", source, port) for p in governing
     )
 
 
@@ -136,7 +137,7 @@ def find_gaps(policies: list[dict[str, Any]], workloads: list[Workload]) -> list
         for rule in spec.get("ingress") or []:
             port_specs = rule.get("ports") or []
             for peer in rule.get("from") or []:
-                sources = [w for w in workloads if _peer_matches(peer, w)]
+                sources = [w for w in workloads if peer_matches(peer, w)]
                 for source in sources:
                     for destination in destinations:
                         if source.name == destination.name:
@@ -185,7 +186,7 @@ def find_ingress_gaps(policies: list[dict[str, Any]], workloads: list[Workload])
         for rule in spec.get("egress") or []:
             port_specs = rule.get("ports") or []
             for peer in rule.get("to") or []:
-                destinations = [w for w in workloads if _peer_matches(peer, w)]
+                destinations = [w for w in workloads if peer_matches(peer, w)]
                 for source in sources:
                     for destination in destinations:
                         if source.name == destination.name:

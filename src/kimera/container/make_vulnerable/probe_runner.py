@@ -22,10 +22,8 @@ _VALID_CHECKS = {"-e", "-f", "-d", "-c", "-S", "-r", "-w", "-x"}
 
 DEFAULT_HTTP_TIMEOUT = 5
 
-# Prefix of a machine-readable path record. Lines carrying it are parsed into
-# AttackPaths and stripped before the output is shown. Only probes that declare a
-# destination host and port emit one: `command` declares nothing, and an
-# `app_request` URL may name either the application or the endpoint behind it.
+# Prefix of a path record: parsed into an AttackPath, then stripped from the output.
+# Only probes declaring a host and port emit one.
 PATH_MARKER = "KIMERA_PATH|"
 
 # Cluster DNS suffix appended after the namespace segment.
@@ -39,9 +37,8 @@ class ProbeRunner:
     def build_script(self, probes: list[dict[str, Any]]) -> str:
         """Convert a list of probe dicts into a single shell script.
 
-        The shared probe prelude is prepended so every probe — including raw
-        ``command`` probes defined in YAML — can call ``kimera_port_open`` and
-        ``kimera_resolve`` instead of re-implementing tool detection.
+        The shared prelude is prepended so every probe, including raw ``command``
+        ones, can call its helpers instead of re-implementing tool detection.
 
         Args:
             probes: List of probe definitions, each with a ``type`` key.
@@ -128,9 +125,8 @@ class ProbeRunner:
     def _build_port_open(probe: dict[str, Any]) -> str:
         """Check TCP port reachability using the first available probe method.
 
-        Emits a path record so the destination is recovered from the probe
-        definition rather than parsed out of the label, which is free text and
-        would silently break path capture when reworded.
+        Emits a path record from the probe definition, not the label — the label
+        is free text and rewording it would silently break path capture.
         """
         host = probe["host"]
         port = probe["port"]
@@ -243,10 +239,9 @@ class ProbeRunner:
     def _build_app_request(probe: dict[str, Any]) -> str:
         """Request an application endpoint and report status plus a bounded response body.
 
-        Kimera makes one hop; anything further is the application's own outbound call, which
-        is why this is the only probe whose traffic an APM agent can attribute. The body is
-        reported because a status code alone cannot separate an application that forwarded
-        the request from one that answered without forwarding it.
+        The only probe whose traffic an APM agent can attribute, since the next hop
+        is the application's own. The body is reported because a status code alone
+        cannot tell a forwarded request from one answered locally.
         """
         url = shlex.quote(str(probe["url"]))
         timeout = probe.get("timeout", DEFAULT_HTTP_TIMEOUT)

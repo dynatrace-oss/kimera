@@ -21,8 +21,7 @@ class PathResult(StrEnum):
     """Observed outcome of probing one network path.
 
     ``UNKNOWN`` is never collapsed into ``BLOCKED``: a path nothing could measure
-    is not a path something denied, and treating it as denied would close a flow
-    on no evidence.
+    is not a path something denied.
     """
 
     REACHABLE = "REACHABLE"

@@ -120,10 +120,8 @@ def _check_policy_reachability(
 ) -> list[ValidationResult]:
     """Report flows the policy set declares but denies.
 
-    The probe-pod tests below only ever measure an unlabeled pod, so a policy set
-    that severs a real workload-to-workload path still passes them. This check
-    reads the flows the policy set declares — pod-to-pod, and the external
-    destinations the profile declares — and confirms both sides agree.
+    The probe-pod tests only measure an unlabeled pod, so a policy set that severs
+    a real workload-to-workload path still passes them. This reads the declarations.
     """
     try:
         policies_raw = k8s.list_network_policies(namespace)

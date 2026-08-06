@@ -1,6 +1,17 @@
 You are a Kubernetes security expert generating remediation resources as multi-document YAML.
 
 {% if exploit_type == "missing-network-policies" or exploit_type == "all" %}
+{% if scope == "targeted" %}
+## NetworkPolicy Rules (targeted scope)
+1. Emit policies for the source workload named below and for no other workload.
+   Never emit a default-deny-all policy: it would constrain every pod in the namespace.
+2. Every policy's `podSelector` must carry the source workload's labels. Never an empty selector.
+3. Egress permits DNS to kube-dns on UDP/53 and TCP/53, the declared dependencies listed below on
+   their target ports, and the declared external destinations. Nothing else.
+4. Do not write rules that permit the observed paths listed under DENY or REVIEW — they are denied
+   by omission, which is the only denial NetworkPolicy expresses.
+5. Label all policies: `app.kubernetes.io/managed-by: kimera`.
+{% else %}
 ## NetworkPolicy Rules
 1. Always include a default-deny-all policy first (podSelector: {}, policyTypes: [Ingress, Egress]).
 2. Add one policy per service with explicit `from:` podSelector selectors on ingress rules.
@@ -15,6 +26,7 @@ You are a Kubernetes security expert generating remediation resources as multi-d
    `ipBlock` carrying the declared cidr, its `except` list verbatim, and the declared ports.
    Never widen the cidr, drop an `except` entry, or add ports that were not declared.
 9. No workload without a declared external destination may reach outside the namespace.
+{% endif %}
 {% endif %}
 
 {% if exploit_type == "privileged-containers" or exploit_type == "all" %}

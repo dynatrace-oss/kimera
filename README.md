@@ -162,6 +162,7 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 | `exploit <type>` | Demonstrate a specific exploit |
 | `vuln-service <svc> <type>` | Introduce a vulnerability for testing |
 | `generate --type <type> [--apply]` | Generate remediations via LLM |
+| `generate --from-findings <file>` | Remediate only the workload the exploit ran from |
 | `generate --enrich dynatrace` | Enrich LLM context with Dynatrace data |
 | `technique list [--phase <phase>]` | Browse the technique registry |
 | `technique run <id> --pod <pod>` | Run one technique; `--dry-run` prints the probe |
@@ -199,6 +200,25 @@ network_topology:
 ```
 
 A workload with an external dependency needs `allowed_egress_to`, or a default-deny set severs it — the workload then fails to start while every app-to-app flow still passes, which is easy to misread as a segmentation failure. Declared destinations are added to the generated set deterministically, not left to the model, and are checked by `kimera validate-control --type network-policy`. Nothing is inferred: a destination that is not declared is not permitted.
+
+### Remediation scope
+
+A namespace-wide set constrains every pod, which is more collateral than one exploited workload
+justifies. Feed the findings back instead:
+
+```bash
+kimera -n unguard exploit missing-network-policies --json > findings.json
+kimera -n unguard generate --from-findings findings.json          # targeted scope
+```
+
+Targeted scope emits policies for the findings' source workload only — no default-deny, no policy
+for any other workload — permitting DNS, the dependencies `network_topology` declares for it, and
+its declared external egress. Every observed path is reported first as DENY (denied by the set),
+KEEP (declared, so preserved) or REVIEW (an undeclared in-namespace destination, denied and listed
+for a decision — declare it and regenerate to keep it). A deterministic pass then corrects any
+emitted policy that permits a denied path or severs a declared one, and reports what it changed.
+
+Scope defaults to `targeted` with findings and `namespace` without; `--scope` overrides either way.
 
 ## Observability Enrichment
 

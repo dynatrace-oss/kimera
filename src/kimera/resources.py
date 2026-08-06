@@ -17,18 +17,16 @@ from pathlib import Path
 
 CONFIG_DIR_ENV_VAR = "KIMERA_CONFIG_DIR"
 
-# Resolved once, from this module only. Every other module asks here rather than
-# counting parent directories of its own __file__, which is what previously gave
-# six call sites four different depth expressions for the same directory.
+# Resolved once here; modules that counted parents of their own __file__ gave four
+# different depth expressions for the same directory.
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 
 
 def config_dir() -> Path:
     """Directory holding Kimera's YAML configuration.
 
-    Ships inside the package. Setting ``KIMERA_CONFIG_DIR`` replaces it
-    wholesale, which is how an operator supplies their own profiles and checks
-    without editing an installed package.
+    Ships inside the package; ``KIMERA_CONFIG_DIR`` replaces it wholesale so an
+    operator can supply their own profiles without editing an installed package.
     """
     override = os.environ.get(CONFIG_DIR_ENV_VAR)
     return Path(override) if override else _PACKAGE_ROOT / "config"

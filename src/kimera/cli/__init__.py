@@ -44,9 +44,8 @@ def _load_config(
     if verbose:
         overrides["verbose"] = True
 
-    # A namespace with a profile file of the same name loads it. Naming a specific
-    # application here would make Kimera behave differently on one cluster, and the
-    # profile is what supplies network_topology, which remediation scoping inverts.
+    # A namespace loads the profile of the same name; naming one here would make
+    # Kimera behave differently on a single cluster.
     effective_profile = profile
     if not effective_profile and (config_dir() / "profiles" / f"{namespace}.yaml").is_file():
         effective_profile = namespace

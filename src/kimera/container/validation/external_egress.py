@@ -95,7 +95,8 @@ def _peer_permits(peer: dict[str, Any], declared: list[IPNetwork]) -> bool:
     return all(any(_contains(allowed, net) for allowed in permitted) for net in declared)
 
 
-def _rule_permits(rule: dict[str, Any], declared: list[IPNetwork], port: int) -> bool:
+def rule_permits(rule: dict[str, Any], declared: list[IPNetwork], port: int) -> bool:
+    """Whether an egress rule reaches every declared network on ``port``."""
     peers = rule.get("to")
     # A rule with no peer list applies to every destination, external ones included.
     if peers is not None and not any(_peer_permits(p, declared) for p in peers):
@@ -115,8 +116,7 @@ def _policies_permit(
         return True
     return any(
         any(
-            _rule_permits(rule, declared, port)
-            for rule in (p.get("spec") or {}).get("egress") or []
+            rule_permits(rule, declared, port) for rule in (p.get("spec") or {}).get("egress") or []
         )
         for p in governing
     )
@@ -189,7 +189,8 @@ def unmatched_declarations(
     ]
 
 
-def _egress_rule(destination: ExternalEgressDestination) -> dict[str, Any]:
+def egress_rule(destination: ExternalEgressDestination) -> dict[str, Any]:
+    """Build the egress rule that permits one declared external destination."""
     block: dict[str, Any] = {"cidr": str(destination.cidr)}
     if destination.except_:
         block["except"] = [str(net) for net in destination.except_]
@@ -264,7 +265,7 @@ def close_external_gaps(
             policy_types = spec.setdefault("policyTypes", [])
             if "Egress" not in policy_types:
                 policy_types.append("Egress")
-            spec.setdefault("egress", []).append(_egress_rule(destination))
+            spec.setdefault("egress", []).append(egress_rule(destination))
 
             closed.extend(
                 ExternalGap(

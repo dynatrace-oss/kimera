@@ -38,9 +38,8 @@ _PROBE_STATE_TO_RESULT = {
 def _marker_matches(marker: str, output: str) -> bool:
     r"""Check whether a marker appears as a whole token in probe output.
 
-    Substring matching would let a success marker fire on its own negation —
-    ``REACHABLE`` is contained in ``UNREACHABLE``. Lookarounds are used rather
-    than ``\b`` because a marker may start or end with a non-word character.
+    Whole-token, or ``REACHABLE`` would fire on ``UNREACHABLE``; lookarounds
+    rather than ``\b`` because a marker may start with a non-word character.
     """
     return re.search(rf"(?<![A-Za-z0-9_]){re.escape(marker)}(?![A-Za-z0-9_])", output) is not None
 
@@ -167,9 +166,7 @@ class BaseExploit(ABC):
     ) -> ExploitResult:
         """Run a list of security tests in a pod and collect evidence.
 
-        Path records are parsed out of each test's output and the remaining
-        visible text is scanned for evidence markers. Markers are matched against
-        the visible text only, so a path record alone never satisfies one.
+        Markers match the visible text only, so a path record never satisfies one.
 
         Args:
             pod_name: Name of the pod to execute tests in.
@@ -207,8 +204,8 @@ class BaseExploit(ABC):
     def _extract_paths(self, output: str) -> tuple[str, list[AttackPath]]:
         """Split probe output into what the operator sees and the paths it recorded.
 
-        A malformed record is dropped with a warning rather than guessed at: a
-        half-parsed path would be classified and acted on like a measured one.
+        Malformed records are dropped with a warning — a half-parsed path would
+        be acted on like a measured one.
         """
         visible: list[str] = []
         paths: list[AttackPath] = []
@@ -245,9 +242,8 @@ class BaseExploit(ABC):
     ) -> ExploitResult:
         """Run the demonstration, offering to introduce the vulnerability first.
 
-        The decision is injected rather than read from stdin so the caller owns
-        it: under ``--non-interactive`` there is no stdin to read, and a raw
-        ``input()`` here ended the run on EOF.
+        The decision is injected, not read from stdin: under ``--non-interactive``
+        a raw ``input()`` here ended the run on EOF.
         """
         self.show_info()
 

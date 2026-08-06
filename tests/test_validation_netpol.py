@@ -21,11 +21,11 @@ from kubernetes.client import ApiException
 
 from kimera.container.core.logger import SecurityLogger, setup_logger
 from kimera.container.validation.models import ValidationVerdict
-from kimera.container.validation.network_policy import (
+from kimera.container.validation.netpol_checks import (
     _check_default_deny,
     _discover_namespace_services,
-    validate_network_policies,
 )
+from kimera.container.validation.network_policy import validate_network_policies
 
 
 @pytest.fixture

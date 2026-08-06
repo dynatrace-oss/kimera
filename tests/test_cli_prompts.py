@@ -38,9 +38,9 @@ class TestConfirm:
     @pytest.mark.parametrize("default", [True, False])
     def test_yes_affirms_when_non_interactive(self, default: bool) -> None:
         with patch("kimera.cli.prompts.click.confirm") as prompt:
-            assert confirm(
-                _ctx(non_interactive=True, assume_yes=True), "go?", default=default
-            ) is True
+            assert (
+                confirm(_ctx(non_interactive=True, assume_yes=True), "go?", default=default) is True
+            )
             prompt.assert_not_called()
 
     def test_yes_alone_does_not_suppress_prompting(self) -> None:

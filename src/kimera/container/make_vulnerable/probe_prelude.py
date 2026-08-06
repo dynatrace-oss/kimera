@@ -14,9 +14,8 @@
 
 UNKNOWN_STATE = "UNKNOWN (no probe tool)"
 
-# Emitted once per script and called by every probe that touches the network, so that
-# "we proved this is closed" is never confused with "we had no tool to test it".
-# POSIX sh only — exec_in_pod runs scripts under /bin/sh.
+# Shared by every network probe so "proved closed" is never confused with "no tool
+# to test it". POSIX sh only — exec_in_pod runs scripts under /bin/sh.
 PROBE_PRELUDE = f"""\
 kimera_port_open() {{
     if command -v nc >/dev/null 2>&1; then

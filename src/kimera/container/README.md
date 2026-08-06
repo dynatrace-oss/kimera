@@ -83,7 +83,7 @@ Checks for Cilium and provides installation guidance for NetworkPolicy enforceme
 from kimera.container.enforcement import PolicyEnforcementManager
 
 manager = PolicyEnforcementManager(k8s_client)
-manager.enable()   # Check Cilium status / print guidance
+manager.enable()  # Check Cilium status / print guidance
 ```
 
 ## Vulnerability Details

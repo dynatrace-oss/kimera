@@ -18,12 +18,8 @@ import click
 def confirm(ctx: click.Context, message: str, *, default: bool) -> bool:
     """Ask the operator to confirm, honouring the run's interaction flags.
 
-    The two flags are orthogonal on purpose. ``--non-interactive`` says never
-    prompt, and each site supplies the answer to assume via ``default`` — the
-    safe one, which for a destructive site is no. ``--yes`` is what affirms a
-    destructive site, and it only takes effect together with
-    ``--non-interactive``; on its own it would turn a single flag into a
-    one-liner that makes every mapped service extremely vulnerable.
+    ``--yes`` only affirms alongside ``--non-interactive``; alone it would make
+    a single flag enough to render every mapped service vulnerable.
     """
     obj = ctx.obj or {}
     if obj.get("non_interactive"):

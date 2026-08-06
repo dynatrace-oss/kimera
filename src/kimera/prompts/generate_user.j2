@@ -60,8 +60,39 @@ Declared external egress (workload -> destinations outside the namespace):
   (none declared — no workload may reach outside the namespace)
 {% endif %}
 
+{% if scope == "targeted" and plan %}
+## Targeted scope: {{ plan.source.name }}
+
+This set constrains only `{{ plan.source.name }}`, the workload the exploit ran from.
+Its pod labels: {{ plan.source.labels | tojson }}
+
+Declared dependencies (permit these):
+{% for dep in plan.dependencies %}
+  {{ dep.workload.name }}: labels={{ dep.workload.labels | tojson }}, ports={{ dep.ports | tojson }}
+{% else %}
+  (none — egress is DNS and the declared external destinations only)
+{% endfor %}
+
+Observed paths that must NOT be permitted:
+{% for scoped in plan.classification.deny + plan.classification.review %}
+  [{{ scoped.scope }}] {{ scoped.path.host }}:{{ scoped.path.port }} — {{ scoped.reason }}
+{% else %}
+  (none — the findings recorded no path this set needs to close)
+{% endfor %}
+
+Observed paths that stay permitted because they are declared:
+{% for scoped in plan.classification.keep %}
+  {{ scoped.path.host }}:{{ scoped.path.port }}
+{% else %}
+  (none)
+{% endfor %}
+
+Emit policies for `{{ plan.source.name }}` only. No default-deny policy, no policy for any other
+workload.
+{% else %}
 Generate NetworkPolicies for ALL workloads listed above — Deployments, StatefulSets and CronJobs.
 A workload with no policy is denied all traffic by the default-deny policy.
+{% endif %}
 {% endif %}
 
 {% if exploit_type in ("privileged-containers", "dangerous-capabilities", "host-namespace-sharing", "missing-resource-limits", "all") %}

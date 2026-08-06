@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+
 import click
 
 from ..application.config.registry import ExploitRegistry
 from ..container.core.exceptions import ProviderError, ProviderNotConfiguredError
 from ..container.core.journal import record_operation
 from ..container.core.logger import console
+from ..container.remediations.exploit_findings import FindingsDocument
+from ..container.remediations.exploit_findings import load as load_findings
+from ..container.remediations.finding_scope import NAMESPACE_SCOPE, TARGETED_SCOPE
 from ..container.resource_applier import ResourceApplier
 from ..core.enrichment import EnrichmentProvider
 from ..core.llm import DEFAULT_MODEL
@@ -67,6 +72,19 @@ REGISTRY: ExploitRegistry = _REGISTRY
     type=click.Choice(["targeted", "llm-query", "davis"]),
     help="Enrichment data fetching strategy.",
 )
+@click.option(
+    "--from-findings",
+    "findings_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Findings document from 'kimera exploit --json'.",
+)
+@click.option(
+    "--scope",
+    default=None,
+    type=click.Choice([TARGETED_SCOPE, NAMESPACE_SCOPE]),
+    help="Remediation scope. Defaults to targeted with findings, namespace without.",
+)
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 @click.pass_context
 def generate(
@@ -79,6 +97,8 @@ def generate(
     apply_generated: bool,
     enrich: str | None,
     enrich_strategy: str,
+    findings_path: Path | None,
+    scope: str | None,
     yes: bool,
 ) -> None:
     """Generate security remediations or exploit patches using an LLM."""
@@ -87,6 +107,12 @@ def generate(
     k8s = ctx.obj["k8s"]
 
     from ..container.remediations.generator import LLMRemediationGenerator
+
+    try:
+        findings, scope = _resolve_scope(findings_path, scope)
+    except ValueError as e:
+        logger.error(str(e))
+        return
 
     if output is None:
         output = "kimera-exploit.yaml" if mode == "exploit" else "kimera-remediations.yaml"
@@ -124,10 +150,13 @@ def generate(
                 smartscape_context=topology_context,
             )
         else:
+            logger.info(f"Remediation scope: {scope}")
             yaml_output = generator.generate(
                 exploit_type=exploit_type,
                 kspm_context=compliance_context,
                 smartscape_context=topology_context,
+                findings=findings,
+                scope=scope,
             )
     except (ImportError, ProviderNotConfiguredError) as e:
         logger.error(str(e))
@@ -165,6 +194,22 @@ def generate(
 
     if applied > 0 and not config.dry_run:
         record_operation(op_action, exploit_type, output, config.namespace)
+
+
+def _resolve_scope(
+    findings_path: Path | None, scope: str | None
+) -> tuple[FindingsDocument | None, str]:
+    """Apply the scope defaulting rules and load the findings, if any.
+
+    Raises:
+        ValueError: if targeted scope is requested without findings, or the
+            findings file is unreadable.
+    """
+    if scope is None:
+        scope = TARGETED_SCOPE if findings_path else NAMESPACE_SCOPE
+    if scope == TARGETED_SCOPE and findings_path is None:
+        raise ValueError("--scope targeted requires --from-findings")
+    return (load_findings(findings_path) if findings_path else None), scope
 
 
 def _create_enrichment_provider(
