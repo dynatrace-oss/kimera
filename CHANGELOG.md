@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The pre-commit gate runs the project's own pinned `ruff` and `mypy` instead of pre-commit's mirrors, which had drifted to ruff 0.8.4 and mypy 1.14 against the 0.16 and 2.3 the project requires. CI reported a pass while `uv run mypy .` — the documented command — reported four type errors it never saw, and `uv run ruff format .` rewrote a file CI was content with. Those four errors are fixed, and mypy skips the untracked local scaffolding directories.
 - **Breaking:** environment variables use the `KIMERA_` prefix instead of `K8S_EXPLOIT_`, matching the rename of the tool. `KIMERA_NAMESPACE`, `KIMERA_CONTEXT`, `KIMERA_KUBECONFIG`, `KIMERA_DRY_RUN`, `KIMERA_DEBUG`, `KIMERA_VERBOSE`, `KIMERA_TIMEOUT_ROLLOUT`, `KIMERA_TIMEOUT_STREAM`, `KIMERA_TIMEOUT_COMMAND`, `KIMERA_LOG_LEVEL`, `KIMERA_LOG_FILE`. The old names are no longer read.
 - The package moved to a `src/` layout and its YAML configuration ships inside the package. An installed wheel previously could not find its own configuration — six modules located `config/` by counting parent directories, all resolving to the repository root. Set `KIMERA_CONFIG_DIR` to supply your own; it replaces the packaged directory wholesale.
 - `-n <namespace>` loads `profiles/<namespace>.yaml` when that file exists, replacing a hardcoded special case for one namespace name. `-p` still overrides.

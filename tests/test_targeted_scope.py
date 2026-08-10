@@ -187,8 +187,8 @@ class TestEnforce:
             **TOPOLOGY,
             "ad-service": NetworkTopologyEntry(
                 allowed_egress_to=[
-                    ExternalEgressDestination(
-                        cidr="0.0.0.0/0", **{"except": ["10.0.0.0/8"]}, ports=[443]
+                    ExternalEgressDestination.model_validate(
+                        {"cidr": "0.0.0.0/0", "except": ["10.0.0.0/8"], "ports": [443]}
                     )
                 ]
             ),
@@ -209,7 +209,9 @@ class TestEnforce:
         topology = {
             **TOPOLOGY,
             "frontend": NetworkTopologyEntry(
-                allowed_egress_to=[ExternalEgressDestination(cidr="0.0.0.0/0", ports=[443])]
+                allowed_egress_to=[
+                    ExternalEgressDestination.model_validate({"cidr": "0.0.0.0/0", "ports": [443]})
+                ]
             ),
         }
         kept, _ = enforce(

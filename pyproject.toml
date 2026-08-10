@@ -96,6 +96,8 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+# Untracked local experiment scaffolding, absent from a fresh checkout.
+exclude = "^(harness|run|queries)/"
 
 [[tool.mypy.overrides]]
 module = [
@@ -113,7 +115,7 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["tests.*", "examples.*"]
+module = ["tests.*"]
 disallow_untyped_defs = false
 warn_unreachable = false
 
