@@ -135,13 +135,11 @@ class TimeoutConfig(BaseModel):
     """Timeout configuration.
 
     Attributes:
-        operation: Default operation timeout in seconds
         rollout: Deployment rollout timeout in seconds
         stream: Stream read timeout in seconds
         command: Command execution timeout in seconds
     """
 
-    operation: int = Field(default=300, description="Operation timeout (seconds)")
     rollout: int = Field(default=120, description="Rollout wait timeout (seconds)")
     stream: int = Field(default=1, description="Stream read timeout (seconds)")
     command: int = Field(default=60, description="Command execution timeout (seconds)")

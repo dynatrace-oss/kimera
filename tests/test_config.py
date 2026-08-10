@@ -85,8 +85,9 @@ class TestToolkitConfig:
     def test_timeout_defaults(self):
         """Test timeout defaults are set."""
         config = ToolkitConfig()
-        assert config.timeouts.operation == 300
         assert config.timeouts.rollout == 120
+        assert config.timeouts.stream == 1
+        assert config.timeouts.command == 60
 
 
 class TestConfigLoader:

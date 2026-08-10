@@ -107,7 +107,12 @@ def cli(
     logger = SecurityLogger(setup_logger("k8s_security", debug=config.debug))
 
     try:
-        k8s_client = K8sClient(namespace=config.namespace, logger=logger, verbose=config.verbose)
+        k8s_client = K8sClient(
+            namespace=config.namespace,
+            logger=logger,
+            verbose=config.verbose,
+            timeouts=config.timeouts,
+        )
     except Exception as e:
         logger.error(f"Failed to initialize Kubernetes client: {e}")
         sys.exit(1)

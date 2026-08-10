@@ -19,7 +19,7 @@ import subprocess
 from kimera.container.core.logger import SecurityLogger
 from kimera.domain.models import CommandResult
 
-# Matches timeouts.command in config/default.yaml and TimeoutConfig.command.
+# Fallback for direct callers; configured runs pass TimeoutConfig.command instead.
 DEFAULT_COMMAND_TIMEOUT = 60
 
 # Exit code GNU coreutils' `timeout` uses when it kills the command.

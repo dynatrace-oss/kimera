@@ -17,7 +17,6 @@ exploit_mappings: {}
 
 # Timeout configuration (seconds)
 timeouts:
-  operation: 300
   rollout: 120
   stream: 1
   command: 60

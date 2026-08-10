@@ -25,6 +25,7 @@ from kubernetes.client import V1DaemonSet, V1Deployment, V1NetworkPolicy, V1Pod
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 
+from kimera.application.config.schemas import TimeoutConfig
 from kimera.container.core.command import run_command
 from kimera.container.core.exceptions import K8sError, PermissionDeniedError
 
@@ -39,11 +40,13 @@ class K8sClient:
         namespace: str = "default",
         logger: SecurityLogger | None = None,
         verbose: bool = False,
+        timeouts: TimeoutConfig | None = None,
     ):
-        """Initialize Kubernetes client with specified namespace and logger."""
+        """Initialize Kubernetes client with specified namespace, logger and timeouts."""
         self.namespace = namespace
         self.logger = logger or SecurityLogger(setup_logger(__name__))
         self.verbose = verbose
+        self.timeouts = timeouts or TimeoutConfig()
 
         # Initialize Kubernetes client
         try:
@@ -140,7 +143,7 @@ class K8sClient:
 
             # Fix: Properly handle stream output
             while resp.is_open():
-                resp.update(timeout=1)
+                resp.update(timeout=self.timeouts.stream)
                 if resp.peek_stdout():
                     data = resp.read_stdout()
                     output += data
@@ -245,8 +248,10 @@ class K8sClient:
         except Exception as e:
             self.logger.error(f"Error logging deployment state: {e}")
 
-    def wait_for_rollout(self, deployment_name: str, timeout: int = 120) -> bool:
-        """Wait for deployment rollout to complete."""
+    def wait_for_rollout(self, deployment_name: str, timeout: int | None = None) -> bool:
+        """Wait for deployment rollout to complete, defaulting to the configured timeout."""
+        if timeout is None:
+            timeout = self.timeouts.rollout
         self.logger.info(f"Waiting for {deployment_name} rollout...")
         start_time = time.time()
 
@@ -286,7 +291,7 @@ class K8sClient:
             ]
             if revision:
                 cmd.extend(["--to-revision", str(revision)])
-            result = run_command(cmd, logger=self.logger)
+            result = run_command(cmd, logger=self.logger, timeout=self.timeouts.command)
             if result.success:
                 self.logger.success(f"Rolled back {name} to revision {revision or 'previous'}.")
                 return True

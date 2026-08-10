@@ -28,10 +28,6 @@ mappings:
     path: [verbose]
     type: bool
 
-  K8S_EXPLOIT_TIMEOUT_OPERATION:
-    path: [timeouts, operation]
-    type: int
-
   K8S_EXPLOIT_TIMEOUT_ROLLOUT:
     path: [timeouts, rollout]
     type: int
