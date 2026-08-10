@@ -1,0 +1,167 @@
+# Copyright 2025 Dynatrace LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import ValidationError
+
+from ...resources import config_dir as _packaged_config_dir
+from .schemas import ToolkitConfig
+
+
+class ConfigLoader:
+    """Load and merge configuration from multiple sources.
+
+    Merge order: default.yaml → profile.yaml → environment variables → CLI flags
+
+    The loader follows these principles:
+    - Start with sensible defaults from default.yaml
+    - Override with profile-specific settings (e.g., unguard)
+    - Override with environment variables (KIMERA_*)
+    - Override with CLI flags (passed at runtime)
+    """
+
+    def __init__(self, config_dir: Path | None = None) -> None:
+        """Initialize configuration loader.
+
+        Args:
+            config_dir: Directory containing config files. Defaults to ./config
+        """
+        self.config_dir = Path(config_dir) if config_dir else _packaged_config_dir()
+
+        if not self.config_dir.exists():
+            raise FileNotFoundError(f"Config directory not found: {self.config_dir}")
+
+    def load(
+        self,
+        profile: str | None = None,
+        overrides: dict[str, Any] | None = None,
+    ) -> ToolkitConfig:
+        """Load configuration with optional profile and overrides.
+
+        Args:
+            profile: Profile name (e.g., "unguard") or None for default
+            overrides: Runtime overrides (typically from CLI flags)
+
+        Returns:
+            Validated configuration object
+
+        Raises:
+            FileNotFoundError: If config files not found
+            ValidationError: If configuration validation fails
+        """
+        # Step 1: Load base configuration
+        config_data = self._load_yaml(self.config_dir / "default.yaml")
+
+        # Step 2: Merge profile if specified
+        if profile:
+            profile_path = self.config_dir / "profiles" / f"{profile}.yaml"
+            if profile_path.exists():
+                profile_data = self._load_yaml(profile_path)
+                config_data = self._deep_merge(config_data, profile_data)
+            else:
+                raise FileNotFoundError(f"Profile configuration not found: {profile_path}")
+
+        # Step 3: Apply environment variable overrides
+        env_overrides = self._load_env_vars()
+        config_data = self._deep_merge(config_data, env_overrides)
+
+        # Step 4: Apply runtime overrides
+        if overrides:
+            config_data = self._deep_merge(config_data, overrides)
+
+        # Step 5: Validate and return
+        try:
+            return ToolkitConfig(**config_data)
+        except ValidationError as e:
+            raise ValueError(f"Configuration validation failed: {e}") from e
+
+    def _load_yaml(self, path: Path) -> dict[str, Any]:
+        """Load YAML configuration file.
+
+        Args:
+            path: Path to YAML file
+
+        Returns:
+            Parsed YAML data
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        if not path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {path}")
+
+        with open(path) as f:
+            data = yaml.safe_load(f)
+
+        return data if data else {}
+
+    def _load_env_vars(self) -> dict[str, Any]:
+        """Load configuration from environment variables.
+
+        Mappings are defined in config/env_mappings.yaml.
+        """
+        mappings_path = self.config_dir / "env_mappings.yaml"
+        if not mappings_path.exists():
+            return {}
+
+        with open(mappings_path) as f:
+            raw = yaml.safe_load(f) or {}
+
+        type_parsers: dict[str, Any] = {
+            "bool": lambda v: v.lower() in ("true", "1", "yes"),
+            "int": int,
+            "string": str,
+        }
+
+        config: dict[str, Any] = {}
+
+        for env_var, spec in raw.get("mappings", {}).items():
+            raw_value = os.getenv(env_var)
+            if raw_value is None:
+                continue
+
+            path: list[str] = spec["path"]
+            parser = type_parsers.get(spec.get("type", "string"), str)
+            parsed_value = parser(raw_value)
+
+            current = config
+            for key in path[:-1]:
+                current = current.setdefault(key, {})
+            current[path[-1]] = parsed_value
+
+        return config
+
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """Deep merge two dictionaries.
+
+        Args:
+            base: Base dictionary
+            override: Override dictionary
+
+        Returns:
+            Merged dictionary
+        """
+        result = base.copy()
+
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+
+        return result

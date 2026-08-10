@@ -21,6 +21,7 @@ from kimera.container.core.exceptions import K8sError  # noqa: F401
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
 from kimera.container.make_vulnerable.missing_network_policies import (
+    MAX_LATERAL_TARGETS,
     TOOLKIT_LABEL,
     TOOLKIT_LABEL_VALUE,
     MissingNetworkPoliciesExploit,
@@ -316,3 +317,38 @@ class TestExploitRegistration:
 
         assert "missing-network-policies" in EXPLOITS
         assert EXPLOITS["missing-network-policies"] is MissingNetworkPoliciesExploit
+
+
+class TestLateralTargetBound:
+    """A bound on probed services must be reported, never silent."""
+
+    def setup_method(self) -> None:
+        self.k8s, self.mock_networking, self.mock_logger = _create_mock_k8s_client()
+        self.exploit = MissingNetworkPoliciesExploit(self.k8s, "test-service", self.mock_logger)
+
+    def _services(self, count: int) -> MagicMock:
+        items = []
+        for index in range(count):
+            svc = MagicMock()
+            svc.metadata.name = f"svc-{index:03d}"
+            svc.spec.ports = [MagicMock(port=80)]
+            items.append(svc)
+        return MagicMock(items=items)
+
+    def test_every_service_is_probed_when_under_the_bound(self) -> None:
+        self.k8s.v1.list_namespaced_service.return_value = self._services(MAX_LATERAL_TARGETS)
+
+        assert len(self.exploit._discover_reachable_services()) == MAX_LATERAL_TARGETS
+        self.mock_logger.warning.assert_not_called()
+
+    def test_dropped_services_are_named(self) -> None:
+        # Silent truncation understates the attack surface, and every downstream
+        # path count inherits it.
+        self.k8s.v1.list_namespaced_service.return_value = self._services(MAX_LATERAL_TARGETS + 2)
+
+        targets = self.exploit._discover_reachable_services()
+
+        assert len(targets) == MAX_LATERAL_TARGETS
+        message = self.mock_logger.warning.call_args[0][0]
+        assert f"svc-{MAX_LATERAL_TARGETS:03d}" in message
+        assert f"svc-{MAX_LATERAL_TARGETS + 1:03d}" in message

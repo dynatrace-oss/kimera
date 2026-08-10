@@ -14,9 +14,14 @@
 
 """Tests for the run_command() helper and CommandResult model."""
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
-from kimera.container.core.command import run_command
+from kimera.container.core.command import (
+    DEFAULT_COMMAND_TIMEOUT,
+    TIMEOUT_RETURNCODE,
+    run_command,
+)
 from kimera.container.core.logger import SecurityLogger
 from kimera.domain.models import CommandResult
 
@@ -51,9 +56,34 @@ class TestRunCommand:
         mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
         result = run_command(["echo", "hello"])
 
-        mock_run.assert_called_once_with(["echo", "hello"], capture_output=True, text=True)
+        mock_run.assert_called_once_with(
+            ["echo", "hello"], capture_output=True, text=True, timeout=DEFAULT_COMMAND_TIMEOUT
+        )
         assert result.success is True
         assert result.stdout == "ok"
+
+    @patch("kimera.container.core.command.subprocess.run")
+    def test_timeout_reported_as_failure_not_raised(self, mock_run: MagicMock) -> None:
+        """A command exceeding its timeout is killed and reported, never left hanging."""
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd=["kubectl", "rollout", "undo"], timeout=5, output="partial"
+        )
+        logger = MagicMock(spec=SecurityLogger)
+        result = run_command(["kubectl", "rollout", "undo"], logger=logger, timeout=5)
+
+        assert result.success is False
+        assert result.returncode == TIMEOUT_RETURNCODE
+        assert result.stdout == "partial"
+        assert "timed out after 5s" in result.stderr
+        logger.error.assert_called_once()
+
+    @patch("kimera.container.core.command.subprocess.run")
+    def test_timeout_is_passed_through(self, mock_run: MagicMock) -> None:
+        """An explicit timeout reaches subprocess.run rather than being ignored."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        run_command(["sleep", "1"], timeout=7)
+
+        assert mock_run.call_args.kwargs["timeout"] == 7
 
     @patch("kimera.container.core.command.subprocess.run")
     def test_captures_failure(self, mock_run: MagicMock) -> None:

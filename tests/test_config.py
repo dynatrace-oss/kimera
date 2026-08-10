@@ -19,9 +19,16 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from kimera.application.config.loader import ConfigLoader
-from kimera.application.config.schemas import ToolkitConfig
+from kimera.application.config.schemas import (
+    ExternalEgressDestination,
+    NetworkTopologyEntry,
+    ToolkitConfig,
+)
+from kimera.cli import _load_config
+from kimera.resources import config_dir
 
 
 class TestToolkitConfig:
@@ -78,8 +85,9 @@ class TestToolkitConfig:
     def test_timeout_defaults(self):
         """Test timeout defaults are set."""
         config = ToolkitConfig()
-        assert config.timeouts.operation == 300
         assert config.timeouts.rollout == 120
+        assert config.timeouts.stream == 1
+        assert config.timeouts.command == 60
 
 
 class TestConfigLoader:
@@ -122,9 +130,9 @@ class TestConfigLoader:
     def test_env_var_overrides(self):
         """Test environment variable overrides."""
         env_vars = {
-            "K8S_EXPLOIT_NAMESPACE": "env-namespace",
-            "K8S_EXPLOIT_DRY_RUN": "true",
-            "K8S_EXPLOIT_DEBUG": "1",
+            "KIMERA_NAMESPACE": "env-namespace",
+            "KIMERA_DRY_RUN": "true",
+            "KIMERA_DEBUG": "1",
         }
 
         with patch.dict(os.environ, env_vars, clear=False):
@@ -174,3 +182,92 @@ class TestConfigLoaderFromFile:
         """Test that a nonexistent config directory raises."""
         with pytest.raises(FileNotFoundError, match="Config directory not found"):
             ConfigLoader(config_dir=Path("/nonexistent/path"))
+
+
+class TestNetworkTopologyEntry:
+    """Ingress/egress declarations in network_topology."""
+
+    def test_external_egress_destination_loads_with_except_alias(self):
+        """The YAML key `except` populates except_, which is a reserved word in Python."""
+        entry = NetworkTopologyEntry.model_validate(
+            {
+                "allowed_egress_to": [
+                    {
+                        "cidr": "0.0.0.0/0",
+                        "except": ["10.0.0.0/8", "169.254.169.254/32"],
+                        "ports": [443],
+                        "protocol": "TCP",
+                    }
+                ]
+            }
+        )
+
+        dest = entry.allowed_egress_to[0]
+        assert str(dest.cidr) == "0.0.0.0/0"
+        assert [str(n) for n in dest.except_] == ["10.0.0.0/8", "169.254.169.254/32"]
+        assert dest.ports == [443]
+        assert dest.protocol == "TCP"
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("cidr", "not-a-cidr"),
+            ("except", ["not-a-cidr"]),
+            ("ports", []),
+            ("ports", [70000]),
+            ("ports", [0]),
+            ("protocol", "ICMP"),
+        ],
+    )
+    def test_malformed_destination_rejected(self, field, value):
+        """A malformed destination fails validation naming the offending field."""
+        payload = {"cidr": "0.0.0.0/0", "ports": [443], "protocol": "TCP"}
+        payload[field] = value
+
+        with pytest.raises(ValidationError) as exc:
+            ExternalEgressDestination.model_validate(payload)
+
+        assert field in str(exc.value)
+
+    def test_undeclared_ingress_is_none_not_empty_list(self):
+        """None (undeclared) and [] (block all ingress) must stay distinguishable."""
+        undeclared = NetworkTopologyEntry.model_validate({"allowed_egress_to": []})
+        blocked = NetworkTopologyEntry.model_validate({"allowed_ingress_from": []})
+
+        assert undeclared.allowed_ingress_from is None
+        assert blocked.allowed_ingress_from == []
+
+    def test_shipped_profiles_load_with_unchanged_ingress(self):
+        """Changing the ingress default to None must not alter any shipped profile."""
+        profiles = sorted((config_dir() / "profiles").glob("*.yaml"))
+        assert profiles, "no profiles shipped; this guard checks nothing"
+        for profile_path in profiles:
+            raw = yaml.safe_load(profile_path.read_text())
+            config = ConfigLoader().load(profile=profile_path.stem)
+
+            for workload, entry in (raw.get("network_topology") or {}).items():
+                expected = entry.get("allowed_ingress_from")
+                actual = config.network_topology[workload].allowed_ingress_from
+                assert actual == expected, f"{profile_path.name}:{workload}"
+
+
+class TestProfileAutoDetection:
+    """A namespace loads the profile named after it, if one is shipped."""
+
+    def test_namespace_with_a_profile_file_loads_it(self) -> None:
+        # Previously this was `namespace == "unguard"` hardcoded in the CLI, so the
+        # behaviour existed for exactly one application and was invisible elsewhere.
+        shipped = [p.stem for p in (config_dir() / "profiles").glob("*.yaml")]
+        assert shipped, "no profiles shipped; this guard checks nothing"
+        for name in shipped:
+            config = _load_config(name, None, False, False, False)
+            assert config.kubernetes.namespace == name
+
+    def test_namespace_without_a_profile_file_loads_defaults(self) -> None:
+        config = _load_config("no-such-namespace-here", None, False, False, False)
+        assert config.kubernetes.namespace == "no-such-namespace-here"
+
+    def test_explicit_profile_wins_over_the_namespace_name(self) -> None:
+        shipped = [p.stem for p in (config_dir() / "profiles").glob("*.yaml")]
+        config = _load_config("some-other-namespace", shipped[0], False, False, False)
+        assert config.kubernetes.namespace == "some-other-namespace"

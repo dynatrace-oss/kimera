@@ -8,8 +8,7 @@ RUN groupadd -r kimera && useradd -r -g kimera -d /app kimera
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-COPY kimera/ kimera/
-COPY config/ config/
+COPY src/ src/
 
 RUN pip install --no-cache-dir uv && \
     uv pip install --system -e '.[mcp-server]' && \

@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.rest import ApiException
 
+from kimera.application.config.schemas import TimeoutConfig
 from kimera.container.core.exceptions import K8sError
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
@@ -207,3 +208,69 @@ class TestK8sClientExceptionHandling:
         server_error = ApiException(status=500, reason="Internal Server Error")
         assert server_error.status == 500
         assert server_error.reason == "Internal Server Error"
+
+
+class TestConfiguredTimeouts:
+    """Test that TimeoutConfig values reach their consumers."""
+
+    @staticmethod
+    def _client(mock_config, timeouts):
+        config_exception = type("ConfigException", (Exception,), {})
+        mock_config.ConfigException = config_exception
+        mock_config.load_incluster_config.side_effect = config_exception("Not in cluster")
+        return K8sClient(logger=MagicMock(spec=SecurityLogger), timeouts=timeouts)
+
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
+    def test_defaults_when_no_config_given(self, mock_k8s_client, mock_config):
+        """Test that an unconfigured client keeps the documented defaults."""
+        k8s = self._client(mock_config, None)
+
+        assert k8s.timeouts.rollout == 120
+        assert k8s.timeouts.stream == 1
+        assert k8s.timeouts.command == 60
+
+    def test_operation_timeout_removed(self):
+        """Test that the unused operation timeout is gone from the schema."""
+        assert "operation" not in TimeoutConfig.model_fields
+
+    @patch("kimera.container.core.command.subprocess.run")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
+    def test_command_timeout_reaches_subprocess(self, mock_k8s_client, mock_config, mock_run):
+        """Test that timeouts.command is passed through to subprocess.run."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        k8s = self._client(mock_config, TimeoutConfig(command=5))
+
+        assert k8s.rollback_deployment("web") is True
+        assert mock_run.call_args.kwargs["timeout"] == 5
+
+    @patch("kimera.container.core.k8s_client.time")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
+    def test_rollout_timeout_used_as_default(self, mock_k8s_client, mock_config, mock_time):
+        """Test that timeouts.rollout bounds the rollout wait when none is passed."""
+        k8s = self._client(mock_config, TimeoutConfig(rollout=7))
+        mock_time.time.side_effect = [0.0, 8.0]
+
+        assert k8s.wait_for_rollout("web") is False
+
+    @patch("kimera.container.core.k8s_client.stream")
+    @patch("kimera.container.core.k8s_client.config")
+    @patch("kimera.container.core.k8s_client.client")
+    def test_stream_timeout_reaches_exec(self, mock_k8s_client, mock_config, mock_stream):
+        """Test that timeouts.stream is passed to the pod exec stream reads."""
+        k8s = self._client(mock_config, TimeoutConfig(stream=3))
+        k8s.v1 = MagicMock()
+        pod = MagicMock()
+        pod.spec.containers = [MagicMock()]
+        k8s.v1.read_namespaced_pod.return_value = pod
+        resp = MagicMock()
+        resp.is_open.side_effect = [True, False]
+        resp.peek_stdout.return_value = False
+        resp.peek_stderr.return_value = False
+        mock_stream.return_value = resp
+
+        k8s.exec_in_pod("pod-1", "id")
+
+        resp.update.assert_called_once_with(timeout=3)

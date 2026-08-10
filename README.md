@@ -106,7 +106,7 @@ kimera -n target-namespace validate-control --type all
 
 ## Technique Registry
 
-40 techniques defined in `config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
+40 techniques defined in `src/kimera/config/techniques/`, each a YAML file with probes, evidence markers, MITRE mappings, and remediation.
 
 | Phase | Count | Examples |
 |-------|-------|---------|
@@ -119,7 +119,7 @@ kimera -n target-namespace validate-control --type all
 | Persistence | 3 | CronJob persistence, SA with role binding, backdoor pod |
 | Execution | 2 | Exec into pod via API, ephemeral container injection |
 
-Add a technique: drop a YAML file in `config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
+Add a technique: drop a YAML file in `src/kimera/config/techniques/`, add to `registry.yaml`, call `reload_techniques`.
 
 ## In-Cluster Deployment
 
@@ -159,9 +159,10 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 |---------|-------------|
 | `assess [--json]` | Scan namespace against CIS checks |
 | `validate-control --type all\|admission\|network-policy\|rbac` | Test defense controls |
-| `exploit <type>` | Demonstrate a specific exploit |
+| `exploit <type> [--service <workload>]` | Demonstrate a specific exploit; `--service` overrides the profile mapping |
 | `vuln-service <svc> <type>` | Introduce a vulnerability for testing |
 | `generate --type <type> [--apply]` | Generate remediations via LLM |
+| `generate --from-findings <file>` | Remediate only the workload the exploit ran from |
 | `generate --enrich dynatrace` | Enrich LLM context with Dynatrace data |
 | `technique list [--phase <phase>]` | Browse the technique registry |
 | `technique run <id> --pod <pod>` | Run one technique; `--dry-run` prints the probe |
@@ -171,11 +172,53 @@ docker run --rm -v ~/.kube:/home/kimera/.kube:ro kimera -n my-app assess
 
 ## Configuration
 
-Layered config: `config/default.yaml` → profile → environment variables → CLI flags.
+Layered config: `src/kimera/config/default.yaml` → profile → environment variables → CLI flags.
 
-Assessment checks are defined in `config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
+`-n <namespace>` loads `profiles/<namespace>.yaml` automatically when that file exists; `-p` overrides it.
 
-Environment variable overrides are defined in `config/env_mappings.yaml`.
+Assessment checks are defined in `src/kimera/config/checks/workload.yaml` — 14 checks covering privileged mode, dangerous capabilities, host namespaces, resource limits, RBAC, and network policies.
+
+Environment variable overrides are defined in `src/kimera/config/env_mappings.yaml`.
+
+Configuration ships inside the installed package. To supply your own profiles and checks without editing an installed package, point `KIMERA_CONFIG_DIR` at a directory laid out the same way — it replaces the packaged one wholesale, so it needs its own `default.yaml`.
+
+### Network topology
+
+`network_topology` in a profile drives NetworkPolicy generation. The map key names the workload an entry applies to.
+
+```yaml
+network_topology:
+  unguard-mariadb:
+    allowed_ingress_from:                      # omit the key to leave ingress undeclared;
+      - {app.kubernetes.io/name: like-service} # an empty list means block all ingress
+  unguard-user-simulator:
+    allowed_egress_to:                         # destinations outside the namespace
+      - cidr: 0.0.0.0/0
+        except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32]
+        ports: [80, 443]
+        protocol: TCP
+```
+
+A workload with an external dependency needs `allowed_egress_to`, or a default-deny set severs it — the workload then fails to start while every app-to-app flow still passes, which is easy to misread as a segmentation failure. Declared destinations are added to the generated set deterministically, not left to the model, and are checked by `kimera validate-control --type network-policy`. Nothing is inferred: a destination that is not declared is not permitted.
+
+### Remediation scope
+
+A namespace-wide set constrains every pod, which is more collateral than one exploited workload
+justifies. Feed the findings back instead:
+
+```bash
+kimera -n unguard exploit missing-network-policies --json > findings.json
+kimera -n unguard generate --from-findings findings.json          # targeted scope
+```
+
+Targeted scope emits policies for the findings' source workload only — no default-deny, no policy
+for any other workload — permitting DNS, the dependencies `network_topology` declares for it, and
+its declared external egress. Every observed path is reported first as DENY (denied by the set),
+KEEP (declared, so preserved) or REVIEW (an undeclared in-namespace destination, denied and listed
+for a decision — declare it and regenerate to keep it). A deterministic pass then corrects any
+emitted policy that permits a denied path or severs a declared one, and reports what it changed.
+
+Scope defaults to `targeted` with findings and `namespace` without; `--scope` overrides either way.
 
 ## Observability Enrichment
 
@@ -195,9 +238,11 @@ kimera query 'fetch spans, from: -1h | filter k8s.namespace.name == "unguard" | 
 kimera query '<query>' --provider dynatrace --json > evidence.json
 ```
 
+A provider that refuses the request (HTTP 403) is reported as a denial naming the gateway, and the command exits non-zero — a scope problem is a fact about the token, not an empty result.
+
 The query language stays the provider's own — DQL for Dynatrace — because a common cross-platform query language would be a translation layer that could only ever expose the subset every backend shares.
 
-Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
+Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `src/kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
 
 ## Safety
 

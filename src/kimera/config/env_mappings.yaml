@@ -1,0 +1,49 @@
+# Environment variable to config path mappings
+#
+# Maps KIMERA_* environment variables to their config paths.
+# Used by ConfigLoader._load_env_vars() to override config from the environment.
+
+mappings:
+  KIMERA_NAMESPACE:
+    path: [kubernetes, namespace]
+    type: string
+
+  KIMERA_CONTEXT:
+    path: [kubernetes, context]
+    type: string
+
+  KIMERA_KUBECONFIG:
+    path: [kubernetes, kubeconfig_path]
+    type: string
+
+  KIMERA_DRY_RUN:
+    path: [dry_run]
+    type: bool
+
+  KIMERA_DEBUG:
+    path: [debug]
+    type: bool
+
+  KIMERA_VERBOSE:
+    path: [verbose]
+    type: bool
+
+  KIMERA_TIMEOUT_ROLLOUT:
+    path: [timeouts, rollout]
+    type: int
+
+  KIMERA_TIMEOUT_STREAM:
+    path: [timeouts, stream]
+    type: int
+
+  KIMERA_TIMEOUT_COMMAND:
+    path: [timeouts, command]
+    type: int
+
+  KIMERA_LOG_LEVEL:
+    path: [logging, level]
+    type: string
+
+  KIMERA_LOG_FILE:
+    path: [logging, file]
+    type: string

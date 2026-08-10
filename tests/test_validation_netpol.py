@@ -21,11 +21,12 @@ from kubernetes.client import ApiException
 
 from kimera.container.core.logger import SecurityLogger, setup_logger
 from kimera.container.validation.models import ValidationVerdict
-from kimera.container.validation.network_policy import (
+from kimera.container.validation.netpol_checks import (
     _check_default_deny,
     _discover_namespace_services,
-    validate_network_policies,
 )
+from kimera.container.validation.network_policy import validate_network_policies
+from kimera.container.validation.reachability import Workload, egress_permits
 
 
 @pytest.fixture
@@ -49,6 +50,46 @@ def _make_netpol(name, pod_selector=None, policy_types=None, ingress=None, egres
     policy.spec.ingress = ingress
     policy.spec.egress = egress
     return policy
+
+
+SOURCE = Workload(name="auth", labels={"app": "auth"})
+DESTINATION = Workload(name="cache", labels={"app": "cache"})
+
+
+def _egress_policy(rule):
+    return {
+        "metadata": {"name": "netpol-auth"},
+        "spec": {
+            "podSelector": {"matchLabels": {"app": "auth"}},
+            "policyTypes": ["Egress"],
+            "egress": [rule],
+        },
+    }
+
+
+class TestRulesPermitMatching:
+    """The pod-to-pod matcher must read protocol, and honour an empty peer list."""
+
+    @pytest.mark.parametrize(
+        "rule_protocol,permitted", [("TCP", True), (None, True), ("UDP", False)]
+    )
+    def test_protocol_must_match(self, rule_protocol, permitted):
+        """A port entry without a protocol means TCP, not any protocol."""
+        port_spec = {"port": 6379}
+        if rule_protocol is not None:
+            port_spec["protocol"] = rule_protocol
+        policies = [
+            _egress_policy(
+                {"to": [{"podSelector": {"matchLabels": {"app": "cache"}}}], "ports": [port_spec]}
+            )
+        ]
+
+        assert egress_permits(SOURCE, DESTINATION, 6379, policies, "TCP") is permitted
+
+    def test_empty_peer_list_permits_every_destination(self):
+        policies = [_egress_policy({"to": [], "ports": [{"port": 6379, "protocol": "TCP"}]})]
+
+        assert egress_permits(SOURCE, DESTINATION, 6379, policies, "TCP") is True
 
 
 class TestCheckDefaultDeny:
@@ -125,7 +166,7 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._test_connectivity")
     def test_no_policies_all_open(self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
         mock_conn.return_value = True  # Everything is reachable
 
         report = validate_network_policies(mock_k8s, sec_logger)
@@ -147,7 +188,7 @@ class TestValidateNetworkPolicies:
             policy_types=["Ingress", "Egress"],
         )
         mock_k8s.list_network_policies.return_value = [policy]
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
         mock_conn.return_value = False  # Everything is blocked
 
         report = validate_network_policies(mock_k8s, sec_logger)
@@ -157,12 +198,16 @@ class TestValidateNetworkPolicies:
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     def test_probe_deploy_fails(self, mock_deploy, mock_k8s, sec_logger):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = False
+        mock_deploy.return_value = "rejected by admission control: HTTP 403 Forbidden"
 
         report = validate_network_policies(mock_k8s, sec_logger)
-        # Should still have the default-deny check
-        assert report.total >= 1
-        assert "probe pod deployment failed" in report.summary
+
+        skipped = [r for r in report.results if r.control_name == "active-connectivity-tests"]
+        assert len(skipped) == 1
+        assert skipped[0].verdict == ValidationVerdict.ERROR
+        assert "HTTP 403" in skipped[0].evidence
+        assert report.all_passed is False
+        assert "NOT executed" in report.summary
 
     @patch("kimera.container.validation.network_policy._deploy_probe_pod")
     @patch("kimera.container.validation.network_policy._cleanup_probe_pod")
@@ -171,7 +216,7 @@ class TestValidateNetworkPolicies:
         self, mock_conn, mock_cleanup, mock_deploy, mock_k8s, sec_logger
     ):
         mock_k8s.list_network_policies.return_value = []
-        mock_deploy.return_value = True
+        mock_deploy.return_value = None  # None means the probe pod started
 
         def conn_side_effect(k8s, ns, host, port, **kwargs):
             if host == "169.254.169.254":

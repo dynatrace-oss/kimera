@@ -7,10 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--non-interactive` and `--yes` on the root command. `--non-interactive` never prompts and assumes the safe answer at each site; `--yes` affirms destructive ones and takes effect only alongside it, so `--yes` on its own cannot turn `vuln` into a one-liner. `exploit --mode demo` previously read stdin directly and ended the run on EOF under ssh or CI.
+- `exploit --json` writes a findings document — exploit type, namespace, source workload, probed paths and evidence — to stdout, with all other output on stderr so the result is parseable.
+- `generate --from-findings <file> --scope targeted|namespace`. Targeted scope constrains only the workload the exploit ran from, permitting DNS, its declared dependencies and its declared external egress. Scope defaults to targeted with findings and namespace without. Each observed path is reported as DENY, KEEP or REVIEW before the set is written, and a deterministic pass corrects any emitted policy that permits a denied path or severs a declared one.
+- `exploit --service <workload>` names the workload to exploit, overriding the profile's `exploit_mappings` entry. Without a profile the mapping is empty and every exploit refused to run; the target is still resolved deterministically, never inferred.
+- `dns_resolve` probe type — resolves a list of names and reports which answer, reporting an explicit unknown state when no resolver tool exists. Emits no path record: a name resolving is not a connection.
+- `network_topology.<workload>.allowed_egress_to` — declares the destinations outside the namespace a workload may reach, as a CIDR with an `except` list, ports and protocol. A post-processing pass guarantees every declared destination survives generation. Undeclared destinations stay denied.
+
+### Fixed
+
+- Configured timeouts take effect. `timeouts.rollout`, `timeouts.stream` and `timeouts.command` were declared in the config file and the env mappings but never read, so raising `timeouts.command` for a slow API server left a rollback still killed at 60 seconds. The unused `timeouts.operation` is removed.
+- NetworkPolicy matching compares protocol, not only port number. A rule permitting 443/UDP was accepted as permitting a declared 443/TCP destination, so a gap went unreported while the flow was severed. An empty `to`/`from` list now means all destinations as the spec requires, a destination covered by several peers together is recognised rather than reported as a gap, a gap is closed with a rule for the missing ports only, and a generated policy name stays unique when truncated to 63 characters.
+- `kimera exploit` exits non-zero when it refuses to run. An unknown exploit type or a missing service mapping was reported and then exited 0, so a script could not tell a refusal from a completed run.
+- Security tests announce their position in the run: `Test 1:`, `Test 2:`, and so on. Every test printed the same `Test:` prefix, so a run of four read as one repeated step and any numbering a test carried in its own name was whatever the author happened to type.
+- The unguard profile declares `unguard-ollama` ingress from `rag-service`. The RAG service reaches the model server on 11434, and with the destination undeclared a namespace-scope set severed that call while every other flow passed. Verified against the upstream chart at `dynatrace-oss/unguard` 0.23.0.
+- `missing-network-policies` reports the services it did not probe. The lateral-movement target list was capped at 10 and truncated in silence, so a namespace with more services produced a path count that understated the attack surface — on a 16-service namespace it dropped three, including the one an app-mediated exploit reached. The cap is now 25 and names what it drops.
+- `generate` exits non-zero when generation fails, and when `--scope targeted` is given without `--from-findings`. It reported the error and exited 0, so a script could not tell success from failure.
+- A namespace the credential cannot read stops generation instead of yielding an empty context. A 401 or 403 while listing workloads was logged and returned nothing, and the emitted set then severed every workload the listing had missed.
+- `validate-control --type network-policy` reports declared external egress the policy set denies. The reachability model was pod-to-pod only, so a set that severed a workload's external dependency scored zero gaps.
+- `validate-control --type network-policy` also reports flows an egress rule declares that the destination's ingress denies. Only the opposite direction was checked. Reported, never auto-corrected — inferring an ingress rule would grant access nobody declared.
+- `validate-control --type network-policy` no longer reports a pass ratio for connectivity tests it did not run. A probe pod that cannot be deployed is recorded as an ERROR naming the reason; it previously printed "2/2 passed" having verified nothing.
+- Techniques report operations Kimera cannot perform as `NOT_ATTEMPTED`, not `BLOCKED`. `P1`, `P2`, `P3` and `DE3` declare `verb: create` for unimplemented resources — they created nothing and summarised as blocked, which reads as a working control to anyone checking detection coverage. `TechniqueResult` gained `not_attempted`.
+- **Breaking (MCP):** `attempt_technique` honours `dry_run`. It previously executed and then labelled the result a dry run. `dry_run` defaults to `True`, so a client relying on the old behaviour must now pass `dry_run=False`.
+- Subprocess commands time out after 60 seconds instead of hanging. An unreachable API server left `kubectl rollout undo` waiting forever with no diagnosis.
+- `query` reports a refusal by an observability provider as a denial naming the gateway and the status (401 for a missing or expired token, 403 for a scope gap), and exits non-zero. The refusal ends the transport's reader task, so the pending request was only cancelled and the status surfaced during teardown — the operator saw a page of task-group and cancel-scope tracebacks rather than a token problem. Any other connection failure is now reported as an error the CLI handles, not a bare `CancelledError`.
+- Targeted egress rules name the destination pod's port, not its Service port. Service traffic is translated before a policy is evaluated, so a rule naming the Service port permitted nothing and severed the dependency it was meant to keep.
+- The banner prints to stderr. It was the first thing in `exploit --json` output, so the findings document could not be parsed.
+- A DNS path is reported KEEP, not DENY. Every targeted set permits DNS, so the report contradicted the policy it described.
+- `enforce status` and `enforce disable` no longer treat a 403 as absence. Both report the status as unknown and name the denied resource; `status` previously raised a traceback. A 404 still means not installed.
+
+### Changed
+
+- The pre-commit gate runs the project's own pinned `ruff` and `mypy` instead of pre-commit's mirrors, which had drifted to ruff 0.8.4 and mypy 1.14 against the 0.16 and 2.3 the project requires. CI reported a pass while `uv run mypy .` — the documented command — reported four type errors it never saw, and `uv run ruff format .` rewrote a file CI was content with. Those four errors are fixed, and mypy skips the untracked local scaffolding directories.
+- **Breaking:** environment variables use the `KIMERA_` prefix instead of `K8S_EXPLOIT_`, matching the rename of the tool. `KIMERA_NAMESPACE`, `KIMERA_CONTEXT`, `KIMERA_KUBECONFIG`, `KIMERA_DRY_RUN`, `KIMERA_DEBUG`, `KIMERA_VERBOSE`, `KIMERA_TIMEOUT_ROLLOUT`, `KIMERA_TIMEOUT_STREAM`, `KIMERA_TIMEOUT_COMMAND`, `KIMERA_LOG_LEVEL`, `KIMERA_LOG_FILE`. The old names are no longer read.
+- The package moved to a `src/` layout and its YAML configuration ships inside the package. An installed wheel previously could not find its own configuration — six modules located `config/` by counting parent directories, all resolving to the repository root. Set `KIMERA_CONFIG_DIR` to supply your own; it replaces the packaged directory wholesale.
+- `-n <namespace>` loads `profiles/<namespace>.yaml` when that file exists, replacing a hardcoded special case for one namespace name. `-p` still overrides.
+- `missing-network-policies` builds its discovered-target probes through the shared probe runner instead of hand-written shell, and probes services discovered from the API rather than a hardcoded list. Lateral movement reports port reachability rather than HTTP status — a NetworkPolicy is an L3/L4 control.
+- `R8-permission-probe` declares the permissions it probes in its own YAML rather than in Python.
+- `network_topology.<workload>.allowed_ingress_from` defaults to `None` rather than an empty list, so an entry declaring only egress no longer blocks that workload's ingress. An explicit empty list still blocks all ingress.
+
 ### Security
 
 - Upgraded `cryptography` to 50.0.0, resolving GHSA-g6cj-pr64-35w5 (high).
-- Added a Dependabot config for `uv`, GitHub Actions and Docker. Routine bumps are grouped into a few weekly PRs; security updates stay immediate and ungrouped.
+- Added a Dependabot config for `uv`, GitHub Actions and Docker. Routine bumps are grouped weekly; security updates stay immediate.
 
 ## [0.2.0] - 2026-08-05
 

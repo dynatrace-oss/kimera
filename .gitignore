@@ -85,3 +85,8 @@ coverage.xml
 # Research infrastructure and experiment scaffolding — may contain environment identifiers
 scripts/
 docs/infra/
+
+# Experiment scaffolding — environment-specific, holds tenant/cluster identifiers
+run/
+harness/
+queries/

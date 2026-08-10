@@ -1,0 +1,117 @@
+# Unguard Profile Configuration
+# Target settings for the Dynatrace Unguard application
+# Usage: kimera -n unguard assess  (auto-detected)
+#   or:  kimera -p unguard assess
+
+kubernetes:
+  namespace: "unguard"
+
+# Unguard services
+services:
+  - "unguard-payment-service"
+  - "unguard-profile-service"
+  - "unguard-frontend"
+  - "unguard-membership-service"
+  - "unguard-user-auth-service"
+  - "unguard-ad-service"
+  - "unguard-proxy-service"
+
+# Exploit to service mappings
+exploit_mappings:
+  privileged-containers: "unguard-payment-service"
+  dangerous-capabilities: "unguard-profile-service"
+  host-namespace-sharing: "unguard-frontend"
+  missing-resource-limits: "unguard-membership-service"
+  # proxy-service is Unguard's documented SSRF vector: an attacker makes the
+  # application fetch an internal URL, so the hop is the app's own and shows up
+  # in topology. Its only legitimate egress is external, which is declared below.
+  missing-network-policies: "unguard-proxy-service"
+
+# Least-privilege network topology for NetworkPolicy generation.
+# Defines which pods may send ingress traffic to each service.
+# Used by: kimera secure missing-network-policies and kimera generate
+network_topology:
+  # Derived from each workload's own service-address env vars, so the set is the
+  # app's real call graph rather than an assumed one. Entry points are included:
+  # omitting them makes a default-deny set blackhole the front door, with every
+  # backend rule still passing while no traffic reaches the UI.
+  unguard-envoy-proxy:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: malicious-load-generator}
+      - {app.kubernetes.io/name: user-simulator}
+  unguard-frontend:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: envoy-proxy}
+  unguard-user-auth-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+      - {app.kubernetes.io/name: ad-service}
+      - {app.kubernetes.io/name: like-service}
+      - {app.kubernetes.io/name: microblog-service}
+  unguard-ad-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-like-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-membership-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-microblog-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-payment-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-profile-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-proxy-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+    # Fetching user-supplied external URLs is what this service is for; a set
+    # that omits it severs the feature while every app-to-app flow still passes.
+    allowed_egress_to:
+      - cidr: 0.0.0.0/0
+        except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32]
+        ports: [80, 443]
+        protocol: TCP
+  unguard-status-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: frontend}
+  unguard-rag-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: feedback-ingestion-service}
+      - {app.kubernetes.io/name: microblog-service}
+  unguard-feedback-ingestion-service:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: microblog-service}
+  # rag-service reaches the model server on 11434 (MODEL_PROVIDER_BASE_URL).
+  unguard-ollama:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: rag-service}
+  unguard-mariadb:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: like-service}
+      - {app.kubernetes.io/name: user-auth-service}
+      - {app.kubernetes.io/name: membership-service}
+      - {app.kubernetes.io/name: status-service}
+  unguard-redis:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: microblog-service}
+  # The traffic generator is test scaffolding, not part of the application under
+  # test. Its headless browser loads avatars from an external host; without this
+  # declaration a default-deny set hangs it on that request until Puppeteer's
+  # navigation timeout, and it crash-loops instead of generating traffic. The
+  # except list keeps every in-cluster address and the cloud metadata endpoint
+  # denied, so the segmentation being demonstrated is unaffected.
+  unguard-user-simulator:
+    allowed_egress_to:
+      - cidr: 0.0.0.0/0
+        except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+          - 169.254.169.254/32
+        ports: [80, 443]
+        protocol: TCP

@@ -13,7 +13,10 @@
 # limitations under the License.
 
 
+from unittest.mock import MagicMock, patch
+
 from kimera.mcp.server import (
+    attempt_technique,
     get_remediation,
     list_techniques,
     reload_techniques,
@@ -63,3 +66,32 @@ class TestReloadTechniques:
         assert "summary" in result
         assert result["current_count"] >= 5
         assert isinstance(result["techniques"], list)
+
+
+class TestAttemptTechniqueDryRun:
+    """The MCP server previously executed for real and labelled the result a dry run."""
+
+    @patch("kimera.mcp.server._get_k8s")
+    def test_dry_run_default_does_not_touch_the_cluster(self, get_k8s: MagicMock) -> None:
+        k8s = MagicMock()
+        k8s.namespace = "demo"
+        get_k8s.return_value = k8s
+
+        result = attempt_technique("L1", "demo", target_pod="p", params={"probe_host": "svc"})
+
+        k8s.exec_in_pod.assert_not_called()
+        assert result["dry_run"] is True
+
+    @patch("kimera.mcp.server._get_k8s")
+    def test_dry_run_false_executes(self, get_k8s: MagicMock) -> None:
+        k8s = MagicMock()
+        k8s.namespace = "demo"
+        k8s.exec_in_pod.return_value = "OPEN"
+        get_k8s.return_value = k8s
+
+        result = attempt_technique(
+            "L1", "demo", target_pod="p", params={"probe_host": "svc"}, dry_run=False
+        )
+
+        k8s.exec_in_pod.assert_called_once()
+        assert result["dry_run"] is False

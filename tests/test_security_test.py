@@ -17,13 +17,17 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kimera.container.core.k8s_client import K8sClient
 from kimera.container.core.logger import SecurityLogger
 from kimera.container.make_vulnerable.deployment_patch import (
     DeploymentPatchExploit,
 )
+from kimera.container.make_vulnerable.probe_prelude import UNKNOWN_STATE
+from kimera.container.make_vulnerable.probe_runner import PATH_MARKER
 from kimera.container.make_vulnerable.test_loader import load_exploit_tests
-from kimera.domain.models import EvidenceMarker, SecurityTest
+from kimera.domain.models import EvidenceMarker, PathResult, SecurityTest
 
 
 def _create_mock_k8s_client() -> tuple[K8sClient, MagicMock]:
@@ -124,6 +128,22 @@ class TestRunTests:
         assert "Writable /sys" in result.evidence
         assert "Host access" in result.impact
         assert "Should not appear" not in result.evidence
+
+    def test_tests_are_numbered_from_one(self, tmp_path: Path) -> None:
+        """Every test announces its position, so no run starts at Test 2."""
+        k8s, logger = _create_mock_k8s_client()
+        k8s.exec_in_pod = MagicMock(return_value="ok")  # type: ignore[method-assign]
+
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
+        tests = [SecurityTest(name=n, script="x") for n in ("first", "second", "third")]
+
+        with _patch_journal(tmp_path):
+            exploit._run_tests("test-pod", tests)
+
+        announced = [call.args[0] for call in logger.exploit.call_args_list]
+        assert announced == ["Test 1: first", "Test 2: second", "Test 3: third"]
 
     def test_no_evidence_when_no_markers_match(self, tmp_path: Path) -> None:
         """Test that result is unsuccessful when no markers match."""
@@ -275,3 +295,92 @@ class TestYamlLoading:
         tests, _ = load_exploit_tests("privileged-containers")
         for test in tests:
             assert test.script.strip(), f"Empty script for test: {test.name}"
+
+
+class TestAttackPathCapture:
+    """Probe results become structured paths a targeted remediation can classify."""
+
+    @staticmethod
+    def _exploit(output: str) -> DeploymentPatchExploit:
+        k8s, logger = _create_mock_k8s_client()
+        k8s.exec_in_pod = MagicMock(return_value=output)  # type: ignore[method-assign]
+        return DeploymentPatchExploit(k8s, "test-svc", logger, config_key="privileged-containers")
+
+    @pytest.mark.parametrize(
+        "state,expected",
+        [
+            ("OPEN", PathResult.REACHABLE),
+            ("CLOSED", PathResult.BLOCKED),
+            (UNKNOWN_STATE, PathResult.UNKNOWN),
+            ("something else entirely", PathResult.UNKNOWN),
+        ],
+    )
+    def test_probe_state_maps_to_path_result(
+        self, state: str, expected: PathResult, tmp_path: Path
+    ) -> None:
+        # UNKNOWN is never collapsed into BLOCKED: a path nothing could measure is
+        # not a path something denied, and classifying it DENY would close a flow
+        # on no evidence.
+        exploit = self._exploit(f"  redis:6379 -> {state}\n{PATH_MARKER}redis|6379|TCP|{state}\n")
+        with _patch_journal(tmp_path):
+            result = exploit._run_tests("test-pod", [SecurityTest(name="t", script="x")])
+
+        assert len(result.attack_paths) == 1
+        assert result.attack_paths[0].result is expected
+
+    def test_path_records_are_stripped_from_operator_output(self, tmp_path: Path) -> None:
+        exploit = self._exploit(f"  redis:6379 -> OPEN\n{PATH_MARKER}redis|6379|TCP|OPEN\n")
+        with (
+            _patch_journal(tmp_path),
+            patch("kimera.container.make_vulnerable.base.console") as console,
+        ):
+            exploit._run_tests("test-pod", [SecurityTest(name="t", script="x")])
+
+        shown = "".join(str(c.args[0]) for c in console.print.call_args_list if c.args)
+        assert "redis:6379 -> OPEN" in shown
+        assert PATH_MARKER not in shown
+
+    def test_source_is_the_workload_not_the_pod(self, tmp_path: Path) -> None:
+        # A NetworkPolicy selects pods by workload labels, and pod names change on
+        # every restart, so a path keyed by pod name cannot be matched to a policy.
+        exploit = self._exploit(f"{PATH_MARKER}redis|6379|TCP|OPEN\n")
+        with _patch_journal(tmp_path):
+            result = exploit._run_tests(
+                "test-svc-7d9f8b-xk2p1", [SecurityTest(name="t", script="x")]
+            )
+
+        assert result.attack_paths[0].source == "test-svc"
+
+    def test_output_without_records_yields_no_paths(self, tmp_path: Path) -> None:
+        exploit = self._exploit("❌ VULNERABLE: Can write to /sys\n")
+        with _patch_journal(tmp_path):
+            result = exploit._run_tests("test-pod", [SecurityTest(name="t", script="x")])
+
+        assert result.attack_paths == []
+
+    def test_malformed_record_is_ignored_not_guessed(self, tmp_path: Path) -> None:
+        exploit = self._exploit(
+            f"{PATH_MARKER}redis|not-a-port|TCP|OPEN\n{PATH_MARKER}too|few\n"
+            f"{PATH_MARKER}redis|6379|TCP|OPEN\n"
+        )
+        with _patch_journal(tmp_path):
+            result = exploit._run_tests("test-pod", [SecurityTest(name="t", script="x")])
+
+        assert len(result.attack_paths) == 1
+        assert result.attack_paths[0].port == 6379
+
+    def test_evidence_matches_visible_output_only(self, tmp_path: Path) -> None:
+        # An evidence marker must not be satisfied by a path record alone, or a
+        # probe whose visible output says nothing would still report evidence.
+        exploit = self._exploit(f"{PATH_MARKER}redis|6379|TCP|OPEN\n")
+        tests = [
+            SecurityTest(
+                name="t",
+                script="x",
+                evidence_markers=[EvidenceMarker("OPEN", "port reachable")],
+            )
+        ]
+        with _patch_journal(tmp_path):
+            result = exploit._run_tests("test-pod", tests)
+
+        assert result.evidence == []
