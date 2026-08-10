@@ -31,7 +31,7 @@ class ConfigLoader:
     The loader follows these principles:
     - Start with sensible defaults from default.yaml
     - Override with profile-specific settings (e.g., unguard)
-    - Override with environment variables (K8S_EXPLOIT_*)
+    - Override with environment variables (KIMERA_*)
     - Override with CLI flags (passed at runtime)
     """
 

@@ -130,9 +130,9 @@ class TestConfigLoader:
     def test_env_var_overrides(self):
         """Test environment variable overrides."""
         env_vars = {
-            "K8S_EXPLOIT_NAMESPACE": "env-namespace",
-            "K8S_EXPLOIT_DRY_RUN": "true",
-            "K8S_EXPLOIT_DEBUG": "1",
+            "KIMERA_NAMESPACE": "env-namespace",
+            "KIMERA_DRY_RUN": "true",
+            "KIMERA_DEBUG": "1",
         }
 
         with patch.dict(os.environ, env_vars, clear=False):

@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** environment variables use the `KIMERA_` prefix instead of `K8S_EXPLOIT_`, matching the rename of the tool. `KIMERA_NAMESPACE`, `KIMERA_CONTEXT`, `KIMERA_KUBECONFIG`, `KIMERA_DRY_RUN`, `KIMERA_DEBUG`, `KIMERA_VERBOSE`, `KIMERA_TIMEOUT_ROLLOUT`, `KIMERA_TIMEOUT_STREAM`, `KIMERA_TIMEOUT_COMMAND`, `KIMERA_LOG_LEVEL`, `KIMERA_LOG_FILE`. The old names are no longer read.
 - The package moved to a `src/` layout and its YAML configuration ships inside the package. An installed wheel previously could not find its own configuration — six modules located `config/` by counting parent directories, all resolving to the repository root. Set `KIMERA_CONFIG_DIR` to supply your own; it replaces the packaged directory wholesale.
 - `-n <namespace>` loads `profiles/<namespace>.yaml` when that file exists, replacing a hardcoded special case for one namespace name. `-p` still overrides.
 - `missing-network-policies` builds its discovered-target probes through the shared probe runner instead of hand-written shell, and probes services discovered from the API rather than a hardcoded list. Lateral movement reports port reachability rather than HTTP status — a NetworkPolicy is an L3/L4 control.
