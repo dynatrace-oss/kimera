@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `kimera exploit` exits non-zero when it refuses to run. An unknown exploit type or a missing service mapping was reported and then exited 0, so a script could not tell a refusal from a completed run.
 - Security tests announce their position in the run: `Test 1:`, `Test 2:`, and so on. Every test printed the same `Test:` prefix, so a run of four read as one repeated step and any numbering a test carried in its own name was whatever the author happened to type.
 - The unguard profile declares `unguard-ollama` ingress from `rag-service`. The RAG service reaches the model server on 11434, and with the destination undeclared a namespace-scope set severed that call while every other flow passed. Verified against the upstream chart at `dynatrace-oss/unguard` 0.23.0.
 - `missing-network-policies` reports the services it did not probe. The lateral-movement target list was capped at 10 and truncated in silence, so a namespace with more services produced a path count that understated the attack surface — on a 16-service namespace it dropped three, including the one an app-mediated exploit reached. The cap is now 25 and names what it drops.
