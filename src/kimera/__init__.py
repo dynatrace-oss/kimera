@@ -16,4 +16,7 @@
 
 """Kimera — Kubernetes Security Testing Toolkit."""
 
-__version__ = "2.0.0"
+from importlib.metadata import version
+
+# Derived from the package metadata so it cannot drift from pyproject.toml.
+__version__ = version("kimera")

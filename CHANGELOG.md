@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-10
+
 ### Added
 
 - `--non-interactive` and `--yes` on the root command. `--non-interactive` never prompts and assumes the safe answer at each site; `--yes` affirms destructive ones and takes effect only alongside it, so `--yes` on its own cannot turn `vuln` into a one-liner. `exploit --mode demo` previously read stdin directly and ended the run on EOF under ssh or CI.
