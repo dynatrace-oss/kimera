@@ -15,7 +15,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "click>=8.3.3",
-    "kubernetes>=28.1.0",
+    "kubernetes>=36.0.3",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "rich>=13.7.0",
