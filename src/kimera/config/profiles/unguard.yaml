@@ -86,6 +86,10 @@ network_topology:
   unguard-feedback-ingestion-service:
     allowed_ingress_from:
       - {app.kubernetes.io/name: microblog-service}
+  # rag-service reaches the model server on 11434 (MODEL_PROVIDER_BASE_URL).
+  unguard-ollama:
+    allowed_ingress_from:
+      - {app.kubernetes.io/name: rag-service}
   unguard-mariadb:
     allowed_ingress_from:
       - {app.kubernetes.io/name: like-service}
