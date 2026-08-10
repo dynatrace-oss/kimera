@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- NetworkPolicy matching compares protocol, not only port number. A rule permitting 443/UDP was accepted as permitting a declared 443/TCP destination, so a gap went unreported while the flow was severed. An empty `to`/`from` list now means all destinations as the spec requires, a destination covered by several peers together is recognised rather than reported as a gap, a gap is closed with a rule for the missing ports only, and a generated policy name stays unique when truncated to 63 characters.
 - `kimera exploit` exits non-zero when it refuses to run. An unknown exploit type or a missing service mapping was reported and then exited 0, so a script could not tell a refusal from a completed run.
 - Security tests announce their position in the run: `Test 1:`, `Test 2:`, and so on. Every test printed the same `Test:` prefix, so a run of four read as one repeated step and any numbering a test carried in its own name was whatever the author happened to type.
 - The unguard profile declares `unguard-ollama` ingress from `rag-service`. The RAG service reaches the model server on 11434, and with the destination undeclared a namespace-scope set severed that call while every other flow passed. Verified against the upstream chart at `dynatrace-oss/unguard` 0.23.0.

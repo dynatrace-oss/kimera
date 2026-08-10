@@ -13,16 +13,18 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from hashlib import blake2b
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Any
 
 from ...application.config.schemas import ExternalEgressDestination, NetworkTopologyEntry
-from .reachability import Workload, _governs, _selector_matches
+from .reachability import Workload, _governs, _ports_permit, _selector_matches
 
 MANAGED_BY_LABEL = "app.kubernetes.io/managed-by"
 TOOLKIT_NAME = "kimera"
 POLICY_NAME_SUFFIX = "-external-egress"
 MAX_RESOURCE_NAME_LENGTH = 63
+NAME_DIGEST_BYTES = 4
 
 IPNetwork = IPv4Network | IPv6Network
 
@@ -83,26 +85,34 @@ def effective_range(cidr: IPNetwork, excluded: list[IPNetwork]) -> list[IPNetwor
     return remaining
 
 
-def _peer_permits(peer: dict[str, Any], declared: list[IPNetwork]) -> bool:
-    block = peer.get("ipBlock")
-    if not block:
-        return False
-    rule_net = _parse(block.get("cidr", ""))
-    if rule_net is None:
-        return False
-    rule_excepts = [net for net in (_parse(c) for c in block.get("except") or []) if net]
-    permitted = effective_range(rule_net, rule_excepts)
-    return all(any(_contains(allowed, net) for allowed in permitted) for net in declared)
+def _permitted_networks(peers: list[dict[str, Any]]) -> list[IPNetwork]:
+    """Every network the rule's ipBlock peers permit, carve-outs applied."""
+    permitted: list[IPNetwork] = []
+    for peer in peers:
+        block = peer.get("ipBlock")
+        if not block:
+            continue
+        rule_net = _parse(block.get("cidr", ""))
+        if rule_net is None:
+            continue
+        rule_excepts = [net for net in (_parse(c) for c in block.get("except") or []) if net]
+        permitted.extend(effective_range(rule_net, rule_excepts))
+    return permitted
 
 
-def rule_permits(rule: dict[str, Any], declared: list[IPNetwork], port: int) -> bool:
-    """Whether an egress rule reaches every declared network on ``port``."""
+def rule_permits(
+    rule: dict[str, Any], declared: list[IPNetwork], port: int, protocol: str = "TCP"
+) -> bool:
+    """Whether an egress rule reaches every declared network on ``port``/``protocol``."""
     peers = rule.get("to")
-    # A rule with no peer list applies to every destination, external ones included.
-    if peers is not None and not any(_peer_permits(p, declared) for p in peers):
-        return False
-    ports = rule.get("ports")
-    return ports is None or any(p.get("port") == port for p in ports)
+    # An absent or empty peer list applies to every destination, external ones included.
+    if peers:
+        # A declared network may need several peers together to cover it, so the
+        # permitted set is subtracted from it as a whole.
+        permitted = _permitted_networks(peers)
+        if any(effective_range(net, permitted) for net in declared):
+            return False
+    return _ports_permit(rule.get("ports"), port, protocol)
 
 
 def _policies_permit(
@@ -110,13 +120,15 @@ def _policies_permit(
     workload: Workload,
     declared: list[IPNetwork],
     port: int,
+    protocol: str,
 ) -> bool:
     governing = [p for p in policies if _governs(p, workload, "Egress")]
     if not governing:
         return True
     return any(
         any(
-            rule_permits(rule, declared, port) for rule in (p.get("spec") or {}).get("egress") or []
+            rule_permits(rule, declared, port, protocol)
+            for rule in (p.get("spec") or {}).get("egress") or []
         )
         for p in governing
     )
@@ -164,7 +176,7 @@ def find_external_gaps(
             if not declared:
                 continue
             for port in destination.ports:
-                if _policies_permit(policies, workload, declared, port):
+                if _policies_permit(policies, workload, declared, port, destination.protocol):
                     continue
                 gaps.append(
                     ExternalGap(
@@ -189,19 +201,42 @@ def unmatched_declarations(
     ]
 
 
-def egress_rule(destination: ExternalEgressDestination) -> dict[str, Any]:
-    """Build the egress rule that permits one declared external destination."""
+def egress_rule(
+    destination: ExternalEgressDestination, ports: list[int] | None = None
+) -> dict[str, Any]:
+    """Build the egress rule that permits one declared external destination.
+
+    Args:
+        destination: The declared destination.
+        ports: Ports to emit, defaulting to every port the destination declares.
+    """
     block: dict[str, Any] = {"cidr": str(destination.cidr)}
     if destination.except_:
         block["except"] = [str(net) for net in destination.except_]
     return {
         "to": [{"ipBlock": block}],
-        "ports": [{"port": port, "protocol": destination.protocol} for port in destination.ports],
+        "ports": [
+            {"port": port, "protocol": destination.protocol}
+            for port in (destination.ports if ports is None else ports)
+        ],
     }
 
 
+def _policy_name(workload_name: str) -> str:
+    """Name the workload's external-egress policy, uniquely even when truncated.
+
+    Two workloads sharing a long prefix would otherwise collide on one name.
+    """
+    name = f"{workload_name}{POLICY_NAME_SUFFIX}"
+    if len(name) <= MAX_RESOURCE_NAME_LENGTH:
+        return name
+    digest = blake2b(workload_name.encode(), digest_size=NAME_DIGEST_BYTES).hexdigest()
+    keep = MAX_RESOURCE_NAME_LENGTH - len(digest) - 1
+    return f"{name[:keep].rstrip('-')}-{digest}"
+
+
 def _new_policy(workload: Workload, namespace: str) -> dict[str, Any]:
-    name = f"{workload.name}{POLICY_NAME_SUFFIX}"[:MAX_RESOURCE_NAME_LENGTH].rstrip("-")
+    name = _policy_name(workload.name)
     return {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "NetworkPolicy",
@@ -251,7 +286,11 @@ def close_external_gaps(
                 port
                 for port in destination.ports
                 if not _policies_permit(
-                    [d for d in docs if d.get("kind") == "NetworkPolicy"], workload, declared, port
+                    [d for d in docs if d.get("kind") == "NetworkPolicy"],
+                    workload,
+                    declared,
+                    port,
+                    destination.protocol,
                 )
             ]
             if not missing:
@@ -265,7 +304,7 @@ def close_external_gaps(
             policy_types = spec.setdefault("policyTypes", [])
             if "Egress" not in policy_types:
                 policy_types.append("Egress")
-            spec.setdefault("egress", []).append(egress_rule(destination))
+            spec.setdefault("egress", []).append(egress_rule(destination, missing))
 
             closed.extend(
                 ExternalGap(

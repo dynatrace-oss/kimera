@@ -26,6 +26,7 @@ from kimera.container.validation.netpol_checks import (
     _discover_namespace_services,
 )
 from kimera.container.validation.network_policy import validate_network_policies
+from kimera.container.validation.reachability import Workload, egress_permits
 
 
 @pytest.fixture
@@ -49,6 +50,46 @@ def _make_netpol(name, pod_selector=None, policy_types=None, ingress=None, egres
     policy.spec.ingress = ingress
     policy.spec.egress = egress
     return policy
+
+
+SOURCE = Workload(name="auth", labels={"app": "auth"})
+DESTINATION = Workload(name="cache", labels={"app": "cache"})
+
+
+def _egress_policy(rule):
+    return {
+        "metadata": {"name": "netpol-auth"},
+        "spec": {
+            "podSelector": {"matchLabels": {"app": "auth"}},
+            "policyTypes": ["Egress"],
+            "egress": [rule],
+        },
+    }
+
+
+class TestRulesPermitMatching:
+    """The pod-to-pod matcher must read protocol, and honour an empty peer list."""
+
+    @pytest.mark.parametrize(
+        "rule_protocol,permitted", [("TCP", True), (None, True), ("UDP", False)]
+    )
+    def test_protocol_must_match(self, rule_protocol, permitted):
+        """A port entry without a protocol means TCP, not any protocol."""
+        port_spec = {"port": 6379}
+        if rule_protocol is not None:
+            port_spec["protocol"] = rule_protocol
+        policies = [
+            _egress_policy(
+                {"to": [{"podSelector": {"matchLabels": {"app": "cache"}}}], "ports": [port_spec]}
+            )
+        ]
+
+        assert egress_permits(SOURCE, DESTINATION, 6379, policies, "TCP") is permitted
+
+    def test_empty_peer_list_permits_every_destination(self):
+        policies = [_egress_policy({"to": [], "ports": [{"port": 6379, "protocol": "TCP"}]})]
+
+        assert egress_permits(SOURCE, DESTINATION, 6379, policies, "TCP") is True
 
 
 class TestCheckDefaultDeny:

@@ -79,46 +79,69 @@ def _governs(policy: dict[str, Any], workload: Workload, direction: str) -> bool
     return _selector_matches(spec.get("podSelector") or {"matchLabels": {}}, workload)
 
 
+def _ports_permit(ports: list[dict[str, Any]] | None, port: int, protocol: str) -> bool:
+    """Whether a rule's port list covers ``port`` on ``protocol``.
+
+    An absent or empty port list covers every port, and a port entry without a
+    protocol means TCP, both per the NetworkPolicy spec.
+    """
+    if not ports:
+        return True
+    return any(
+        p.get("port") == port and str(p.get("protocol") or "TCP").upper() == protocol.upper()
+        for p in ports
+    )
+
+
 def rules_permit(
     rules: list[dict[str, Any]] | None,
     peer_key: str,
     other: Workload,
     port: int,
+    protocol: str = "TCP",
 ) -> bool:
-    """Whether any rule permits ``other`` on ``port`` under the given peer key."""
+    """Whether any rule permits ``other`` on ``port``/``protocol`` under the peer key."""
     for rule in rules or []:
         peers = rule.get(peer_key)
-        # A rule with no peer list applies to every destination.
-        if peers is not None and not any(peer_matches(p, other) for p in peers):
+        # An absent or empty peer list applies to every destination.
+        if peers and not any(peer_matches(p, other) for p in peers):
             continue
-        ports = rule.get("ports")
-        if ports is None or any(p.get("port") == port for p in ports):
+        if _ports_permit(rule.get("ports"), port, protocol):
             return True
     return False
 
 
 def egress_permits(
-    source: Workload, destination: Workload, port: int, policies: list[dict[str, Any]]
+    source: Workload,
+    destination: Workload,
+    port: int,
+    policies: list[dict[str, Any]],
+    protocol: str = "TCP",
 ) -> bool:
     """Whether ``source`` may open a connection to ``destination`` on ``port``."""
     governing = [p for p in policies if _governs(p, source, "Egress")]
     if not governing:
         return True
     return any(
-        rules_permit((p.get("spec") or {}).get("egress"), "to", destination, port)
+        rules_permit((p.get("spec") or {}).get("egress"), "to", destination, port, protocol)
         for p in governing
     )
 
 
 def ingress_permits(
-    source: Workload, destination: Workload, port: int, policies: list[dict[str, Any]]
+    source: Workload,
+    destination: Workload,
+    port: int,
+    policies: list[dict[str, Any]],
+    protocol: str = "TCP",
 ) -> bool:
     """Whether ``destination`` accepts a connection from ``source`` on ``port``."""
     governing = [p for p in policies if _governs(p, destination, "Ingress")]
     if not governing:
         return True
     return any(
-        rules_permit((p.get("spec") or {}).get("ingress"), "from", source, port) for p in governing
+        rules_permit((p.get("spec") or {}).get("ingress"), "from", source, port, protocol)
+        for p in governing
     )
 
 
@@ -149,7 +172,8 @@ def find_gaps(policies: list[dict[str, Any]], workloads: list[Workload]) -> list
                             key = (source.name, destination.name, port)
                             if key in seen:
                                 continue
-                            if egress_permits(source, destination, port, policies):
+                            protocol = port_spec.get("protocol") or "TCP"
+                            if egress_permits(source, destination, port, policies, protocol):
                                 continue
                             seen.add(key)
                             gaps.append(
@@ -157,7 +181,7 @@ def find_gaps(policies: list[dict[str, Any]], workloads: list[Workload]) -> list
                                     source=source.name,
                                     destination=destination.name,
                                     port=port,
-                                    protocol=port_spec.get("protocol") or "TCP",
+                                    protocol=protocol,
                                     declared_by=(policy.get("metadata") or {}).get("name", "?"),
                                     destination_selector=dict(selector.get("matchLabels") or {}),
                                 )
@@ -198,7 +222,8 @@ def find_ingress_gaps(policies: list[dict[str, Any]], workloads: list[Workload])
                             key = (source.name, destination.name, port)
                             if key in seen:
                                 continue
-                            if ingress_permits(source, destination, port, policies):
+                            protocol = port_spec.get("protocol") or "TCP"
+                            if ingress_permits(source, destination, port, policies, protocol):
                                 continue
                             seen.add(key)
                             gaps.append(
@@ -206,7 +231,7 @@ def find_ingress_gaps(policies: list[dict[str, Any]], workloads: list[Workload])
                                     source=source.name,
                                     destination=destination.name,
                                     port=port,
-                                    protocol=port_spec.get("protocol") or "TCP",
+                                    protocol=protocol,
                                     declared_by=(policy.get("metadata") or {}).get("name", "?"),
                                     destination_selector=dict(selector.get("matchLabels") or {}),
                                     denied_by="ingress",

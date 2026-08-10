@@ -179,6 +179,19 @@ class TestCloseExternalGaps:
         assert created["spec"]["podSelector"]["matchLabels"] == SIMULATOR.labels
         assert find_external_gaps(docs, [SIMULATOR], topology()) == []
 
+    def test_only_the_missing_port_is_added(self):
+        """The emitted rule must permit what was reported missing, and nothing more."""
+        permitted_80 = {
+            "to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}],
+            "ports": [{"port": 80, "protocol": "TCP"}],
+        }
+        docs = [default_deny(), simulator_policy([permitted_80])]
+
+        closed = close_external_gaps(docs, [SIMULATOR], topology(), NAMESPACE)
+
+        assert [g.port for g in closed] == [443]
+        assert docs[1]["spec"]["egress"][-1]["ports"] == [{"port": 443, "protocol": "TCP"}]
+
     def test_nothing_added_without_a_declaration(self):
         docs = [default_deny(), simulator_policy(DNS_ONLY)]
         undeclared = {"user-simulator": NetworkTopologyEntry()}
@@ -199,6 +212,84 @@ class TestCloseExternalGaps:
         gaps = find_external_gaps(policies, [SIMULATOR], topology(ports=[declared_port]))
 
         assert bool(gaps) is expect_gap
+
+
+class TestRuleMatching:
+    """What the rule matcher must read before calling a destination permitted."""
+
+    @pytest.mark.parametrize(
+        "rule_protocol,expect_gap", [("TCP", False), (None, False), ("UDP", True)]
+    )
+    def test_protocol_must_match_the_declaration(self, rule_protocol, expect_gap):
+        """A missing protocol on a port entry is TCP, not a wildcard."""
+        port_spec: dict[str, Any] = {"port": 443}
+        if rule_protocol is not None:
+            port_spec["protocol"] = rule_protocol
+        rule = {"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}], "ports": [port_spec]}
+        policies = [default_deny(), simulator_policy([rule])]
+
+        gaps = find_external_gaps(policies, [SIMULATOR], topology(ports=[443], protocol="TCP"))
+
+        assert bool(gaps) is expect_gap
+
+    def test_empty_peer_list_permits_every_destination(self):
+        """``to: []`` means allow-all, exactly as an absent ``to`` does."""
+        rule = {"to": [], "ports": [{"port": 443, "protocol": "TCP"}]}
+        policies = [default_deny(), simulator_policy([rule])]
+
+        assert find_external_gaps(policies, [SIMULATOR], topology(ports=[443])) == []
+
+    def test_two_peers_covering_the_declaration_between_them(self):
+        """Neither half covers 203.0.113.0/24 alone; their union does."""
+        rule = {
+            "to": [
+                {"ipBlock": {"cidr": "203.0.113.0/25"}},
+                {"ipBlock": {"cidr": "203.0.113.128/25"}},
+            ],
+            "ports": [{"port": 443, "protocol": "TCP"}],
+        }
+        policies = [default_deny(), simulator_policy([rule])]
+        declared = topology(cidr="203.0.113.0/24", excepts=[], ports=[443])
+
+        assert find_external_gaps(policies, [SIMULATOR], declared) == []
+
+    def test_partial_peer_coverage_is_still_a_gap(self):
+        rule = {
+            "to": [{"ipBlock": {"cidr": "203.0.113.0/25"}}],
+            "ports": [{"port": 443, "protocol": "TCP"}],
+        }
+        policies = [default_deny(), simulator_policy([rule])]
+        declared = topology(cidr="203.0.113.0/24", excepts=[], ports=[443])
+
+        assert [g.cidr for g in find_external_gaps(policies, [SIMULATOR], declared)] == [
+            "203.0.113.0/24"
+        ]
+
+
+class TestPolicyNaming:
+    """Generated names must survive the 63-character RFC1123 limit."""
+
+    def _created_name(self, workload: Workload) -> str:
+        docs: list[dict] = [default_deny()]
+        entry = topology()["user-simulator"]
+        close_external_gaps(docs, [workload], {workload.name: entry}, NAMESPACE)
+        return str(docs[1]["metadata"]["name"])
+
+    def test_long_workloads_sharing_a_prefix_get_distinct_names(self):
+        # The names differ only past character 63, so truncation alone collides.
+        prefix = "unguard-very-long-workload-name-that-runs-well-past-the-name-limit"
+        labels = {"app.kubernetes.io/name": "user-simulator"}
+        first = self._created_name(Workload(name=f"{prefix}-alpha", labels=labels))
+        second = self._created_name(Workload(name=f"{prefix}-beta", labels=labels))
+
+        assert first != second
+        for name in (first, second):
+            assert len(name) <= 63
+            assert not name.endswith("-")
+            assert all(c.islower() or c.isdigit() or c == "-" for c in name)
+
+    def test_short_name_is_left_alone(self):
+        assert self._created_name(SIMULATOR) == "user-simulator-external-egress"
 
 
 class TestGeneratorIntegration:
