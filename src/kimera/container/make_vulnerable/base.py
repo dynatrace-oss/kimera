@@ -177,8 +177,8 @@ class BaseExploit(ABC):
         impact: list[str] = []
         attack_paths: list[AttackPath] = []
 
-        for test in tests:
-            self.logger.exploit(f"Test: {test.name}")
+        for number, test in enumerate(tests, start=1):
+            self.logger.exploit(f"Test {number}: {test.name}")
             try:
                 output = self.k8s.exec_in_pod(pod_name, PROBE_PRELUDE + "\n" + test.script)
                 visible, paths = self._extract_paths(output)

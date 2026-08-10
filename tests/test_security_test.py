@@ -129,6 +129,22 @@ class TestRunTests:
         assert "Host access" in result.impact
         assert "Should not appear" not in result.evidence
 
+    def test_tests_are_numbered_from_one(self, tmp_path: Path) -> None:
+        """Every test announces its position, so no run starts at Test 2."""
+        k8s, logger = _create_mock_k8s_client()
+        k8s.exec_in_pod = MagicMock(return_value="ok")  # type: ignore[method-assign]
+
+        exploit = DeploymentPatchExploit(
+            k8s, "test-svc", logger, config_key="privileged-containers"
+        )
+        tests = [SecurityTest(name=n, script="x") for n in ("first", "second", "third")]
+
+        with _patch_journal(tmp_path):
+            exploit._run_tests("test-pod", tests)
+
+        announced = [call.args[0] for call in logger.exploit.call_args_list]
+        assert announced == ["Test 1: first", "Test 2: second", "Test 3: third"]
+
     def test_no_evidence_when_no_markers_match(self, tmp_path: Path) -> None:
         """Test that result is unsuccessful when no markers match."""
         k8s, logger = _create_mock_k8s_client()
