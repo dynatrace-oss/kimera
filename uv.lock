@@ -954,6 +954,7 @@ mcp-server = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "kimera", extra = ["all"] },
     { name = "mypy" },
     { name = "pip" },
     { name = "pip-audit" },
@@ -984,6 +985,7 @@ provides-extras = ["llm", "mcp-server", "litellm", "all"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "kimera", extras = ["all"] },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "pip", specifier = ">=26.2" },
     { name = "pip-audit", specifier = ">=2.10.1" },
