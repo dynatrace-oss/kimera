@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from importlib import metadata
+
 import kimera
 
 
@@ -19,9 +21,9 @@ class TestPackageStructure:
     """Test package structure and imports."""
 
     def test_package_version(self):
-        """Test package version is defined and correct."""
+        """Test package version is defined and matches the installed metadata."""
         assert hasattr(kimera, "__version__")
-        assert kimera.__version__ == "2.0.0"
+        assert kimera.__version__ == metadata.version("kimera")
         assert isinstance(kimera.__version__, str)
 
     def test_package_docstring(self):
@@ -87,10 +89,8 @@ class TestPackageMetadata:
             assert part.isdigit(), f"Version part '{part}' is not numeric"
 
     def test_version_consistency(self):
-        """Test version consistency across package files."""
-        # Version should match what's in pyproject.toml
-        package_version = kimera.__version__
-        assert package_version == "2.0.0"
+        """Test the exported version matches the packaged metadata from pyproject.toml."""
+        assert kimera.__version__ == metadata.version("kimera")
 
     def test_package_attributes(self):
         """Test that package has expected attributes."""
