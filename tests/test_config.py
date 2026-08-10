@@ -238,7 +238,9 @@ class TestNetworkTopologyEntry:
 
     def test_shipped_profiles_load_with_unchanged_ingress(self):
         """Changing the ingress default to None must not alter any shipped profile."""
-        for profile_path in sorted((Path("config/profiles")).glob("*.yaml")):
+        profiles = sorted((config_dir() / "profiles").glob("*.yaml"))
+        assert profiles, "no profiles shipped; this guard checks nothing"
+        for profile_path in profiles:
             raw = yaml.safe_load(profile_path.read_text())
             config = ConfigLoader().load(profile=profile_path.stem)
 
