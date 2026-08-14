@@ -51,11 +51,11 @@ kimera-mcp = "kimera.mcp.server:main"
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "ruff>=0.16.1",
+    "ruff>=0.16.2",
     "mypy>=2.3.0",
-    "pre-commit>=4.6.1",
+    "pre-commit>=4.6.2",
     "pip-audit>=2.10.1",
-    "pip>=26.2",
+    "pip>=26.2.1",
     "types-pyyaml>=6.0.12.20260724",
     # The suite covers the optional integrations, so a dev install carries them.
     "kimera[all]",
