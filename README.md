@@ -14,9 +14,9 @@ Kimera is a Kubernetes security testing toolkit that exposes attack techniques a
 
 40 techniques across 8 phases — reconnaissance, credential access, privilege escalation, lateral movement, defense evasion, persistence, execution, and defense validation — all defined as YAML configs and executable via MCP or CLI.
 
-## Disclaimer
-
-This toolkit is for **authorized security testing only**. Use only on clusters you own or have explicit permission to test.
+| 🚨 SECURITY WARNING & LIABILITY DISCLAIMER |
+| ----------------------------------------- |
+| Kimera executes real Kubernetes attack techniques — service-account token theft, privilege escalation, lateral movement, and defense evasion — against live clusters, strictly for authorized security testing, defensive validation, and academic research. <br><br> • **Authorized Targets Only:** Run Kimera **only** on clusters you own or have explicit, written permission to test. It must **never** be pointed at production, public, or third-party infrastructure without authorization. <br> • **No Liability:** Users assume all responsibility and liability for the execution, deployment, or utilization of this toolkit. <br> • **Reporting:** Report a security issue in Kimera itself privately via [GitHub Security Advisories](https://github.com/dynatrace-oss/kimera/security/advisories), not a public issue. |
 
 ## Architecture
 
@@ -258,7 +258,3 @@ Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in 
 - [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes)
 - [Microsoft Kubernetes Threat Matrix](https://microsoft.github.io/Threat-Matrix-for-Kubernetes/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
-
-<p align="center">
-  Maintained by <a href="https://github.com/dynatrace-oss">Dynatrace OSS</a> · Apache 2.0
-</p>

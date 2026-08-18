@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- README replaces the one-line disclaimer with a Security Warning & Responsible Use section: authorized-use scope, liability statement, and a private channel for reporting issues in Kimera itself.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added
