@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-07
+
 ### Changed
 
 - README replaces the one-line disclaimer with a Security Warning & Responsible Use section: authorized-use scope, liability statement, and a private channel for reporting issues in Kimera itself.
+- Dependency bumps: kubernetes 35→36, rich 14→15, litellm 1.95→1.99, click 8.4→8.5, and the Docker base image to python 3.14-slim.
 
 ### Security
 
