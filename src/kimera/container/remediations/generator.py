@@ -61,8 +61,7 @@ def _load_template(name: str) -> Any:
         from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: PLC0415
     except ImportError as exc:
         raise ImportError(
-            "Jinja2 is required for LLM prompt rendering. "
-            "Install with: uv pip install 'kimera[llm]'"
+            "Jinja2 is required for LLM prompt rendering. Install with: uv sync --extra llm"
         ) from exc
 
     env = Environment(
