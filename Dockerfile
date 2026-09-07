@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS base
+FROM python:3.14-slim AS base
 
 LABEL org.opencontainers.image.source="https://github.com/dynatrace-oss/kimera"
 LABEL org.opencontainers.image.description="K8s security testing toolkit with MCP server"
