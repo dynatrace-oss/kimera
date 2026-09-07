@@ -312,7 +312,7 @@ class LlmQueryStrategy(DtDataStrategy):
     """Uses Claude to generate DQL queries from few-shot examples.
 
     Two-hop pipeline: Claude generates DQL → execute via MCP → parse results.
-    Requires both ``kimera[llm]`` and ``kimera[mcp-server]`` extras.
+    Requires the ``llm`` and ``mcp-server`` extras.
     """
 
     def __init__(self, model: str = DEFAULT_MODEL) -> None:  # noqa: D107
@@ -385,8 +385,7 @@ class LlmQueryStrategy(DtDataStrategy):
             from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: PLC0415
         except ImportError as exc:
             raise ImportError(
-                "Jinja2 is required for llm-query strategy. "
-                "Install with: uv pip install 'kimera[llm]'"
+                "Jinja2 is required for llm-query strategy. Install with: uv sync --extra llm"
             ) from exc
 
         env = Environment(

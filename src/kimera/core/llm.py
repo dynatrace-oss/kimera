@@ -132,7 +132,7 @@ def _complete_litellm(*, system: str, user: str, model: str, max_tokens: int) ->
         litellm = _import_litellm()
     except ImportError as exc:
         raise ProviderNotConfiguredError(
-            f"Model {model!r} needs litellm. Install with: uv pip install 'kimera[litellm]'"
+            f"Model {model!r} needs litellm. Install with: uv sync --extra litellm"
         ) from exc
 
     response = litellm.completion(
@@ -155,7 +155,7 @@ def _complete_anthropic(*, system: str, user: str, model: str, max_tokens: int) 
         import anthropic  # noqa: PLC0415
     except ImportError as exc:
         raise ProviderNotConfiguredError(
-            "Anthropic SDK is required. Install with: uv pip install 'kimera[llm]'"
+            "Anthropic SDK is required. Install with: uv sync --extra llm"
         ) from exc
 
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS)

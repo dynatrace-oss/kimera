@@ -20,7 +20,7 @@ from ....core.enrichment import EnrichmentContext
 from ...core.logger import SecurityLogger
 
 DT_CREDENTIAL_VARS = ("DT_ENVIRONMENT", "DT_PLATFORM_TOKEN")
-DT_EXTRA = "kimera[mcp-server]"
+DT_EXTRA = "mcp-server"
 
 
 class DynatraceQueryProvider:
@@ -49,7 +49,7 @@ class DynatraceQueryProvider:
         try:
             from .mcp_client import DynatraceMCPClient
         except ImportError as exc:
-            raise ImportError(f"{exc}. Install the {DT_EXTRA} extra.") from exc
+            raise ImportError(f"{exc}. Install with: uv sync --extra {DT_EXTRA}") from exc
 
         async def _run() -> list[dict[str, Any]]:
             client = DynatraceMCPClient(
@@ -69,7 +69,7 @@ class DynatraceEnrichmentProvider:
 
     Requires:
       - DT_ENVIRONMENT and DT_PLATFORM_TOKEN environment variables
-      - mcp optional dependency: uv pip install 'kimera[mcp-server]'
+      - mcp optional dependency: uv sync --extra mcp-server
     """
 
     def __init__(self, strategy_name: str = "targeted", **kwargs: str) -> None:  # noqa: D107

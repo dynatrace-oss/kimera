@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - README replaces the one-line disclaimer with a Security Warning & Responsible Use section: authorized-use scope, liability statement, and a private channel for reporting issues in Kimera itself.
 
+### Security
+
+- Optional-dependency install hints use `uv sync --extra <name>` instead of `uv pip install 'kimera[<extra>]'`. The bare name resolved against PyPI, where `kimera` is unpublished, so following the hint in a fresh environment would install whatever a squatter registered under that name.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added
