@@ -33,7 +33,7 @@ mcp-server = [
     "mcp[cli]>=1.0.0",
 ]
 litellm = [
-    "litellm>=1.83",
+    "litellm>=1.100.0",
 ]
 all = [
     "kimera[llm,mcp-server,litellm]",
