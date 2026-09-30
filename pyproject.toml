@@ -66,7 +66,7 @@ llm = [
 ]
 mcp-server = [
     # server.py uses FastMCP, removed in mcp 2.x. Lift the cap with the migration.
-    "mcp[cli]>=1.0.0,<2",
+    "mcp[cli]>=2.2.0,<3",
 ]
 litellm = [
     "litellm>=1.100.0",
