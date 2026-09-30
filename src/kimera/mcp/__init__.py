@@ -11,3 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
+def main() -> None:
+    """Entry point for the ``kimera-mcp`` console script.
+
+    Importing ``.server`` pulls in the optional MCP SDK, so the import is
+    guarded here rather than at module scope.
+    """
+    try:
+        from .server import main as _main  # noqa: PLC0415
+    except ImportError as exc:
+        raise SystemExit(
+            "The MCP server requires the 'mcp-server' extra. "
+            "Install with: pip install 'kimera[mcp-server]' "
+            f"(from a checkout: uv sync --extra mcp-server). Underlying error: {exc}"
+        ) from exc
+
+    _main()

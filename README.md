@@ -2,7 +2,8 @@
   <img src="assets/kimera_logo.png" alt="Kimera" width="400"><br>
   <em>AI-agent-driven Kubernetes penetration testing via MCP</em><br><br>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13+-blue.svg" alt="Python"></a>
+  <a href="https://pypi.org/project/kimera/"><img src="https://img.shields.io/pypi/v/kimera.svg" alt="PyPI"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python"></a>
   <a href="https://kubernetes.io/"><img src="https://img.shields.io/badge/kubernetes-1.24+-blue.svg" alt="Kubernetes"></a>
 </p>
 
@@ -45,9 +46,19 @@ Kimera is a Kubernetes security testing toolkit that exposes attack techniques a
 ### Prerequisites
 
 - Kubernetes cluster (1.24+) with `kubectl` configured
-- Python 3.13+ with [uv](https://docs.astral.sh/uv/)
+- Python 3.11+ (3.11, 3.12 and 3.13 are tested)
 
 ### Install
+
+```bash
+uv tool install 'kimera[all]'      # or: pipx install 'kimera[all]'
+uvx --from 'kimera[all]' kimera --help   # one-shot, no install
+```
+
+Extras are optional: `llm` for remediation generation, `litellm` for a proxied
+model backend, `mcp-server` for the MCP server, `all` for every one.
+
+From a checkout, for development:
 
 ```bash
 git clone https://github.com/dynatrace-oss/kimera
@@ -71,9 +82,8 @@ Claude Desktop configuration:
 {
   "mcpServers": {
     "kimera": {
-      "command": "uv",
-      "args": ["run", "kimera-mcp"],
-      "cwd": "/path/to/kimera"
+      "command": "uvx",
+      "args": ["--from", "kimera[mcp-server]", "kimera-mcp"]
     }
   }
 }

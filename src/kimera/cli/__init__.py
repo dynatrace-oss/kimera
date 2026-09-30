@@ -68,6 +68,7 @@ def _resolve_services(config: ToolkitConfig, k8s: K8sClient) -> list[str]:
 
 
 @click.group()
+@click.version_option(package_name="kimera")
 @click.option("--namespace", "-n", default="default", help="Target namespace")
 @click.option(
     "--profile",
