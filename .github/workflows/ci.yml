@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
     - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
@@ -25,7 +25,7 @@ jobs:
         uv run pre-commit run --all-files
     - name: Test with pytest
       run: |
-        uv run pytest --cov=kimera --cov-report=xml
+        uv run pytest
   security:
     runs-on: ubuntu-latest
     steps:

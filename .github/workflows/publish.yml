@@ -1,0 +1,97 @@
+name: Publish
+
+# Two independent brakes: the environment requires a reviewer, and the token
+# lives on that environment rather than on the repository.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Index to publish to"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+    - name: Build sdist and wheel
+      run: uv build
+    - name: Check metadata
+      run: uvx twine check dist/*
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+        if-no-files-found: error
+
+  publish-testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+    - name: Publish
+      run: uv publish --publish-url https://test.pypi.org/legacy/ dist/*
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+  publish-pypi:
+    needs: build
+    if: github.event_name == 'push' || inputs.target == 'pypi'
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+    - name: Publish
+      run: uv publish dist/*
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+  smoke-test:
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install from PyPI and exercise the console scripts
+      run: |
+        python -m venv /tmp/smoke
+        # PyPI needs a moment to index a fresh upload.
+        for i in 1 2 3 4 5; do
+          /tmp/smoke/bin/pip install "kimera[all]==${GITHUB_REF_NAME#v}" && break
+          sleep 20
+        done
+        /tmp/smoke/bin/kimera --version
+        /tmp/smoke/bin/kimera --help
+        /tmp/smoke/bin/kimera-mcp --help
+    - name: Assert the packaged data files shipped
+      run: |
+        /tmp/smoke/bin/python - <<'PY'
+        from kimera.resources import config_dir, prompts_dir
+        assert (config_dir() / "default.yaml").is_file()
+        assert list((config_dir() / "techniques").glob("*.yaml"))
+        assert list(prompts_dir().glob("*.j2"))
+        print("data files present")
+        PY

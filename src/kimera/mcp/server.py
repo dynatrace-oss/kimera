@@ -20,9 +20,8 @@
 #   {
 #     "mcpServers": {
 #       "kimera": {
-#         "command": "uv",
-#         "args": ["run", "python", "-m", "kimera.mcp.server"],
-#         "cwd": "/path/to/k8s-exploit-toolkit"
+#         "command": "uvx",
+#         "args": ["--from", "kimera[mcp-server]", "kimera-mcp"]
 #       }
 #     }
 #   }
@@ -30,6 +29,7 @@
 import logging
 from typing import Any, Literal
 
+import click
 from mcp.server.fastmcp import FastMCP
 
 from ..container.core.k8s_client import K8sClient
@@ -381,13 +381,12 @@ def reload_techniques() -> dict[str, Any]:
 # ── Entry point ───────────────────────────────────────────────────────
 
 
-def main() -> None:
-    """Run the MCP server."""
-    import sys
-
-    transport: Literal["stdio", "streamable-http"] = (
-        "streamable-http" if "--http" in sys.argv else "stdio"
-    )
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(package_name="kimera")
+@click.option("--http", is_flag=True, help="Serve over streamable HTTP instead of stdio.")
+def main(http: bool) -> None:
+    """Run the Kimera MCP server, exposing attack techniques as MCP tools."""
+    transport: Literal["stdio", "streamable-http"] = "streamable-http" if http else "stdio"
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting kimera MCP server (transport=%s)", transport)
     mcp_server.run(transport=transport)

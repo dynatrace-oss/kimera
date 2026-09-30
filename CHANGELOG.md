@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-17
+
+First release published to PyPI: `pip install kimera`.
+
+### Added
+
+- Publish workflow (`.github/workflows/publish.yml`) building with `uv build` and uploading to
+  TestPyPI or PyPI. Both jobs run in a reviewer-gated GitHub Environment that holds the upload
+  token, and a post-publish job installs from the index and exercises the console scripts.
+- `kimera --version`, previously absent.
+- `kimera-mcp --help`, `-h` and `--version`. The entry point parsed `sys.argv` for `--http` by
+  hand, so `--help` started a stdio server and blocked instead of printing usage.
+- `py.typed`, so the strict-mypy-clean type information reaches consumers.
+- PyPI classifiers, keywords, and Issues/Changelog/Documentation URLs.
+- `NOTICE`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `RELEASING.md`.
+
+### Changed
+
+- **Breaking:** minimum Python lowered from 3.13 to 3.11. Every dependency already supported
+  3.10+, and the suite passes on 3.11, 3.12 and 3.13, which CI now covers as a matrix.
+- `kimera-mcp` entry point moved to `kimera.mcp:main`, which reports the missing extra instead of
+  raising `ModuleNotFoundError` when `mcp-server` is not installed.
+- sdist and wheel contents declared explicitly in `pyproject.toml` rather than inherited from
+  hatchling defaults.
+- `mcp[cli]` capped below 2.0. Version 2 removed `FastMCP`, which `mcp/server.py` still uses, so
+  a fresh install of the `mcp-server` extra would otherwise ship a server that cannot import.
+- `pydantic` capped below 3.0.
+
+### Fixed
+
+- Coverage collected nothing. `--cov=kimera` did not resolve against the editable install, so the
+  reported percentage was empty; the run now measures 68% via `source_pkgs`.
+- Apache licence header missing from `src/kimera/application/__init__.py`.
+
 ## [0.3.1] - 2026-09-07
 
 ### Changed
@@ -144,3 +178,10 @@ tags predate it and are retained as history.
 - Stale `kimera/cli.py` stub removed (conflicted with `kimera/cli/` package causing mypy duplicate-module error)
 - Helm templates excluded from `check-yaml` pre-commit hook
 - Upgraded `click` to 8.3.3+ (PYSEC-2026-2132) and `pip` to 26.1.2 (PYSEC-2026-196)
+
+[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dynatrace-oss/kimera/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/dynatrace-oss/kimera/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/dynatrace-oss/kimera/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/dynatrace-oss/kimera/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/dynatrace-oss/kimera/releases/tag/v0.1.0
