@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `scripts/release.sh X.Y.Z`, automating the release-cut steps in `RELEASING.md`: validates
+  a clean tree, the `main` branch, a valid and increasing semver, and a non-empty `[Unreleased]`
+  section, then rewrites `CHANGELOG.md`, bumps `pyproject.toml`, runs `uv lock`, and commits the
+  release branch
+- Added a tag-vs-version guard to `publish.yml`, failing the job if a pushed tag doesn't match
+  `pyproject.toml`'s version
+
 ### Fixed
 
 - Fixed `kimera-mcp` failing to import under `mcp>=2.2.0,<3`; `mcp.server.fastmcp.FastMCP` is
