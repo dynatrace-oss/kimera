@@ -132,9 +132,9 @@ class DynatraceMCPClient:
         """Find an available MCP HTTP transport from the installed SDK."""
         # Streamable HTTP (mcp >= 1.8)
         try:
-            from mcp.client.streamable_http import streamablehttp_client  # noqa: PLC0415
+            from mcp.client.streamable_http import streamable_http_client  # noqa: PLC0415
 
-            return streamablehttp_client
+            return streamable_http_client
         except ImportError:
             pass
 

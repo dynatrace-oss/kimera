@@ -65,7 +65,6 @@ llm = [
     "jinja2>=3.1.0",
 ]
 mcp-server = [
-    # server.py uses FastMCP, removed in mcp 2.x. Lift the cap with the migration.
     "mcp[cli]>=2.2.0,<3",
 ]
 litellm = [
