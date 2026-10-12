@@ -104,3 +104,24 @@ jobs:
         assert list(prompts_dir().glob("*.j2"))
         print("data files present")
         PY
+
+  github-release:
+    needs: [smoke-test]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+    - name: Extract the version's changelog section
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        awk -v ver="$version" '
+          $0 ~ "^## \\[" ver "\\]" { found=1; next }
+          found && /^## \[/ { exit }
+          found { print }
+        ' CHANGELOG.md > release-notes.md
+    - name: Create GitHub release
+      run: gh release create "$GITHUB_REF_NAME" --title "Kimera $GITHUB_REF_NAME" --notes-file release-notes.md
+      env:
+        GH_TOKEN: ${{ github.token }}

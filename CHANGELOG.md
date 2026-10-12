@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release branch
 - Added a tag-vs-version guard to `publish.yml`, failing the job if a pushed tag doesn't match
   `pyproject.toml`'s version
+- Added a `github-release` job to `publish.yml`, creating a GitHub release from the pushed tag
+  after the smoke test passes; a tag push previously published to PyPI without ever creating the
+  matching GitHub release
 
 ### Fixed
 
