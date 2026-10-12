@@ -87,8 +87,8 @@ jobs:
     - name: Install from PyPI and exercise the console scripts
       run: |
         python -m venv /tmp/smoke
-        # PyPI needs a moment to index a fresh upload.
-        for i in 1 2 3 4 5; do
+        # PyPI's CDN can take minutes to propagate a fresh upload to every edge node.
+        for i in $(seq 1 15); do
           /tmp/smoke/bin/pip install "kimera[all]==${GITHUB_REF_NAME#v}" && break
           sleep 20
         done
