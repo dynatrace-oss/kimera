@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-12
+
 ### Added
 
 - Added `scripts/release.sh X.Y.Z`, automating the release-cut steps in `RELEASING.md`: validates
@@ -198,7 +200,8 @@ tags predate it and are retained as history.
 - Helm templates excluded from `check-yaml` pre-commit hook
 - Upgraded `click` to 8.3.3+ (PYSEC-2026-2132) and `pip` to 26.1.2 (PYSEC-2026-196)
 
-[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dynatrace-oss/kimera/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/dynatrace-oss/kimera/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dynatrace-oss/kimera/compare/v0.2.0...v0.3.0
