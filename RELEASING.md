@@ -16,11 +16,13 @@
 
 ## Cut a release
 
-1. Branch: `git switch -c release/X.Y.Z`.
-2. One commit touching exactly `CHANGELOG.md`, `pyproject.toml` and `uv.lock`: move the
-   `[Unreleased]` items under a dated `[X.Y.Z]` heading, add its compare link, bump `version`,
-   then `uv lock`.
-3. Open a PR against `main` and merge it.
+1. Check out `main` with a clean working tree.
+2. Run `scripts/release.sh X.Y.Z`. It verifies the tree is clean, you're on `main`, the
+   `[Unreleased]` section is non-empty, and `X.Y.Z` is a valid semver greater than the current
+   `pyproject.toml` version; then it moves `[Unreleased]` under a dated `[X.Y.Z]` heading, adds its
+   compare link, bumps `version`, runs `uv lock`, creates `release/X.Y.Z`, and commits exactly
+   `CHANGELOG.md`, `pyproject.toml` and `uv.lock`.
+3. Push the branch, open a PR against `main`, and merge it.
 4. Tag the merge commit, annotated: `git tag -a vX.Y.Z -m "Kimera vX.Y.Z" && git push origin vX.Y.Z`.
    Tags are annotated and point at the release merge commit on `main`. `v0.2.0` predates this rule
    and sits on an unrelated commit.
