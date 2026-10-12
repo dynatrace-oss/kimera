@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `kimera-mcp` failing to import under `mcp>=2.2.0,<3`; `mcp.server.fastmcp.FastMCP` is
+  renamed to `mcp.server.mcpserver.MCPServer` in mcp 2.x
+- Fixed Dynatrace MCP client import failing under `mcp>=2.2.0,<3`; `streamablehttp_client` is
+  renamed to `streamable_http_client` in mcp 2.x
+
 ## [0.4.0] - 2026-09-17
 
 First release published to PyPI: `pip install kimera`.

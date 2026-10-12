@@ -30,7 +30,7 @@ import logging
 from typing import Any, Literal
 
 import click
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from ..container.core.k8s_client import K8sClient
 from ..core.assessor import assess_namespace
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 _registry = TechniqueRegistry()
 
-mcp_server = FastMCP(
+mcp_server = MCPServer(
     name="kimera",
     instructions=(
         "Kimera is a Kubernetes penetration testing toolkit. "
