@@ -158,6 +158,9 @@ ignore_missing_imports = true
 module = ["tests.*"]
 disallow_untyped_defs = false
 warn_unreachable = false
+# Tests assign return_value/side_effect onto K8sClient's typed API-client
+# attributes, which the kubernetes 37 stubs now type concretely instead of Any.
+disable_error_code = ["attr-defined"]
 
 [tool.ruff]
 line-length = 100

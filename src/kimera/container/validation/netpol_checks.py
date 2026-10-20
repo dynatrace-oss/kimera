@@ -20,6 +20,7 @@ from kubernetes.client import ApiException
 
 from ...application.config.schemas import NetworkTopologyEntry
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from .external_egress import find_external_gaps, unmatched_declarations
 from .models import ControlType, ValidationResult, ValidationVerdict
 from .reachability import Workload, find_gaps, find_ingress_gaps
@@ -36,11 +37,11 @@ def _discover_namespace_services(
     try:
         svc_list = k8s.v1.list_namespaced_service(namespace)
         for svc in svc_list.items:
-            if svc.spec.ports:
+            if svc.spec and svc.spec.ports:
                 for port_spec in svc.spec.ports:
                     services.append(
                         {
-                            "name": svc.metadata.name,
+                            "name": meta_name(svc.metadata),
                             "port": port_spec.port,
                             "protocol": port_spec.protocol or "TCP",
                         }
@@ -81,11 +82,14 @@ def _check_default_deny(k8s: K8sClient, namespace: str) -> ValidationResult | No
 
     # Check for a policy with empty podSelector and both Ingress+Egress types
     for policy in policies:
-        pod_sel = policy.spec.pod_selector
-        policy_types = policy.spec.policy_types or []
+        spec = policy.spec
+        if not spec:
+            continue
+        pod_sel = spec.pod_selector
+        policy_types = spec.policy_types or []
         is_empty_selector = not pod_sel or not pod_sel.match_labels
         has_both = "Ingress" in policy_types and "Egress" in policy_types
-        has_no_rules = not policy.spec.ingress and not policy.spec.egress
+        has_no_rules = not spec.ingress and not spec.egress
 
         if is_empty_selector and has_both and has_no_rules:
             return ValidationResult(
@@ -95,7 +99,7 @@ def _check_default_deny(k8s: K8sClient, namespace: str) -> ValidationResult | No
                 expected="EXISTS",
                 actual="EXISTS",
                 verdict=ValidationVerdict.PASS,
-                evidence=f"Policy '{policy.metadata.name}' implements default-deny",
+                evidence=f"Policy '{meta_name(policy.metadata)}' implements default-deny",
             )
 
     return ValidationResult(
@@ -136,7 +140,8 @@ def _check_policy_reachability(
     serialize = k8s.v1.api_client.sanitize_for_serialization
     policies = [serialize(p) for p in policies_raw]
     workloads = [
-        Workload(name=p.metadata.name, labels=dict(p.metadata.labels or {})) for p in pods_raw.items
+        Workload(name=meta_name(p.metadata), labels=dict((p.metadata and p.metadata.labels) or {}))
+        for p in pods_raw.items
     ]
 
     results = [

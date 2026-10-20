@@ -19,11 +19,12 @@ but are never persisted. Safe for production.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
-from kubernetes.client import ApiException
+from kubernetes.client import ApiException, V1Pod
 
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from ..core.logger import SecurityLogger
 from .models import (
     ControlType,
@@ -138,7 +139,7 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
     # Check PSA labels on the target namespace
     try:
         ns = k8s.v1.read_namespace(k8s.namespace)
-        labels = ns.metadata.labels or {}
+        labels = (ns.metadata.labels if ns.metadata else None) or {}
         psa_enforce = labels.get("pod-security.kubernetes.io/enforce", "")
         if psa_enforce:
             controllers.append(
@@ -155,11 +156,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
     try:
         crds = k8s.apiextensions_v1.list_custom_resource_definition()
         for crd in crds.items:
-            if "kyverno.io" in (crd.metadata.name or ""):
+            name = meta_name(crd.metadata)
+            if "kyverno.io" in name:
                 controllers.append(
                     {
                         "type": "Kyverno",
-                        "name": crd.metadata.name,
+                        "name": name,
                     }
                 )
                 break
@@ -170,11 +172,12 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
     try:
         crds = k8s.apiextensions_v1.list_custom_resource_definition()
         for crd in crds.items:
-            if "gatekeeper.sh" in (crd.metadata.name or ""):
+            name = meta_name(crd.metadata)
+            if "gatekeeper.sh" in name:
                 controllers.append(
                     {
                         "type": "OPA/Gatekeeper",
-                        "name": crd.metadata.name,
+                        "name": name,
                     }
                 )
                 break
@@ -185,7 +188,7 @@ def _detect_admission_controllers(k8s: K8sClient) -> list[dict[str, str]]:
     try:
         webhooks = k8s.admissionregistration_v1.list_validating_webhook_configuration()
         for wh in webhooks.items:
-            name = wh.metadata.name or ""
+            name = meta_name(wh.metadata)
             # Skip kube-system internal webhooks
             if "kube-system" in name or "cert-manager" in name:
                 continue
@@ -298,7 +301,7 @@ def validate_admission(
             # Server-side dry-run: passes through admission webhooks, never persisted
             k8s.v1.create_namespaced_pod(
                 namespace=namespace,
-                body=pod_body,
+                body=cast(V1Pod, pod_body),
                 dry_run="All",
             )
             # If we get here, the pod was admitted (no rejection)

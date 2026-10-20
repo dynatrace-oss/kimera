@@ -17,11 +17,19 @@
 import json
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 import jsonpatch
 from kubernetes import client, config
-from kubernetes.client import V1DaemonSet, V1Deployment, V1NetworkPolicy, V1Pod
+from kubernetes.client import (
+    V1ClusterRole,
+    V1ClusterRoleBinding,
+    V1DaemonSet,
+    V1Deployment,
+    V1NetworkPolicy,
+    V1Pod,
+    V1ServiceAccount,
+)
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 
@@ -29,6 +37,7 @@ from kimera.application.config.schemas import TimeoutConfig
 from kimera.container.core.command import run_command
 from kimera.container.core.exceptions import K8sError, PermissionDeniedError
 
+from .k8s_meta import meta_name
 from .logger import SecurityLogger, setup_logger
 
 
@@ -88,14 +97,15 @@ class K8sClient:
         for labels in strategies:
             pods = self._get_pods_by_labels(labels)
             if pods:
-                return str(pods[0].metadata.name)
+                return meta_name(pods[0].metadata)
 
         # Strategy 4: Name prefix
         try:
             all_pods = self.v1.list_namespaced_pod(self.namespace)
             for pod in all_pods.items:
-                if pod.metadata.name.startswith(service) and pod.status.phase == "Running":
-                    return str(pod.metadata.name)
+                name = meta_name(pod.metadata)
+                if name.startswith(service) and pod.status and pod.status.phase == "Running":
+                    return name
         except ApiException:
             pass
 
@@ -106,7 +116,7 @@ class K8sClient:
         label_selector = ",".join(f"{k}={v}" for k, v in labels.items())
         try:
             pod_list = self.v1.list_namespaced_pod(self.namespace, label_selector=label_selector)
-            return [p for p in pod_list.items if p.status.phase == "Running"]
+            return [p for p in pod_list.items if p.status and p.status.phase == "Running"]
         except ApiException:
             return []
 
@@ -114,7 +124,7 @@ class K8sClient:
         """Execute command in pod."""
         try:
             pod = self.v1.read_namespaced_pod(pod_name, self.namespace)
-            container_names = [c.name for c in pod.spec.containers]
+            container_names = [c.name for c in (pod.spec.containers if pod.spec else [])]
 
             if not container and len(container_names) > 1:
                 self.logger.warning(
@@ -325,7 +335,9 @@ class K8sClient:
                 self.logger.info(f"DRY RUN: Would create NetworkPolicy {name} in {ns}")
                 return True
 
-            self.networking_v1.create_namespaced_network_policy(namespace=ns, body=body)
+            self.networking_v1.create_namespaced_network_policy(
+                namespace=ns, body=cast("V1NetworkPolicy", body)
+            )
             self.logger.success(f"Created NetworkPolicy {name} in {ns}")
             return True
         except ApiException as e:
@@ -391,7 +403,7 @@ class K8sClient:
             if dry_run:
                 self.logger.info(f"DRY RUN: Would create DaemonSet {name} in {ns}")
                 return True
-            self.apps_v1.create_namespaced_daemon_set(namespace=ns, body=body)
+            self.apps_v1.create_namespaced_daemon_set(namespace=ns, body=cast("V1DaemonSet", body))
             self.logger.success(f"Created DaemonSet {name} in {ns}")
             return True
         except ApiException as e:
@@ -441,7 +453,9 @@ class K8sClient:
             if dry_run:
                 self.logger.info(f"DRY RUN: Would create ServiceAccount {name} in {ns}")
                 return True
-            self.v1.create_namespaced_service_account(namespace=ns, body=body)
+            self.v1.create_namespaced_service_account(
+                namespace=ns, body=cast("V1ServiceAccount", body)
+            )
             self.logger.success(f"Created ServiceAccount {name} in {ns}")
             return True
         except ApiException as e:
@@ -474,7 +488,7 @@ class K8sClient:
             if dry_run:
                 self.logger.info(f"DRY RUN: Would create ClusterRole {name}")
                 return True
-            self.rbac_v1.create_cluster_role(body=body)
+            self.rbac_v1.create_cluster_role(body=cast("V1ClusterRole", body))
             self.logger.success(f"Created ClusterRole {name}")
             return True
         except ApiException as e:
@@ -506,7 +520,7 @@ class K8sClient:
             if dry_run:
                 self.logger.info(f"DRY RUN: Would create ClusterRoleBinding {name}")
                 return True
-            self.rbac_v1.create_cluster_role_binding(body=body)
+            self.rbac_v1.create_cluster_role_binding(body=cast("V1ClusterRoleBinding", body))
             self.logger.success(f"Created ClusterRoleBinding {name}")
             return True
         except ApiException as e:

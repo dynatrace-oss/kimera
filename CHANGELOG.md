@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `mypy` failing under `kubernetes>=37.0.1`: the client now ships inline type hints, and
+  every model field is typed `Optional`. Added `container/core/k8s_meta.meta_name()` for the
+  common `metadata.name` access and null-guarded the rest; `tests.*` now disables `attr-defined`
+  since kubernetes 37's typed API-client classes no longer resolve attribute mocks as `Any`
+
+### Changed
+
+- Bumped `kubernetes` from 36.0.3 to 37.0.1, `aiohttp` from 3.14.3 to 3.14.4
+
 ## [0.4.1] - 2026-10-12
 
 ### Added
