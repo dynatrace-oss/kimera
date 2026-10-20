@@ -15,9 +15,9 @@
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
-from kubernetes.client import ApiException
+from kubernetes.client import ApiException, V1Pod
 
 from ..core.k8s_client import K8sClient
 from ..make_vulnerable.probe_prelude import PROBE_PRELUDE, UNKNOWN_STATE
@@ -74,14 +74,14 @@ def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> str | None:
     }
 
     try:
-        k8s.v1.create_namespaced_pod(namespace=namespace, body=pod_body)
+        k8s.v1.create_namespaced_pod(namespace=namespace, body=cast(V1Pod, pod_body))
     except ApiException as e:
         if e.status == 409:
             # Pod already exists — delete and recreate
             try:
                 k8s.v1.delete_namespaced_pod(PROBE_POD_NAME, namespace)
                 time.sleep(5)
-                k8s.v1.create_namespaced_pod(namespace=namespace, body=pod_body)
+                k8s.v1.create_namespaced_pod(namespace=namespace, body=cast(V1Pod, pod_body))
             except ApiException as retry_error:
                 return f"recreate failed: HTTP {retry_error.status} {retry_error.reason}"
         elif e.status in (403, 422):
@@ -99,7 +99,7 @@ def _deploy_probe_pod(k8s: K8sClient, namespace: str) -> str | None:
     for _ in range(30):
         try:
             pod = k8s.v1.read_namespaced_pod(PROBE_POD_NAME, namespace)
-            if pod.status.phase == "Running":
+            if pod.status and pod.status.phase == "Running":
                 return None
         except ApiException:
             pass

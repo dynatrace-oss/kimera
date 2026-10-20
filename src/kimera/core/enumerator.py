@@ -18,6 +18,7 @@ from typing import Any
 from kubernetes.client.rest import ApiException
 
 from ..container.core.k8s_client import K8sClient
+from ..container.core.k8s_meta import meta_name
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ def _enumerate_deployments(k8s: K8sClient, namespace: str, inventory: dict) -> N
     try:
         deps = k8s.apps_v1.list_namespaced_deployment(namespace)
         for dep in deps.items:
+            if not (dep.spec and dep.spec.template.spec):
+                continue
             pod_spec = dep.spec.template.spec
             containers = []
             for c in pod_spec.containers:
@@ -70,7 +73,7 @@ def _enumerate_deployments(k8s: K8sClient, namespace: str, inventory: dict) -> N
                 )
             inventory["deployments"].append(
                 {
-                    "name": dep.metadata.name,
+                    "name": meta_name(dep.metadata),
                     "replicas": dep.spec.replicas,
                     "service_account": pod_spec.service_account_name or "default",
                     "host_pid": bool(pod_spec.host_pid),
@@ -87,12 +90,14 @@ def _enumerate_services(k8s: K8sClient, namespace: str, inventory: dict) -> None
     try:
         svcs = k8s.v1.list_namespaced_service(namespace)
         for svc in svcs.items:
+            if not svc.spec:
+                continue
             ports = [
                 {"port": p.port, "protocol": p.protocol or "TCP"} for p in (svc.spec.ports or [])
             ]
             inventory["services"].append(
                 {
-                    "name": svc.metadata.name,
+                    "name": meta_name(svc.metadata),
                     "type": svc.spec.type,
                     "ports": ports,
                     "selector": dict(svc.spec.selector) if svc.spec.selector else {},
@@ -105,7 +110,7 @@ def _enumerate_services(k8s: K8sClient, namespace: str, inventory: dict) -> None
 def _enumerate_service_accounts(k8s: K8sClient, namespace: str, inventory: dict) -> None:
     try:
         sas = k8s.v1.list_namespaced_service_account(namespace)
-        inventory["service_accounts"] = [sa.metadata.name for sa in sas.items]
+        inventory["service_accounts"] = [meta_name(sa.metadata) for sa in sas.items]
     except ApiException as exc:
         logger.warning("Failed to list service accounts: %s", exc.reason)
 
@@ -113,7 +118,7 @@ def _enumerate_service_accounts(k8s: K8sClient, namespace: str, inventory: dict)
 def _enumerate_network_policies(k8s: K8sClient, namespace: str, inventory: dict) -> None:
     try:
         policies = k8s.list_network_policies(namespace)
-        inventory["network_policies"] = [p.metadata.name for p in policies]
+        inventory["network_policies"] = [meta_name(p.metadata) for p in policies]
     except ApiException as exc:
         logger.warning("Failed to list network policies: %s", exc.reason)
 
@@ -122,7 +127,7 @@ def _enumerate_secrets(k8s: K8sClient, namespace: str, inventory: dict) -> None:
     try:
         secrets = k8s.v1.list_namespaced_secret(namespace)
         inventory["secrets_metadata"] = [
-            {"name": s.metadata.name, "type": s.type} for s in secrets.items
+            {"name": meta_name(s.metadata), "type": s.type} for s in secrets.items
         ]
     except ApiException as exc:
         logger.warning("Failed to list secrets: %s", exc.reason)
@@ -135,7 +140,7 @@ def _enumerate_role_bindings(k8s: K8sClient, namespace: str, inventory: dict) ->
             subjects = [{"kind": s.kind, "name": s.name} for s in (rb.subjects or [])]
             inventory["role_bindings"].append(
                 {
-                    "name": rb.metadata.name,
+                    "name": meta_name(rb.metadata),
                     "role": rb.role_ref.name,
                     "role_kind": rb.role_ref.kind,
                     "subjects": subjects,

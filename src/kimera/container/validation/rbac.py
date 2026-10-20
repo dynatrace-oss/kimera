@@ -24,9 +24,12 @@ from typing import Any
 
 from kubernetes.client import (
     ApiException,
+    V1ClusterRole,
+    V1Role,
 )
 
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from ..core.logger import SecurityLogger
 from .models import (
     ControlType,
@@ -130,8 +133,8 @@ def _list_service_accounts(k8s: K8sClient) -> list[dict[str, str]]:
         sa_list = k8s.v1.list_namespaced_service_account(k8s.namespace)
         return [
             {
-                "name": sa.metadata.name,
-                "namespace": sa.metadata.namespace,
+                "name": meta_name(sa.metadata),
+                "namespace": (sa.metadata.namespace if sa.metadata else None) or "",
             }
             for sa in sa_list.items
         ]
@@ -160,7 +163,7 @@ def _check_sa_bindings(
                 ):
                     bindings.append(
                         {
-                            "binding": rb.metadata.name,
+                            "binding": meta_name(rb.metadata),
                             "scope": "namespace",
                             "role_kind": rb.role_ref.kind,
                             "role_name": rb.role_ref.name,
@@ -181,7 +184,7 @@ def _check_sa_bindings(
                 ):
                     bindings.append(
                         {
-                            "binding": crb.metadata.name,
+                            "binding": meta_name(crb.metadata),
                             "scope": "cluster",
                             "role_kind": crb.role_ref.kind,
                             "role_name": crb.role_ref.name,
@@ -266,6 +269,7 @@ def validate_rbac(
             role_name = binding["role_name"]
             role_kind = binding["role_kind"]
 
+            role: V1ClusterRole | V1Role
             try:
                 if role_kind == "ClusterRole":
                     role = k8s.rbac_v1.read_cluster_role(role_name)

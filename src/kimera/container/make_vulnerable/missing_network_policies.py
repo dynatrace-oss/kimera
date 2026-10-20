@@ -16,6 +16,7 @@ from typing import Any
 
 from ...domain.models import EvidenceMarker, ExploitResult, SecurityTest
 from ..core.journal import clear_operation, record_operation
+from ..core.k8s_meta import meta_name
 from ..core.logger import console
 from .base import BaseExploit
 from .probe_runner import ProbeRunner
@@ -86,12 +87,13 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         removed = 0
 
         for policy in policies:
-            labels = policy.metadata.labels or {}
+            labels = (policy.metadata.labels if policy.metadata else None) or {}
             if labels.get(TOOLKIT_LABEL) == TOOLKIT_LABEL_VALUE:
+                name = meta_name(policy.metadata)
                 if dry_run:
-                    self.logger.info(f"DRY RUN: Would delete NetworkPolicy {policy.metadata.name}")
+                    self.logger.info(f"DRY RUN: Would delete NetworkPolicy {name}")
                 else:
-                    self.k8s.delete_network_policy(policy.metadata.name, self.k8s.namespace)
+                    self.k8s.delete_network_policy(name, self.k8s.namespace)
                 removed += 1
 
         if removed == 0:
@@ -127,7 +129,7 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         """Discover service names in the namespace via the Kubernetes API."""
         try:
             svc_list = self.k8s.v1.list_namespaced_service(self.k8s.namespace)
-            return [svc.metadata.name for svc in svc_list.items]
+            return [meta_name(svc.metadata) for svc in svc_list.items]
         except Exception:
             return []
 
@@ -137,12 +139,12 @@ class MissingNetworkPoliciesExploit(BaseExploit):
         try:
             svc_list = self.k8s.v1.list_namespaced_service(self.k8s.namespace)
             for svc in svc_list.items:
-                if svc.spec.ports:
+                if svc.spec and svc.spec.ports:
                     for port_spec in svc.spec.ports:
                         port_num = port_spec.port
                         if port_num in DATA_STORE_PORTS:
                             targets.append(
-                                (svc.metadata.name, port_num, DATA_STORE_PORTS[port_num])
+                                (meta_name(svc.metadata), port_num, DATA_STORE_PORTS[port_num])
                             )
         except Exception:  # noqa: S110
             return targets
@@ -162,8 +164,8 @@ class MissingNetworkPoliciesExploit(BaseExploit):
             return targets
 
         for svc in svc_list.items:
-            name = svc.metadata.name
-            if name == self.service or not svc.spec.ports:
+            name = meta_name(svc.metadata)
+            if name == self.service or not svc.spec or not svc.spec.ports:
                 continue
             port = svc.spec.ports[0].port
             if port in DATA_STORE_PORTS:

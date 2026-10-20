@@ -20,9 +20,11 @@ import logging
 import re
 from typing import Any
 
+from kubernetes.client import V1DaemonSet, V1Deployment
 from kubernetes.client.rest import ApiException
 
 from ..container.core.k8s_client import K8sClient
+from ..container.core.k8s_meta import meta_name
 from .findings import TechniqueResult
 from .technique_registry import TechniqueDefinition
 
@@ -155,6 +157,7 @@ def _handle_permission_probe(
         AuthorizationV1Api,
         V1ResourceAttributes,
         V1SelfSubjectAccessReview,
+        V1SelfSubjectAccessReviewSpec,
     )
 
     auth_api = AuthorizationV1Api(api_client=k8s.v1.api_client)
@@ -177,10 +180,11 @@ def _handle_permission_probe(
             resource=parts[0],
             subresource=parts[1] if len(parts) > 1 else "",
         )
-        review = V1SelfSubjectAccessReview(spec={"resourceAttributes": attrs})
+        spec = V1SelfSubjectAccessReviewSpec(resource_attributes=attrs)
+        review = V1SelfSubjectAccessReview(spec=spec)
         resp = auth_api.create_self_subject_access_review(review)
         perm_str = f"{verb} {resource}"
-        if resp.status.allowed:
+        if resp.status and resp.status.allowed:
             allowed.append(perm_str)
         else:
             denied.append(perm_str)
@@ -212,6 +216,7 @@ def _handle_detect_tool_version(
     fixed_version = api_call.get("fixed_version", "")
     cve = api_call.get("cve", "")
 
+    items: list[V1DaemonSet] | list[V1Deployment]
     try:
         if resource_kind == "daemonset":
             items = k8s.apps_v1.list_namespaced_daemon_set(namespace).items
@@ -223,7 +228,7 @@ def _handle_detect_tool_version(
         )
         return
 
-    matching = [i for i in items if name_prefix.lower() in (i.metadata.name or "").lower()]
+    matching = [i for i in items if name_prefix.lower() in meta_name(i.metadata).lower()]
 
     if not matching:
         result.evidence.append(f"TOOL_NOT_FOUND: {tool} not detected in {namespace}")
@@ -231,11 +236,13 @@ def _handle_detect_tool_version(
 
     item = matching[0]
     result.evidence.append(
-        f"TOOL_FOUND: {tool} {resource_kind} '{item.metadata.name}' in {namespace}"
+        f"TOOL_FOUND: {tool} {resource_kind} '{meta_name(item.metadata)}' in {namespace}"
     )
     result.success = True
 
-    containers = item.spec.template.spec.containers or []
+    containers = (
+        item.spec.template.spec.containers if item.spec and item.spec.template.spec else []
+    ) or []
     version = _parse_image_version(containers, tool)
 
     if not version:
@@ -336,68 +343,85 @@ def list_resource(k8s: K8sClient, namespace: str, resource_type: str) -> list[di
     """List K8s resources by type. Returns dicts with name and type keys."""
     list_dispatch: dict[str, Any] = {
         "deployments": lambda: [
-            {"name": i.metadata.name, "type": "deployment"}
+            {"name": meta_name(i.metadata), "type": "deployment"}
             for i in k8s.apps_v1.list_namespaced_deployment(namespace).items
         ],
         "services": lambda: [
-            {"name": i.metadata.name, "type": "service"}
+            {"name": meta_name(i.metadata), "type": "service"}
             for i in k8s.v1.list_namespaced_service(namespace).items
         ],
         "serviceaccounts": lambda: [
-            {"name": i.metadata.name, "type": "serviceaccount"}
+            {"name": meta_name(i.metadata), "type": "serviceaccount"}
             for i in k8s.v1.list_namespaced_service_account(namespace).items
         ],
         "secrets": lambda: [
-            {"name": i.metadata.name, "type": f"secret/{i.type}"}
+            {"name": meta_name(i.metadata), "type": f"secret/{i.type}"}
             for i in k8s.v1.list_namespaced_secret(namespace).items
         ],
         "configmaps": lambda: [
-            {"name": i.metadata.name, "type": "configmap", "keys": list((i.data or {}).keys())}
+            {
+                "name": meta_name(i.metadata),
+                "type": "configmap",
+                "keys": list((i.data or {}).keys()),
+            }
             for i in k8s.v1.list_namespaced_config_map(namespace).items
         ],
         "namespaces": lambda: [
-            {"name": i.metadata.name, "type": "namespace"} for i in k8s.v1.list_namespace().items
+            {"name": meta_name(i.metadata), "type": "namespace"}
+            for i in k8s.v1.list_namespace().items
         ],
         "networkpolicies": lambda: [
-            {"name": i.metadata.name, "type": "networkpolicy"}
+            {"name": meta_name(i.metadata), "type": "networkpolicy"}
             for i in k8s.list_network_policies(namespace)
         ],
         "rolebindings": lambda: [
-            {"name": i.metadata.name, "type": "rolebinding", "role": i.role_ref.name}
+            {
+                "name": meta_name(i.metadata),
+                "type": "rolebinding",
+                "role": i.role_ref.name if i.role_ref else "",
+            }
             for i in k8s.rbac_v1.list_namespaced_role_binding(namespace).items
         ],
         "clusterrolebindings": lambda: [
-            {"name": i.metadata.name, "type": "clusterrolebinding", "role": i.role_ref.name}
+            {
+                "name": meta_name(i.metadata),
+                "type": "clusterrolebinding",
+                "role": i.role_ref.name if i.role_ref else "",
+            }
             for i in k8s.rbac_v1.list_cluster_role_binding().items
         ],
         "endpoints": lambda: [
-            {"name": i.metadata.name, "type": "endpoints"}
+            {"name": meta_name(i.metadata), "type": "endpoints"}
             for i in k8s.v1.list_namespaced_endpoints(namespace).items
         ],
         "events": lambda: [
-            {"name": i.metadata.name, "type": "event", "reason": getattr(i, "reason", "")}
+            {"name": meta_name(i.metadata), "type": "event", "reason": getattr(i, "reason", "")}
             for i in k8s.v1.list_namespaced_event(namespace).items
         ],
         "daemonsets": lambda: [
-            {"name": i.metadata.name, "type": "daemonset", "namespace": i.metadata.namespace}
+            {
+                "name": meta_name(i.metadata),
+                "type": "daemonset",
+                "namespace": (i.metadata.namespace if i.metadata else None) or "",
+            }
             for i in k8s.apps_v1.list_namespaced_daemon_set(
                 namespace if namespace != "_all" else "kube-system"
             ).items
         ],
         "validatingwebhookconfigurations": lambda: [
-            {"name": i.metadata.name, "type": "validatingwebhookconfiguration"}
+            {"name": meta_name(i.metadata), "type": "validatingwebhookconfiguration"}
             for i in k8s.admissionregistration_v1.list_validating_webhook_configuration().items
         ],
         "mutatingwebhookconfigurations": lambda: [
-            {"name": i.metadata.name, "type": "mutatingwebhookconfiguration"}
+            {"name": meta_name(i.metadata), "type": "mutatingwebhookconfiguration"}
             for i in k8s.admissionregistration_v1.list_mutating_webhook_configuration().items
         ],
         "customresourcedefinitions": lambda: [
-            {"name": i.metadata.name, "type": "crd"}
+            {"name": meta_name(i.metadata), "type": "crd"}
             for i in k8s.apiextensions_v1.list_custom_resource_definition().items
         ],
         "cronjobs": lambda: [
-            {"name": i.metadata.name, "type": "cronjob"}
+            {"name": meta_name(i.metadata), "type": "cronjob"}
             for i in k8s.batch_v1.list_namespaced_cron_job(namespace).items
         ],
         "validate_controls": lambda: [],

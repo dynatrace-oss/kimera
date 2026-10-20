@@ -182,7 +182,8 @@ class PolicyEnforcementManager:
         if not ds or not ds.status:
             return {"installed": False}
 
-        containers = ds.spec.template.spec.containers if ds.spec and ds.spec.template else []
+        pod_spec = ds.spec.template.spec if ds.spec and ds.spec.template else None
+        containers = pod_spec.containers if pod_spec else []
         image = containers[0].image if containers else "unknown"
 
         return {
