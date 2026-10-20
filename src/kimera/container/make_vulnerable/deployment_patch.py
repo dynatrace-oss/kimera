@@ -71,6 +71,8 @@ class DeploymentPatchExploit(BaseExploit):
 
         try:
             pod = self.k8s.v1.read_namespaced_pod(pod_name, self.k8s.namespace)
+            if not pod.spec or not pod.spec.containers:
+                return False
             container = pod.spec.containers[0]
 
             for check in self._exploit_config.get("vulnerability_checks", []):

@@ -16,6 +16,7 @@ from typing import Any
 
 from ..core.exceptions import PermissionDeniedError
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from ..core.logger import SecurityLogger
 
 # Exploit types whose remediation needs every workload a namespace-wide policy
@@ -83,8 +84,8 @@ def deployment_info(
     try:
         deps = k8s.apps_v1.list_namespaced_deployment(namespace)
         for dep in deps.items:
-            labels = dep.spec.selector.match_labels or {}
-            result[dep.metadata.name] = {"labels": dict(labels), "ports": extract_ports(dep)}
+            labels = (dep.spec.selector.match_labels if dep.spec else None) or {}
+            result[meta_name(dep.metadata)] = {"labels": dict(labels), "ports": extract_ports(dep)}
     except Exception as e:
         _reject_unreadable(e, "deployments")
         logger.error(f"Failed to list deployments: {e}")
@@ -99,8 +100,8 @@ def statefulset_info(
     try:
         stss = k8s.apps_v1.list_namespaced_stateful_set(namespace)
         for sts in stss.items:
-            labels = sts.spec.selector.match_labels or {}
-            result[sts.metadata.name] = {"labels": dict(labels), "ports": extract_ports(sts)}
+            labels = (sts.spec.selector.match_labels if sts.spec else None) or {}
+            result[meta_name(sts.metadata)] = {"labels": dict(labels), "ports": extract_ports(sts)}
     except Exception as e:
         _reject_unreadable(e, "statefulsets")
         logger.error(f"Failed to list statefulsets: {e}")
@@ -115,9 +116,11 @@ def cronjob_info(
     try:
         cjs = k8s.batch_v1.list_namespaced_cron_job(namespace)
         for cj in cjs.items:
-            job_template = cj.spec.job_template
-            labels = job_template.spec.template.metadata.labels or {}
-            result[cj.metadata.name] = {
+            job_template = cj.spec.job_template if cj.spec else None
+            job_spec = job_template.spec if job_template else None
+            pod_template_meta = job_spec.template.metadata if job_spec else None
+            labels = (pod_template_meta.labels if pod_template_meta else None) or {}
+            result[meta_name(cj.metadata)] = {
                 "labels": dict(labels),
                 "ports": extract_ports(job_template),
             }
@@ -135,17 +138,18 @@ def service_info(
     try:
         svcs = k8s.v1.list_namespaced_service(namespace)
         for svc in svcs.items:
+            spec = svc.spec
             ports = [
                 {
                     "port": p.port,
                     "target_port": str(p.target_port) if p.target_port else None,
                     "protocol": p.protocol or "TCP",
                 }
-                for p in (svc.spec.ports or [])
+                for p in ((spec.ports if spec else None) or [])
             ]
-            result[svc.metadata.name] = {
+            result[meta_name(svc.metadata)] = {
                 "ports": ports,
-                "selector": dict(svc.spec.selector) if svc.spec.selector else {},
+                "selector": dict(spec.selector) if spec and spec.selector else {},
             }
     except Exception as e:
         _reject_unreadable(e, "services")
@@ -161,14 +165,16 @@ def security_contexts(
     try:
         deps = k8s.apps_v1.list_namespaced_deployment(namespace)
         for dep in deps.items:
-            pod_spec = dep.spec.template.spec
-            result[dep.metadata.name] = {
+            pod_spec = dep.spec.template.spec if dep.spec else None
+            result[meta_name(dep.metadata)] = {
                 "pod": {
                     "host_pid": getattr(pod_spec, "host_pid", False) or False,
                     "host_network": getattr(pod_spec, "host_network", False) or False,
                     "host_ipc": getattr(pod_spec, "host_ipc", False) or False,
                 },
-                "containers": [_container_context(c) for c in pod_spec.containers],
+                "containers": [
+                    _container_context(c) for c in (pod_spec.containers if pod_spec else [])
+                ],
             }
     except Exception as e:
         _reject_unreadable(e, "workloads")

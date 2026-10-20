@@ -22,6 +22,7 @@ from kubernetes.client import V1Deployment
 from kubernetes.client.rest import ApiException
 
 from ..container.core.k8s_client import K8sClient
+from ..container.core.k8s_meta import meta_name
 from ..resources import config_dir
 from .findings import AssessmentReport, Finding, Severity, TechniqueRef
 
@@ -193,8 +194,10 @@ def assess_deployment(
         checks = _load_checks()
 
     findings: list[Finding] = []
-    name = deployment.metadata.name
-    pod_spec = deployment.spec.template.spec
+    name = meta_name(deployment.metadata)
+    pod_spec = deployment.spec.template.spec if deployment.spec else None
+    if not pod_spec:
+        return findings
 
     for check in checks:
         check_type = check.get("type", "")

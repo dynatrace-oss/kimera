@@ -198,7 +198,7 @@ class TestBuildGatewayUrl:
 def _http_error(status: int) -> Exception:
     """An httpx-shaped transport error carrying an HTTP status."""
     error = Exception(f"Server error '{status}' for url")
-    error.response = MagicMock(status_code=status)  # type: ignore[attr-defined]
+    error.response = MagicMock(status_code=status)
     return error
 
 

@@ -58,13 +58,8 @@ uvx --from 'kimera[all]' kimera --help   # one-shot, no install
 Extras are optional: `llm` for remediation generation, `litellm` for a proxied
 model backend, `mcp-server` for the MCP server, `all` for every one.
 
-From a checkout, for development:
-
-```bash
-git clone https://github.com/dynatrace-oss/kimera
-cd kimera
-uv sync --all-extras
-```
+Contributing to Kimera itself, rather than using it as a package? See
+[Development](#development).
 
 ### MCP Server (for AI agents)
 
@@ -253,6 +248,21 @@ A provider that refuses the request (HTTP 403) is reported as a denial naming th
 The query language stays the provider's own — DQL for Dynatrace — because a common cross-platform query language would be a translation layer that could only ever expose the subset every backend shares.
 
 Adding a new provider: implement `EnrichmentProvider` and/or `QueryProvider` in `src/kimera/container/integrations/<provider>/`. The two are separate protocols, so a provider can support either alone.
+
+## Development
+
+```bash
+git clone https://github.com/dynatrace-oss/kimera
+cd kimera
+uv sync --all-extras
+```
+
+```bash
+uv run pytest                         # test suite with coverage
+uv run ruff format . && uv run ruff check .   # format + lint
+uv run mypy .                         # strict type check
+pre-commit run --all-files            # the CI gate, run locally
+```
 
 ## Safety
 

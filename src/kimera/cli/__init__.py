@@ -22,6 +22,7 @@ from ..application.config.loader import ConfigLoader
 from ..application.config.registry import ExploitRegistry
 from ..application.config.schemas import ToolkitConfig
 from ..container.core.k8s_client import K8sClient
+from ..container.core.k8s_meta import meta_name
 from ..container.core.logger import SecurityLogger, setup_logger
 from ..resources import config_dir
 
@@ -62,7 +63,7 @@ def _resolve_services(config: ToolkitConfig, k8s: K8sClient) -> list[str]:
         return config.services
     try:
         deployments = k8s.apps_v1.list_namespaced_deployment(config.namespace)
-        return [d.metadata.name for d in deployments.items]
+        return [meta_name(d.metadata) for d in deployments.items]
     except Exception:
         return []
 

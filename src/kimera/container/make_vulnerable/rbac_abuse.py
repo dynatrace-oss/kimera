@@ -19,7 +19,9 @@ by creating an overpermissive SA, binding it to a powerful role, and showing
 what an attacker could do from a pod running as that SA.
 """
 
-from typing import Any
+from typing import Any, cast
+
+from kubernetes.client import V1ClusterRole, V1Role, V1RoleBinding
 
 from ...domain.models import ExploitResult
 from ..core.journal import clear_operation, record_operation
@@ -170,14 +172,18 @@ class RBACExploit(BaseExploit):
 
         # Create Role (need to use rbac API directly)
         try:
-            self.k8s.rbac_v1.create_namespaced_role(namespace=namespace, body=role_body)
+            self.k8s.rbac_v1.create_namespaced_role(
+                namespace=namespace, body=cast(V1Role, role_body)
+            )
             self.logger.success(f"Created Role {_ROLE_NAME}")
             self._created_resources.append(f"role/{_ROLE_NAME}")
         except Exception as e:
             self.logger.error(f"Failed to create Role: {e}")
 
         try:
-            self.k8s.rbac_v1.create_namespaced_role_binding(namespace=namespace, body=binding_body)
+            self.k8s.rbac_v1.create_namespaced_role_binding(
+                namespace=namespace, body=cast(V1RoleBinding, binding_body)
+            )
             self.logger.success(f"Created RoleBinding {_BINDING_NAME}")
             self._created_resources.append(f"rolebinding/{_BINDING_NAME}")
         except Exception as e:
@@ -200,7 +206,7 @@ class RBACExploit(BaseExploit):
 
         try:
             pod = self.k8s.v1.read_namespaced_pod(pod_name, self.k8s.namespace)
-            sa_name = pod.spec.service_account_name or "default"
+            sa_name = (pod.spec.service_account_name if pod.spec else None) or "default"
 
             # Check if the SA has any RoleBindings with dangerous permissions
             namespace = self.k8s.namespace
@@ -210,6 +216,7 @@ class RBACExploit(BaseExploit):
                     for subject in rb.subjects or []:
                         if subject.kind == "ServiceAccount" and subject.name == sa_name:
                             role_name = rb.role_ref.name
+                            role: V1ClusterRole | V1Role
                             try:
                                 if rb.role_ref.kind == "ClusterRole":
                                     role = self.k8s.rbac_v1.read_cluster_role(role_name)

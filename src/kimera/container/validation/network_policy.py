@@ -15,6 +15,7 @@
 
 from ...application.config.schemas import NetworkTopologyEntry
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from ..core.logger import SecurityLogger
 from .models import (
     ControlType,
@@ -87,7 +88,7 @@ def validate_network_policies(
         policies = k8s.list_network_policies(namespace)
         sec_logger.info(f"Found {len(policies)} NetworkPolicies in {namespace}")
         for p in policies:
-            sec_logger.info(f"  • {p.metadata.name}")
+            sec_logger.info(f"  • {meta_name(p.metadata)}")
     except Exception:
         policies = []
 

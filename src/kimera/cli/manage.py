@@ -17,6 +17,7 @@ import click
 from ..container.assessment.scanner import SecurityScanner
 from ..container.core.journal import clear_all, pending_operations, record_operation
 from ..container.core.k8s_client import K8sClient
+from ..container.core.k8s_meta import meta_name
 from ..container.core.logger import SecurityLogger, console
 from ..container.resource_applier import ResourceApplier
 from . import EXPLOITS, REGISTRY, _resolve_services
@@ -170,12 +171,13 @@ def _revert_applied_resources(
     policies = k8s.list_network_policies(namespace)
     removed = 0
     for policy in policies:
-        labels = policy.metadata.labels or {}
+        labels = (policy.metadata.labels if policy.metadata else None) or {}
         if labels.get(TOOLKIT_LABEL) == TOOLKIT_LABEL_VALUE:
+            name = meta_name(policy.metadata)
             if dry_run:
-                logger.info(f"DRY RUN: Would delete NetworkPolicy {policy.metadata.name}")
+                logger.info(f"DRY RUN: Would delete NetworkPolicy {name}")
             else:
-                k8s.delete_network_policy(policy.metadata.name, namespace)
+                k8s.delete_network_policy(name, namespace)
             removed += 1
 
     if removed == 0:

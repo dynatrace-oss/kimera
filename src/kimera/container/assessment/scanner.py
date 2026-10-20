@@ -17,7 +17,13 @@ from kubernetes.client import V1Deployment, V1PodSecurityContext, V1SecurityCont
 from rich.table import Table
 
 from ..core.k8s_client import K8sClient
+from ..core.k8s_meta import meta_name
 from ..core.logger import SecurityLogger, console
+
+
+def _pod_spec(deployment: V1Deployment) -> Any:
+    """Return the deployment's pod spec, or None when the deployment has none."""
+    return deployment.spec.template.spec if deployment.spec else None
 
 
 class SecurityScanner:
@@ -58,7 +64,10 @@ class SecurityScanner:
             return []
 
         # Extract security contexts
-        pod_spec = deployment.spec.template.spec
+        pod_spec = _pod_spec(deployment)
+        if not pod_spec or not pod_spec.containers:
+            self.logger.warning(f"Deployment {service} has no pod spec")
+            return []
         container = pod_spec.containers[0]
 
         # Pod Security Context
@@ -110,11 +119,11 @@ class SecurityScanner:
             console.print(f"  Found {len(policies)} NetworkPolicies:")
             has_default_deny = False
             for policy in policies:
-                name = policy.metadata.name
-                policy_types = policy.spec.policy_types or []
+                name = meta_name(policy.metadata)
+                policy_types = (policy.spec.policy_types if policy.spec else None) or []
                 console.print(f"    • {name} (types: {', '.join(policy_types)})")
 
-                pod_sel = policy.spec.pod_selector
+                pod_sel = policy.spec.pod_selector if policy.spec else None
                 is_empty_selector = not pod_sel or not pod_sel.match_labels
                 if is_empty_selector and "Ingress" in policy_types and "Egress" in policy_types:
                     has_default_deny = True
@@ -156,9 +165,11 @@ class SecurityScanner:
 
     def _get_service_issues(self, deployment: V1Deployment) -> list[str]:
         """Get security issues for a deployment."""
-        issues = []
+        issues: list[str] = []
 
-        pod_spec = deployment.spec.template.spec
+        pod_spec = _pod_spec(deployment)
+        if not pod_spec or not pod_spec.containers:
+            return issues
         container = pod_spec.containers[0]
 
         if (
@@ -190,7 +201,10 @@ class SecurityScanner:
         try:
             # Get pod details to identify the container name
             pod = self.k8s.v1.read_namespaced_pod(pod_name, self.k8s.namespace)
-            container_name = pod.spec.containers[0].name if pod.spec.containers else None
+            pod_spec = pod.spec
+            container_name = (
+                pod_spec.containers[0].name if pod_spec and pod_spec.containers else None
+            )
 
             if not container_name:
                 console.print("  ⚠️  No container found in the pod")
@@ -213,11 +227,11 @@ class SecurityScanner:
                     if cap_value != "0000000000000000":
                         console.print("    ⚠️  Non-zero effective capabilities detected")
 
-            if pod.spec.host_pid or pod.spec.host_network:
+            if pod_spec and (pod_spec.host_pid or pod_spec.host_network):
                 console.print("  ⚠️  Host namespace access:")
-                if pod.spec.host_pid:
+                if pod_spec.host_pid:
                     console.print("    - hostPID: true")
-                if pod.spec.host_network:
+                if pod_spec.host_network:
                     console.print("    - hostNetwork: true")
 
         except Exception as e:
@@ -248,9 +262,6 @@ class SecurityScanner:
                     console.print(f"{prefix}  add: {sec_context.capabilities.add}")
                 if sec_context.capabilities.drop:
                     console.print(f"{prefix}  drop: {sec_context.capabilities.drop}")
-        else:
-            console.print(f"{prefix}Unknown security context type")
-            return
 
         for name, value in attrs:
             if value is not None:
