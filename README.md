@@ -58,7 +58,8 @@ uvx --from 'kimera[all]' kimera --help   # one-shot, no install
 Extras are optional: `llm` for remediation generation, `litellm` for a proxied
 model backend, `mcp-server` for the MCP server, `all` for every one.
 
-Contributing to Kimera itself? See [Development](#development).
+Contributing to Kimera itself, rather than using it as a package? See
+[Development](#development).
 
 ### MCP Server (for AI agents)
 
