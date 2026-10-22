@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-22
+
 ### Fixed
 
 - Fixed `mypy` failing under `kubernetes>=37.0.1`: the client now ships inline type hints, and
@@ -211,7 +213,8 @@ tags predate it and are retained as history.
 - Helm templates excluded from `check-yaml` pre-commit hook
 - Upgraded `click` to 8.3.3+ (PYSEC-2026-2132) and `pip` to 26.1.2 (PYSEC-2026-196)
 
-[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/dynatrace-oss/kimera/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dynatrace-oss/kimera/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/dynatrace-oss/kimera/compare/v0.3.0...v0.3.1
