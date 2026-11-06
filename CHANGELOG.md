@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Removed the long-lived `PYPI_API_TOKEN` from PyPI uploads; uploads authenticate with GitHub OIDC trusted publishing
+
 ## [0.4.2] - 2026-10-22
 
 ### Fixed
