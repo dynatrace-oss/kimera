@@ -529,7 +529,7 @@ class TestAppRequestProbe(_PreludeSandbox):
         out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", tools=())
         assert UNKNOWN_STATE in out
         assert "UNREACHABLE" not in out
-        assert "200" not in out
+        assert "HTTP" not in out
 
     def test_unknown_state_does_not_fire_a_success_marker(self, runner, http_server):
         out = self._run(runner, f"http://127.0.0.1:{http_server}/hello", tools=())
