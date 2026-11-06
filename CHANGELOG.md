@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped `pydantic` to 2.14.2, `jsonpatch` to 1.41, `anthropic` to 2.4.0, and `filelock` to 4.2.9
+
+### Security
+
+- Capped `litellm` below 1.104.0; that line requires `filelock` below 4
+
 ## [0.4.3] - 2026-11-06
 
 ### Security
