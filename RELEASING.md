@@ -2,17 +2,20 @@
 
 ## Prerequisites, one time
 
-1. A PyPI API token scoped to the `kimera` project, and a TestPyPI token.
-2. Two GitHub Environments on `dynatrace-oss/kimera`, each with **required reviewers**:
+1. Trusted publishing registered on the PyPI project `kimera`:
 
-   | Environment | Secret |
+   | Field | Value |
    |---|---|
-   | `pypi` | `PYPI_API_TOKEN` |
-   | `testpypi` | `TEST_PYPI_API_TOKEN` |
+   | Owner | `dynatrace-oss` |
+   | Repository | `kimera` |
+   | Workflow | `publish.yml` |
+   | Environment | `pypi` |
 
-   The tokens go on the environment, not on the repository. An environment secret is readable
-   only by a job that declares that environment, and those jobs are reviewer-gated. A repository
-   secret is readable by every workflow in the repo.
+2. Two GitHub Environments on `dynatrace-oss/kimera`, each with **required reviewers**.
+   The `pypi` environment allows deployments from `main` and from `v*` tags.
+   `publish.yml` rejects a tag whose commit is not on `main`.
+   TestPyPI still reads `TEST_PYPI_API_TOKEN` from the `testpypi` environment.
+   That token stays on the environment, not on the repository.
 
 ## Cut a release
 
@@ -43,6 +46,7 @@ releasing `X.Y.Z+1`, never by retrying the tag.
 
 ## Token rotation
 
-The upload tokens are long-lived credentials. Rotate them yearly, and replace them with
-[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) when convenient: the OIDC exchange
-mints a short-lived credential at job runtime and stores no secret in the repository.
+PyPI uploads use [Trusted Publishing](https://docs.pypi.org/trusted-publishers/).
+There is no `PYPI_API_TOKEN`. Revoke any leftover project token once a release
+published this way has succeeded.
+TestPyPI still uses `TEST_PYPI_API_TOKEN`. Rotate that token yearly.
