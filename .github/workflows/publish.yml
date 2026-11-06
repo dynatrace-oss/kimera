@@ -1,7 +1,7 @@
 name: Publish
 
-# Two independent brakes: the environment requires a reviewer, and the token
-# lives on that environment rather than on the repository.
+# PyPI uses OIDC trusted publishing. TestPyPI still uses a token.
+# A tag whose commit is not on main fails before either upload.
 on:
   push:
     tags: ["v*"]
@@ -19,6 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+    - name: Verify the tag commit is on main
+      if: github.event_name == 'push'
+      run: |
+        git fetch --no-tags origin main
+        if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          echo "::error::Tag $GITHUB_REF_NAME does not point at a commit on main"
+          exit 1
+        fi
     - name: Verify tag matches pyproject.toml version
       if: github.event_name == 'push'
       run: |
@@ -62,6 +70,9 @@ jobs:
     if: github.event_name == 'push' || inputs.target == 'pypi'
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      id-token: write
+      actions: read
     steps:
     - uses: actions/download-artifact@v8
       with:
@@ -70,9 +81,7 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v7
     - name: Publish
-      run: uv publish dist/*
-      env:
-        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      run: uv publish --trusted-publishing always dist/*
 
   smoke-test:
     needs: [publish-pypi]
