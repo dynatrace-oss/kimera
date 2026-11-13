@@ -69,7 +69,7 @@ mcp-server = [
 ]
 litellm = [
     # 1.104+ requires filelock<4, which pip-audit rejects.
-    "litellm>=1.100.0,<1.104.0",
+    "litellm>=1.100.0,<1.109.0",
 ]
 all = [
     "kimera[llm,mcp-server,litellm]",
