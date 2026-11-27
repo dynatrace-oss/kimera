@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-27
+
 ### Changed
 
-- Bumped `pydantic` to 2.14.2, `jsonpatch` to 1.41, `anthropic` to 2.4.0, and `filelock` to 4.2.9
+- Bumped `pydantic` to 2.14.4
+- Bumped `jsonpatch` to 1.48
+- Bumped `anthropic` to 2.13.0
+- Bumped `kubernetes` to 37.0.3
+- Bumped `aiohttp` to 3.14.5
+- Bumped `opentelemetry-api` to 1.45.2
+- Bumped `litellm` to 1.110.3
+- Bumped `filelock` to 4.2.9
+- Bumped the container base image to `python:3.15-slim`
 
 ### Security
 
-- Capped `litellm` below 1.104.0; that line requires `filelock` below 4
+- Capped the `litellm` extra below 1.111.0
 
 ## [0.4.3] - 2026-11-06
 
@@ -227,7 +237,8 @@ tags predate it and are retained as history.
 - Helm templates excluded from `check-yaml` pre-commit hook
 - Upgraded `click` to 8.3.3+ (PYSEC-2026-2132) and `pip` to 26.1.2 (PYSEC-2026-196)
 
-[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/dynatrace-oss/kimera/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/dynatrace-oss/kimera/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/dynatrace-oss/kimera/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...v0.4.1
