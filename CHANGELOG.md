@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-27
+
 ### Changed
 
 - Bumped `pydantic` to 2.14.4
@@ -235,7 +237,8 @@ tags predate it and are retained as history.
 - Helm templates excluded from `check-yaml` pre-commit hook
 - Upgraded `click` to 8.3.3+ (PYSEC-2026-2132) and `pip` to 26.1.2 (PYSEC-2026-196)
 
-[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/kimera/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/dynatrace-oss/kimera/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/dynatrace-oss/kimera/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/dynatrace-oss/kimera/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/dynatrace-oss/kimera/compare/v0.4.0...v0.4.1
