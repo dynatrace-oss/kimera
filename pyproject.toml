@@ -68,7 +68,6 @@ mcp-server = [
     "mcp[cli]>=2.2.0,<3",
 ]
 litellm = [
-    # 1.104+ requires filelock<4, which pip-audit rejects.
     "litellm>=1.100.0,<1.111.0",
 ]
 all = [
